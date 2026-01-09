@@ -1,14 +1,29 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 
 from src.config import get_settings
+from src.core.vector_store import ensure_collection_exists
+from src.utils.logger import logger
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting up application")
+    ensure_collection_exists()
+    logger.info("Application startup complete")
+    yield
+    logger.info("Shutting down application")
+
 
 app = FastAPI(
     title="Document Research Agent",
     description="Agentic document research assistant using LangGraph",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 
