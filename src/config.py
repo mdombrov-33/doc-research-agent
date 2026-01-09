@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     APP_ENV: Literal["development", "production", "test"] = "development"
-    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "DEBUG"
 
     LLM_PROVIDER: Literal["openai", "openrouter"] = "openai"
 
