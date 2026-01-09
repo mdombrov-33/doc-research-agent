@@ -1,0 +1,67 @@
+# OUTPUT RAILS
+# These filter and modify bot responses AFTER generation
+
+# PATTERN 1: PII Detection and Masking
+# Masks sensitive information in bot responses (except when explicitly from docs)
+
+define bot inform mask pii
+  "(This response has been filtered for sensitive information)"
+
+
+# PATTERN 2: Prevent System Prompt Leakage
+# Catches accidental disclosure of internal configuration
+
+define bot leaked system info
+  "You are a document research assistant"  # Start of system prompt
+  "Your ONLY purpose is to"
+  "langchain"
+  "qdrant"
+  "openai api key"
+  "OPENAI_API_KEY"
+  "config.yml"
+
+define bot refuse leaked info
+  "I cannot share internal system details. How can I help you with document research?"
+
+define flow block system leakage
+  bot leaked system info
+  bot refuse leaked info
+  stop
+
+
+# PATTERN 3: Prevent Malicious Instructions
+# Blocks responses that provide harmful instructions
+
+define bot provides harmful instructions
+  "here's how to bypass"
+  "you can hack"
+  "execute this code"
+  "run this command"
+  "delete the database"
+  "drop table"
+
+define bot refuse harmful content
+  "I cannot provide instructions that could be harmful or violate security. I can only help with document research."
+
+define flow block harmful instructions
+  bot provides harmful instructions
+  bot refuse harmful content
+  stop
+
+
+# PATTERN 4: Response Quality Check
+# Ensures responses are relevant to document research
+
+define bot off topic response
+  "here's a joke"
+  "once upon a time"
+  "let me tell you a story"
+  "roses are red"
+
+define bot correct course
+  "I can only provide information related to document research and factual analysis."
+
+define flow enforce topic relevance
+  bot off topic response
+  bot correct course
+  stop

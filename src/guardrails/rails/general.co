@@ -1,0 +1,9 @@
+# DEFAULT FLOW
+# This catches all queries that didn't match any blocking pattern in input.co
+# Priority: Runs LAST (after all named flows)
+# Action: Calls the RAG agent and returns its answer
+
+define flow
+  user ...
+  $answer = execute rag_query(question=$last_user_message)
+  bot $answer

@@ -1,0 +1,22 @@
+# DIALOG RAILS - INTENT DEFINITIONS (OPTIONAL)
+# Purpose: Define canonical forms for user intents
+# Note: These are just examples/categories, NOT blocking logic
+# Blocking happens in input.co, not here
+
+define user ask about documents
+  "what's in this document"
+  "analyze this pdf"
+  "summarize the document"
+  "what does the document say about"
+  "search the document for"
+  "find information about"
+
+define user ask research question
+  "what are the risks of"
+  "explain the concept of"
+  "tell me about"
+  "how does"
+  "what is"
+
+define bot respond to question
+  "I'll help you with that."

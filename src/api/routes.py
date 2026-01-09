@@ -8,6 +8,7 @@ from src.api.schemas import QueryRequest, QueryResponse, UploadResponse
 from src.config import get_settings
 from src.core.agent import get_agent
 from src.core.document_processing.document_processor import DocumentProcessor
+from src.guardrails.guardrails_wrapper import get_guardrails
 from src.utils.logger import logger
 
 settings = get_settings()
@@ -63,22 +64,34 @@ async def query_documents(request: QueryRequest):
     try:
         logger.info(f"Received query: {request.question}")
 
-        agent = get_agent()
+        guardrails = get_guardrails()
 
-        inputs: dict[str, str | bool | list[str] | int] = {
-            "question": request.question,
-            "generation": "",
-            "web_search": False,
-            "documents": [],
-            "retrieval_attempts": 0,
-            "generation_attempts": 0,
-        }
+        # Store result in closure to get sources count
+        rag_result: dict[str, str | list[str]] = {}
 
-        result = agent.invoke(inputs)  # type: ignore[arg-type]
+        async def run_rag_agent(question: str) -> str:
+            agent = get_agent()
+            inputs: dict[str, str | bool | list[str] | int] = {
+                "question": question,
+                "generation": "",
+                "web_search": False,
+                "documents": [],
+                "retrieval_attempts": 0,
+                "generation_attempts": 0,
+            }
+            result = agent.invoke(inputs)  # type: ignore[arg-type]
 
-        answer = result.get("generation", "No answer generated")
-        sources_count = len(result.get("documents", []))
+            # Store full result in closure
+            rag_result["generation"] = result.get("generation", "No answer generated")
+            rag_result["documents"] = result.get("documents", [])
 
+            return rag_result["generation"]
+
+        guardrails.register_rag_action(run_rag_agent)
+
+        answer = await guardrails.generate_safe(request.question)
+
+        sources_count = len(rag_result.get("documents", [])) if rag_result else 0
         logger.info(f"Query completed. Answer length: {len(answer)}, Sources: {sources_count}")
 
         return QueryResponse(question=request.question, answer=answer, sources_count=sources_count)
