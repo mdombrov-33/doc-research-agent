@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from src.api.routes import router
 from src.config import get_settings
 from src.core.vector_store import ensure_collection_exists
 from src.utils.logger import logger
@@ -25,6 +26,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.include_router(router, prefix="/api", tags=["documents"])
 
 
 class HealthResponse(BaseModel):
