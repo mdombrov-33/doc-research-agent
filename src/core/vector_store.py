@@ -13,7 +13,9 @@ settings = get_settings()
 
 @lru_cache
 def get_qdrant_client() -> QdrantClient:
-    is_local = "localhost" in settings.QDRANT_URL or "127.0.0.1" in settings.QDRANT_URL
+    is_local = any(
+        x in settings.QDRANT_URL for x in ["localhost", "127.0.0.1", "qdrant:6333"]
+    )
 
     if is_local:
         logger.info(f"Connecting to local Qdrant at {settings.QDRANT_URL}")
