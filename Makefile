@@ -12,7 +12,11 @@ dev: ## Run development server locally
 build: ## Build Docker images
 	docker compose build
 
+
 up: ## Start all services
+	docker compose up
+
+up-d: ## Start all services detached
 	docker compose up -d
 
 down: ## Stop all services
