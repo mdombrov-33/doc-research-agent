@@ -58,23 +58,12 @@ def retrieve_node(state: AgentState) -> dict[str, list[str]]:
     question = state.get("question", "")
 
     # Step 1: Preprocess query to optimize for semantic search
-    from src.core.grading.graders import rewrite_query
-
     preprocessed_query = rewrite_query(question)
     logger.info(f"Preprocessed query: '{question}' -> '{preprocessed_query}'")
 
     # Step 2: Vector search with preprocessed query
     retriever = get_retriever_tool()
     documents = retriever.invoke(preprocessed_query)
-
-    # Debug raw documents
-    if documents:
-        logger.info(f"Raw doc[0] type: {type(documents[0])}")
-        if hasattr(documents[0], "page_content"):
-            logger.info(
-                f"page_content: '{documents[0].page_content[:200] if documents[0].page_content else 'EMPTY'}'"  # noqa: E501
-            )  # noqa: E501
-        logger.info(f"str(doc[0]): '{str(documents[0])[:200]}'")
 
     doc_contents = []
     vector_scores = []
@@ -83,18 +72,12 @@ def retrieve_node(state: AgentState) -> dict[str, list[str]]:
         content = doc.page_content if hasattr(doc, "page_content") else str(doc)
         doc_contents.append(content)
 
-        # Get relevance score from metadata if available
         score = 1.0  # default
         if hasattr(doc, "metadata") and isinstance(doc.metadata, dict):
             score = doc.metadata.get("score", 1.0)
         vector_scores.append(score)
 
     logger.info(f"Retrieved {len(doc_contents)} documents from vector search")
-
-    # Debug: log first document content
-    if doc_contents:
-        logger.info(f"First doc content (first 200 chars): {doc_contents[0][:200]}")
-        logger.info(f"First doc length: {len(doc_contents[0])}")
 
     # Step 3: Fusion retrieval (combine vector + BM25 scores)
     # Filter out empty documents first
@@ -112,7 +95,6 @@ def retrieve_node(state: AgentState) -> dict[str, list[str]]:
             fused_results = fusion.fuse_results(
                 doc_contents, vector_scores[: len(doc_contents)], preprocessed_query
             )
-            # Reorder documents by fused scores
             doc_contents = [doc_contents[idx] for idx, score in fused_results]
             logger.info(f"Reranked documents using fusion (top score: {fused_results[0][1]:.4f})")
         except Exception as e:
