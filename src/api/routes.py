@@ -3,21 +3,15 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from pydantic import BaseModel
 
+from src.api.schemas import QueryRequest, QueryResponse, UploadResponse
 from src.config import get_settings
+from src.core.agent import get_agent
 from src.core.document_processor import DocumentProcessor
 from src.utils.logger import logger
 
 settings = get_settings()
 router = APIRouter()
-
-
-class UploadResponse(BaseModel):
-    document_id: str
-    filename: str
-    chunks_created: int
-    file_size: int
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -62,3 +56,33 @@ async def upload_document(file: UploadFile = File(...)):
         if file_path.exists():
             os.remove(file_path)
             logger.info(f"Cleaned up temp file {file_path}")
+
+
+@router.post("/query", response_model=QueryResponse)
+async def query_documents(request: QueryRequest):
+    try:
+        logger.info(f"Received query: {request.question}")
+
+        agent = get_agent()
+
+        inputs: dict[str, str | bool | list[str] | int] = {
+            "question": request.question,
+            "generation": "",
+            "web_search": False,
+            "documents": [],
+            "retrieval_attempts": 0,
+            "generation_attempts": 0,
+        }
+
+        result = agent.invoke(inputs)  # type: ignore[arg-type]
+
+        answer = result.get("generation", "No answer generated")
+        sources_count = len(result.get("documents", []))
+
+        logger.info(f"Query completed. Answer length: {len(answer)}, Sources: {sources_count}")
+
+        return QueryResponse(question=request.question, answer=answer, sources_count=sources_count)
+
+    except Exception as e:
+        logger.error(f"Query failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Query processing failed: {str(e)}")
