@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_NAME: str = "documents"
 
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIMENSION: int = 1536
+
     UPLOAD_DIR: str = "./uploads"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
