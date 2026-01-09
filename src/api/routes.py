@@ -7,7 +7,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from src.api.schemas import QueryRequest, QueryResponse, UploadResponse
 from src.config import get_settings
 from src.core.agent import get_agent
-from src.core.document_processor import DocumentProcessor
+from src.core.document_processing.document_processor import DocumentProcessor
 from src.utils.logger import logger
 
 settings = get_settings()

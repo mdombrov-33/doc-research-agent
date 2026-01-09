@@ -1,6 +1,6 @@
 from langchain_community.tools import DuckDuckGoSearchRun
 
-from src.core.search import get_retriever
+from src.core.retrieval.search import get_retriever
 from src.utils.logger import logger
 
 

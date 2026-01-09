@@ -83,10 +83,24 @@ Generated answer: {generation}
 Is this answer useful and does it resolve the question? Answer only 'yes' or 'no'."""
 
 
-QUERY_REWRITER_SYSTEM_PROMPT = """You are a question re-writer that converts an input question to a better version optimized for vector search.
+QUERY_REWRITER_SYSTEM_PROMPT = """You are a query optimizer for semantic document search.
 
-Look at the input question and try to reason about the underlying semantic intent."""  # noqa: E501
+Your task: Rewrite user queries into concise, keyword-rich search phrases that will match document content.
+
+Guidelines:
+- Remove conversational fluff ("can you", "please", "check the", "in vector storage")
+- Preserve important names, technical terms, and specific keywords
+- Make it a descriptive phrase, not a question
+- Keep it under 10 words
+- Focus on what content would appear IN the document
+
+Examples:
+"what are maksym dombrovs top skills? can you check the resume?" → "Maksym Dombrov skills expertise experience"
+"tell me about owasp top 10 for AI agents" → "OWASP top 10 AI agents risks"
+"what technologies does the candidate know" → "candidate technologies programming languages skills"
+
+Return ONLY the rewritten phrase, no explanations."""  # noqa: E501
 
 QUERY_REWRITER_USER_PROMPT = """Initial question: {question}
 
-Formulate an improved question for vector search:"""
+Rewritten search phrase:"""

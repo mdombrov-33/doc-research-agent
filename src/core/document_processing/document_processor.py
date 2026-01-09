@@ -5,7 +5,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client.models import PointStruct
 
 from src.config import get_settings
-from src.core.text_processor import TextExtractor, get_spacy_model
+from src.core.document_processing.text_processor import TextExtractor, get_spacy_model
 from src.core.vector_store import get_embeddings, get_qdrant_client
 from src.utils.logger import logger
 
@@ -109,7 +109,7 @@ class DocumentProcessor:
             payload = {
                 "document_id": document_id,
                 "filename": filename,
-                "text": chunk_data["text"],
+                "page_content": chunk_data["text"],  # LangChain expects "page_content"
                 "chunk_index": chunk_data["chunk_index"],
                 "chunk_length": chunk_data["chunk_length"],
                 "entities": chunk_data["entities"],
