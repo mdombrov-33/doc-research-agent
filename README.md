@@ -4,6 +4,7 @@ Production RAG system with LangGraph state machine, hybrid search, and NeMo Guar
 
 ## Architecture
 
+### System Overview
 ```
 ┌─────────────┐
 │   FastAPI   │  REST API (upload, query endpoints)
@@ -16,19 +17,86 @@ Production RAG system with LangGraph state machine, hybrid search, and NeMo Guar
        │
        ▼
 ┌──────────────────┐
-│  LangGraph Agent │  State machine orchestration
-└──────┬───────────┘
-       │
-       ├─────► Router Node ────► Vector Store / Web Search
-       │
-       ├─────► Retrieve Node ──► Hybrid Search (Vector + BM25 fusion)
-       │
-       ├─────► Grade Docs ─────► Batch LLM relevance scoring
-       │
-       ├─────► Generate ───────► Answer synthesis
-       │
-       └─────► Quality Check ──► Hallucination + answer grading
+│  LangGraph Agent │  State machine orchestration (see flow below)
+└──────────────────┘
 ```
+
+### LangGraph Agent State Machine
+
+```
+                    ┌─────────┐
+                    │  START  │
+                    └────┬────┘
+                         │
+                         ▼
+                   ┌───────────┐
+                   │  Router   │ (Classify: vectorstore or websearch?)
+                   └─────┬─────┘
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+         web_search=true       web_search=false
+              │                     │
+              ▼                     ▼
+        ┌──────────┐          ┌──────────┐
+        │WebSearch │          │ Retrieve │ (Hybrid: Vector + BM25)
+        └────┬─────┘          └────┬─────┘
+             │                     │
+             └──────────┬──────────┘
+                        │
+                        ▼
+                 ┌─────────────┐
+                 │ Grade Docs  │ (Batch LLM: relevant?)
+                 └──────┬──────┘
+                        │
+              ┌─────────┴─────────┐
+              │                   │
+       docs < threshold      docs >= threshold
+              │                   │
+              ▼                   ▼
+        ┌──────────┐          ┌──────────┐
+        │WebSearch │          │ Generate │ (Synthesize answer)
+        │ (retry)  │          └────┬─────┘
+        └────┬─────┘               │
+             │                     ▼
+             │              ┌────────────────┐
+             │              │Check Hallucin. │ (Grounded in docs?)
+             │              └───────┬────────┘
+             │                      │
+             │                      ▼
+             │              ┌────────────────┐
+             │              │ Check Quality  │ (Answers question?)
+             │              └───────┬────────┘
+             │                      │
+             └──────────────────────┤
+                              ┌─────┴─────┐
+                              │           │
+                          useful    not useful
+                              │           │
+                              ▼           │
+                          ┌─────┐        │
+                          │ END │        │
+                          └─────┘        │
+                                         │
+                              (max 3 attempts)
+                                         │
+                              ┌──────────┘
+                              │
+                              ▼
+                        ┌──────────┐
+                        │ Generate │ (Retry)
+                        │ (again)  │
+                        └──────────┘
+```
+
+**Node Descriptions:**
+- **Router**: LLM classifies query type (vectorstore vs websearch)
+- **Retrieve**: Hybrid search (60% vector similarity + 40% BM25 keyword)
+- **WebSearch**: DuckDuckGo fallback when docs insufficient
+- **Grade Docs**: Batch LLM grading (10 docs → 1 API call)
+- **Generate**: Synthesize answer from graded documents
+- **Check Hallucination**: Verify answer grounded in sources
+- **Check Quality**: Verify answer resolves user question
 
 ## How It Works
 
