@@ -1,11 +1,10 @@
-from operator import add
-from typing import Annotated, Required, TypedDict
+from typing import Required, TypedDict
 
 
 class AgentState(TypedDict, total=False):
     question: Required[str]
     generation: str
     web_search: bool
-    documents: Annotated[list[str], add]
+    documents: list[str]
     retrieval_attempts: int
     generation_attempts: int

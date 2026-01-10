@@ -109,17 +109,23 @@ def web_search_node(state: AgentState) -> dict[str, list[str]]:
     logger.info("--- WEB SEARCH ---")
 
     question = state.get("question", "")
+    existing_docs = state.get("documents", [])  # Keep relevant docs from vector store
     web_search = get_web_search_tool()
 
     try:
         result = web_search.invoke(question)
-        docs = [result]
-        logger.info(f"Web search completed, got {len(docs)} results")
+        web_docs = [result]
+        logger.info(f"Web search completed, got {len(web_docs)} results")
     except Exception as e:
         logger.error(f"Web search failed: {e}")
-        docs = []
+        web_docs = []
 
-    return {"documents": docs}
+    combined = existing_docs + web_docs
+    logger.info(
+        f"Combined {len(existing_docs)} vector docs + {len(web_docs)} web docs = {len(combined)} total"  # noqa: E501
+    )
+
+    return {"documents": combined}
 
 
 def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]:
@@ -127,29 +133,55 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
 
     question = state.get("question", "")
     documents = state.get("documents", [])
-
-    filtered_docs = []
-
-    for doc in documents:
-        score = grade_document_relevance(question, doc)
-        if score == "yes":
-            logger.info("Document is relevant")
-            filtered_docs.append(doc)
-        else:
-            logger.info("Document is not relevant")
-
-    web_search_needed = len(filtered_docs) < 2
     attempts = state.get("retrieval_attempts", 0)
 
-    logger.info(
-        f"Filtered to {len(filtered_docs)} relevant documents. Web search needed: {web_search_needed}"  # noqa: E501
-    )
+    # First pass: keep relevant docs from vector store
+    # Second pass: add relevant web docs to existing relevant docs
+    if attempts == 0:
+        # First grading (vector docs only)
+        filtered_docs = []
+        for doc in documents:
+            score = grade_document_relevance(question, doc)
+            if score == "yes":
+                logger.info("Document is relevant")
+                filtered_docs.append(doc)
+            else:
+                logger.info("Document is not relevant")
 
-    return {
-        "documents": filtered_docs,
-        "web_search": web_search_needed,
-        "retrieval_attempts": attempts + 1,
-    }
+        web_search_needed = len(filtered_docs) < 2
+        logger.info(
+            f"Filtered to {len(filtered_docs)} relevant documents. Web search needed: {web_search_needed}"  # noqa: E501
+        )
+
+        return {
+            "documents": filtered_docs,
+            "web_search": web_search_needed,
+            "retrieval_attempts": attempts + 1,
+        }
+    else:
+        # Second grading (web docs added to relevant vector docs)
+        # Only grade the NEW web docs, keep existing relevant ones
+        existing_count = len([d for d in documents if d])  # Rough heuristic
+        logger.info(f"Grading {existing_count} total documents (vector + web)")
+
+        filtered_docs = []
+        for doc in documents:
+            score = grade_document_relevance(question, doc)
+            if score == "yes":
+                logger.info("Document is relevant")
+                filtered_docs.append(doc)
+            else:
+                logger.info("Document is not relevant")
+
+        logger.info(
+            f"Filtered to {len(filtered_docs)} relevant documents. Web search needed: False"
+        )
+
+        return {
+            "documents": filtered_docs,
+            "web_search": False,
+            "retrieval_attempts": attempts + 1,
+        }
 
 
 def generate_node(state: AgentState) -> dict[str, str | int]:
