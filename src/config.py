@@ -36,6 +36,8 @@ class Settings(BaseSettings):
 
     RELEVANCE_THRESHOLD: int = 3
 
+    API_URL: str = "http://localhost:8000"
+
     def get_llm_api_key(self) -> str:
         if self.LLM_PROVIDER == "openai":
             return self.OPENAI_API_KEY
