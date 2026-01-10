@@ -51,7 +51,11 @@ GENERATION_SYSTEM_PROMPT = """You are an assistant for question-answering tasks.
 You have access to a document storage system (Qdrant vector store) containing user-uploaded files.
 When users refer to "storage", "our documents", "our files", or "database", they mean documents uploaded to this system.
 
-Use the following retrieved context to answer the question. This context comes from the document storage.
+The retrieved context below may include:
+1. Documents from the storage system (uploaded files)
+2. Web search results (if automatically triggered or requested)
+
+Use the following retrieved context to answer the question.
 If you don't know the answer, say so. Keep the answer concise and focused on the question.
 
 Context:
