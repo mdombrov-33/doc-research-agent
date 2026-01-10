@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
+    RELEVANCE_THRESHOLD: int = 3
+
     def get_llm_api_key(self) -> str:
         if self.LLM_PROVIDER == "openai":
             return self.OPENAI_API_KEY
