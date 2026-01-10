@@ -75,6 +75,7 @@ async def query_documents(request: QueryRequest):
                 "question": question,
                 "generation": "",
                 "web_search": False,
+                "explicit_web_search": False,
                 "documents": [],
                 "retrieval_attempts": 0,
                 "generation_attempts": 0,

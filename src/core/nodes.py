@@ -44,12 +44,26 @@ def router_node(state: AgentState) -> dict[str, bool]:
     question = state.get("question", "")
     source = route_question(question)
 
-    if source == "websearch":
-        logger.info("Routing to web search")
-        return {"web_search": True}
+    explicit_phrases = [
+        "web search",
+        "search web",
+        "check web",
+        "online search",
+        "search online",
+        "both storage and web",
+        "also search",
+    ]
+    explicit_web_request = any(phrase in question.lower() for phrase in explicit_phrases)
+
+    if explicit_web_request:
+        logger.info("Routing to vector store (with explicit web search request)")
+        return {"web_search": False, "explicit_web_search": True}
+    elif source == "websearch":
+        logger.info("Routing to web search (router decision)")
+        return {"web_search": True, "explicit_web_search": False}
     else:
         logger.info("Routing to vector store")
-        return {"web_search": False}
+        return {"web_search": False, "explicit_web_search": False}
 
 
 def retrieve_node(state: AgentState) -> dict[str, list[str]]:
@@ -134,11 +148,9 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
     question = state.get("question", "")
     documents = state.get("documents", [])
     attempts = state.get("retrieval_attempts", 0)
+    explicit_web = state.get("explicit_web_search", False)
 
-    # First pass: keep relevant docs from vector store
-    # Second pass: add relevant web docs to existing relevant docs
     if attempts == 0:
-        # First grading (vector docs only)
         filtered_docs = []
         for doc in documents:
             score = grade_document_relevance(question, doc)
@@ -148,9 +160,12 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
             else:
                 logger.info("Document is not relevant")
 
-        web_search_needed = len(filtered_docs) < 2
+        threshold = settings.RELEVANCE_THRESHOLD
+        web_search_needed = len(filtered_docs) < threshold or explicit_web
+
         logger.info(
-            f"Filtered to {len(filtered_docs)} relevant documents. Web search needed: {web_search_needed}"  # noqa: E501
+            f"Filtered to {len(filtered_docs)} relevant documents (threshold: {threshold}). "
+            f"Web search needed: {web_search_needed}"
         )
 
         return {
@@ -159,9 +174,7 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
             "retrieval_attempts": attempts + 1,
         }
     else:
-        # Second grading (web docs added to relevant vector docs)
-        # Only grade the NEW web docs, keep existing relevant ones
-        existing_count = len([d for d in documents if d])  # Rough heuristic
+        existing_count = len([d for d in documents if d])
         logger.info(f"Grading {existing_count} total documents (vector + web)")
 
         filtered_docs = []
