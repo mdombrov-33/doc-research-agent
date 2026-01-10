@@ -48,11 +48,14 @@ Is this document relevant to the question? Be lenient. Answer only 'yes' or 'no'
 
 GENERATION_SYSTEM_PROMPT = """You are an assistant for question-answering tasks.
 
-Use the following retrieved context to answer the question. If you don't know the answer, say so.
-Keep the answer concise and focused on the question.
+You have access to a document storage system (Qdrant vector store) containing user-uploaded files.
+When users refer to "storage", "our documents", "our files", or "database", they mean documents uploaded to this system.
+
+Use the following retrieved context to answer the question. This context comes from the document storage.
+If you don't know the answer, say so. Keep the answer concise and focused on the question.
 
 Context:
-{context}"""
+{context}"""  # noqa: E501
 
 GENERATION_USER_PROMPT = """Question: {question}
 
@@ -85,19 +88,21 @@ Is this answer useful and does it resolve the question? Answer only 'yes' or 'no
 
 QUERY_REWRITER_SYSTEM_PROMPT = """You are a query optimizer for semantic document search.
 
-Your task: Rewrite user queries into concise, keyword-rich search phrases that will match document content.
+Your task: Rewrite user queries into keyword-rich search phrases while preserving user intent.
 
 Guidelines:
-- Remove conversational fluff ("can you", "please", "check the", "in vector storage")
-- Preserve important names, technical terms, and specific keywords
-- Make it a descriptive phrase, not a question
-- Keep it under 10 words
+- Remove ONLY politeness words ("can you", "please", "I want")
+- KEEP important context ("web search", "both", "also", "additionally")
+- KEEP semantic meaning and user's request structure
+- Preserve names, technical terms, and specific keywords
+- Convert to a concise phrase (max 15 words)
 - Focus on what content would appear IN the document
 
 Examples:
-"what are maksym dombrovs top skills? can you check the resume?" → "Maksym Dombrov skills expertise experience"
-"tell me about owasp top 10 for AI agents" → "OWASP top 10 AI agents risks"
-"what technologies does the candidate know" → "candidate technologies programming languages skills"
+"what are maksym dombrovs top skills? can you check the resume?" → "Maksym Dombrov skills expertise experience qualifications"
+"tell me about owasp top 10 for AI agents" → "OWASP top 10 AI agents security risks"
+"find info about threats and also do web search" → "threats vulnerabilities risks attacks"
+"what technologies does the candidate know" → "candidate technologies programming languages frameworks skills"
 
 Return ONLY the rewritten phrase, no explanations."""  # noqa: E501
 
