@@ -93,6 +93,37 @@ Nodes return partial state updates (dicts), LangGraph merges them automatically.
 - Async processing: FastAPI async handlers with concurrent LLM calls
 - Connection pooling: Qdrant client reuse across requests
 
+### 6. Evaluation & Monitoring
+
+RAG-specific metrics tracked per query:
+- **Retrieval Precision**: Ratio of relevant documents to total retrieved
+- **Faithfulness**: Hallucination detection via LLM-as-judge (answer grounded in sources)
+- **Answer Quality**: LLM evaluation of response usefulness
+- **Latency Tracking**: End-to-end query processing time
+- **Web Search Rate**: Percentage of queries requiring external knowledge
+
+Metrics aggregated in-memory and accessible via `/api/evaluation/stats` endpoint. Logs structured evaluation data for each query (JSON format) enabling post-hoc analysis and performance monitoring.
+
+## API Endpoints
+
+**POST /api/upload**
+- Upload documents (PDF, DOCX, TXT)
+- Chunks, embeds, and stores in Qdrant with metadata
+- Response: `{document_id, filename, chunks_created, file_size}`
+
+**POST /api/query**
+- Query documents with RAG pipeline
+- Request: `{question}`
+- Response: `{question, answer, sources_count}`
+- Triggers full agent flow: routing → retrieval → grading → generation → quality checks
+
+**GET /api/evaluation/stats**
+- Aggregated evaluation metrics across all queries
+- Response: `{total_queries, hallucination_pass_rate, quality_pass_rate, avg_retrieval_precision, avg_latency_ms, web_search_rate, avg_docs_retrieved, avg_docs_relevant, avg_generation_attempts}`
+
+**HEAD /api/ping**
+- Health check endpoint for monitoring (UptimeRobot, etc.)
+
 ## Tech Stack
 
 - **LangGraph** - State machine for agent flow control
