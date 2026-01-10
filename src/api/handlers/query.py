@@ -30,6 +30,7 @@ async def handle_query(request: QueryRequest) -> dict[str, Any]:
             result = agent.invoke(inputs)  # type: ignore[arg-type]
 
             rag_result["generation"] = result.get("generation", "No answer generated")
+            rag_result["documents"] = result.get("documents", [])
 
             return rag_result["generation"]  # type: ignore[return-value]
 
