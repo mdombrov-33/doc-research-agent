@@ -10,8 +10,9 @@ from src.core.grading.graders import (
     rewrite_query,
     route_question,
 )
+from src.core.retrieval.fusion_retriever import FusionRetriever
 from src.core.state import AgentState
-from src.core.tools import get_retriever_tool, get_web_search_tool
+from src.core.tools import get_vector_store_tool, get_web_search_tool
 from src.utils.logger import logger
 
 settings = get_settings()
@@ -71,27 +72,27 @@ def retrieve_node(state: AgentState) -> dict[str, list[str]]:
 
     question = state.get("question", "")
 
-    # Step 1: Preprocess query to optimize for semantic search
     preprocessed_query = rewrite_query(question)
     logger.info(f"Preprocessed query: '{question}' -> '{preprocessed_query}'")
 
-    # Step 2: Vector search with preprocessed query
-    retriever = get_retriever_tool()
-    documents = retriever.invoke(preprocessed_query)
+    vector_store = get_vector_store_tool()
+    results = vector_store.similarity_search_with_score(preprocessed_query, k=10)
 
     doc_contents = []
     vector_scores = []
 
-    for doc in documents:
+    for doc, score in results:
         content = doc.page_content if hasattr(doc, "page_content") else str(doc)
         doc_contents.append(content)
-
-        score = 1.0  # default
-        if hasattr(doc, "metadata") and isinstance(doc.metadata, dict):
-            score = doc.metadata.get("score", 1.0)
-        vector_scores.append(score)
+        vector_scores.append(float(score))
 
     logger.info(f"Retrieved {len(doc_contents)} documents from vector search")
+    if vector_scores:
+        logger.info(
+            f"Vector scores: min={min(vector_scores):.4f}, "
+            f"max={max(vector_scores):.4f}, "
+            f"mean={sum(vector_scores) / len(vector_scores):.4f}"
+        )
 
     # Step 3: Fusion retrieval (combine vector + BM25 scores)
     # Filter out empty documents first
@@ -102,8 +103,6 @@ def retrieve_node(state: AgentState) -> dict[str, list[str]]:
         doc_contents = non_empty_docs
 
     if doc_contents and len(doc_contents) > 0:
-        from src.core.retrieval.fusion_retriever import FusionRetriever
-
         fusion = FusionRetriever(alpha=0.6)
         try:
             fused_results = fusion.fuse_results(

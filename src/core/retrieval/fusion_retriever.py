@@ -51,10 +51,7 @@ class FusionRetriever:
             vector_normalized = [1.0] * len(vector_scores)  # All equal, use 1.0
             logger.info(f"All vector scores equal ({vec_max:.4f}), using 1.0")
 
-        logger.info(
-            f"Vector scores: min={vec_min:.4f}, max={vec_max:.4f}, "
-            f"normalized={vector_normalized[:3]}"
-        )
+        logger.info(f"Normalized vector scores: {vector_normalized[:3]}")
 
         try:
             self.bm25_indexer.build_index(documents)
