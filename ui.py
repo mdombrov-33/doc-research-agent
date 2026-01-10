@@ -41,6 +41,13 @@ def main():
 
     st.title("Document Research Agent")
 
+    st.markdown("""
+    Upload documents using the sidebar, then ask questions about their content.
+    The agent searches your documents first - if it doesn't find enough relevant information,
+    it automatically falls back to web search to provide comprehensive answers.
+    """)
+    st.divider()
+
     with st.sidebar:
         st.header("Upload Documents")
         uploaded_file = st.file_uploader("Select file", type=["pdf", "docx", "txt"])
