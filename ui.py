@@ -25,7 +25,7 @@ def upload_file(uploaded_file):
 def query_documents(question: str):
     try:
         response = requests.post(
-            f"{settings.API_URL}/api/query", json={"question": question}, timeout=120
+            f"{settings.API_URL}/api/query", json={"question": question}, timeout=300
         )
         response.raise_for_status()
         return response.json()
