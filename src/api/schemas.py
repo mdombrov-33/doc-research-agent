@@ -16,3 +16,9 @@ class UploadResponse(BaseModel):
     filename: str
     chunks_created: int
     file_size: int
+
+
+class HealthResponse(BaseModel):
+    status: str
+    environment: str
+    llm_provider: str

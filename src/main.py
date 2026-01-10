@@ -1,9 +1,9 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from pydantic import BaseModel
 
 from src.api.routes import router
+from src.api.schemas import HealthResponse
 from src.config import get_settings
 from src.core.vector_store import ensure_collection_exists
 from src.utils.logger import logger
@@ -28,17 +28,6 @@ app = FastAPI(
 )
 
 app.include_router(router, prefix="/api", tags=["documents"])
-
-
-class HealthResponse(BaseModel):
-    status: str
-    environment: str
-    llm_provider: str
-
-
-@app.get("/")
-async def root():
-    return {"message": "Document Research Agent API"}
 
 
 @app.get("/health", response_model=HealthResponse)
