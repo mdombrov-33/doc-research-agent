@@ -67,7 +67,7 @@ def router_node(state: AgentState) -> dict[str, bool]:
         return {"web_search": False, "explicit_web_search": False}
 
 
-def retrieve_node(state: AgentState) -> dict[str, list[str]]:
+def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
     logger.info("--- RETRIEVING FROM VECTOR STORE ---")
 
     question = state.get("question", "")
@@ -85,6 +85,8 @@ def retrieve_node(state: AgentState) -> dict[str, list[str]]:
         content = doc.page_content if hasattr(doc, "page_content") else str(doc)
         doc_contents.append(content)
         vector_scores.append(float(score))
+
+    docs_retrieved_total = len(doc_contents)
 
     logger.info(f"Retrieved {len(doc_contents)} documents from vector search")
     if vector_scores:
@@ -115,7 +117,7 @@ def retrieve_node(state: AgentState) -> dict[str, list[str]]:
     else:
         logger.warning("No non-empty documents for fusion, skipping")
 
-    return {"documents": doc_contents}
+    return {"documents": doc_contents, "docs_retrieved_total": docs_retrieved_total}
 
 
 def web_search_node(state: AgentState) -> dict[str, list[str]]:
@@ -241,13 +243,19 @@ def decide_to_generate(state: AgentState) -> str:
         return "generate"
 
 
-def grade_generation_grounded(state: AgentState) -> str:
+def grade_generation_grounded_node(state: AgentState) -> dict[str, str]:
     logger.info("--- CHECKING HALLUCINATION ---")
 
     documents = state.get("documents", [])
     generation = state.get("generation", "")
 
     score = check_hallucination(documents, generation)
+
+    return {"hallucination_grounded": score}
+
+
+def grade_generation_grounded(state: AgentState) -> str:
+    score = state.get("hallucination_grounded", "yes")
 
     if score == "yes":
         logger.info("Decision: Answer is grounded")
@@ -257,19 +265,25 @@ def grade_generation_grounded(state: AgentState) -> str:
         return "not useful"
 
 
-def grade_generation_quality(state: AgentState) -> str:
+def grade_answer_quality_node(state: AgentState) -> dict[str, str]:
     logger.info("--- CHECKING ANSWER QUALITY ---")
 
     question = state.get("question", "")
     generation = state.get("generation", "")
     attempts = state.get("generation_attempts", 0)
 
-    # Max 3 attempts to generate a useful answer
     if attempts >= 3:
         logger.warning(f"Max generation attempts ({attempts}) reached, accepting answer")
-        return "useful"
+        return {"answer_quality": "yes"}
 
     score = grade_answer_quality(question, generation)
+
+    return {"answer_quality": score}
+
+
+def grade_generation_quality(state: AgentState) -> str:
+    score = state.get("answer_quality", "yes")
+    attempts = state.get("generation_attempts", 0)
 
     if score == "yes":
         logger.info("Decision: Answer is useful")

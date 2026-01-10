@@ -3,7 +3,9 @@ from langgraph.graph import END, StateGraph
 from src.core.nodes import (
     decide_to_generate,
     generate_node,
+    grade_answer_quality_node,
     grade_documents_node,
+    grade_generation_grounded_node,
     grade_generation_quality,
     retrieve_node,
     router_node,
@@ -23,6 +25,8 @@ def build_graph():
     workflow.add_node("grade_documents", grade_documents_node)
     workflow.add_node("websearch", web_search_node)
     workflow.add_node("generate", generate_node)
+    workflow.add_node("check_hallucination", grade_generation_grounded_node)
+    workflow.add_node("check_quality", grade_answer_quality_node)
 
     workflow.set_entry_point("router")
 
@@ -47,8 +51,11 @@ def build_graph():
         },
     )
 
+    workflow.add_edge("generate", "check_hallucination")
+    workflow.add_edge("check_hallucination", "check_quality")
+
     workflow.add_conditional_edges(
-        "generate",
+        "check_quality",
         grade_generation_quality,
         {
             "useful": END,
