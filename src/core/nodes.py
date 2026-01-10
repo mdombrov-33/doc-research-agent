@@ -6,7 +6,7 @@ from src.core import prompts
 from src.core.grading.graders import (
     check_hallucination,
     grade_answer_quality,
-    grade_document_relevance,
+    grade_documents_batch,
     rewrite_query,
     route_question,
 )
@@ -150,14 +150,12 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
     explicit_web = state.get("explicit_web_search", False)
 
     if attempts == 0:
+        scores = grade_documents_batch(question, documents)
+
         filtered_docs = []
-        for doc in documents:
-            score = grade_document_relevance(question, doc)
+        for doc, score in zip(documents, scores):
             if score == "yes":
-                logger.info("Document is relevant")
                 filtered_docs.append(doc)
-            else:
-                logger.info("Document is not relevant")
 
         threshold = settings.RELEVANCE_THRESHOLD
         web_search_needed = len(filtered_docs) < threshold or explicit_web
@@ -176,14 +174,12 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
         existing_count = len([d for d in documents if d])
         logger.info(f"Grading {existing_count} total documents (vector + web)")
 
+        scores = grade_documents_batch(question, documents)
+
         filtered_docs = []
-        for doc in documents:
-            score = grade_document_relevance(question, doc)
+        for doc, score in zip(documents, scores):
             if score == "yes":
-                logger.info("Document is relevant")
                 filtered_docs.append(doc)
-            else:
-                logger.info("Document is not relevant")
 
         logger.info(
             f"Filtered to {len(filtered_docs)} relevant documents. Web search needed: False"

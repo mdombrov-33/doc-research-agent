@@ -68,23 +68,32 @@ def route_question(question: str) -> str:
     return result.datasource
 
 
-def grade_document_relevance(question: str, document: str) -> str:
+def grade_documents_batch(question: str, documents: list[str]) -> list[str]:
+    if not documents:
+        return []
+
     llm = get_llm()
     structured_llm = llm.with_structured_output(GradeDocuments)  # type: ignore[misc]
 
-    messages = [
-        {"role": "system", "content": prompts.DOCUMENT_GRADER_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": prompts.DOCUMENT_GRADER_USER_PROMPT.format(
-                question=question, document=document
-            ),
-        },
-    ]
+    batch_messages = []
+    for document in documents:
+        messages = [
+            {"role": "system", "content": prompts.DOCUMENT_GRADER_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": prompts.DOCUMENT_GRADER_USER_PROMPT.format(
+                    question=question, document=document
+                ),
+            },
+        ]
+        batch_messages.append(messages)
 
-    result: GradeDocuments = structured_llm.invoke(messages)  # type: ignore[assignment]
+    results = structured_llm.batch(batch_messages)
 
-    return result.binary_score
+    scores = [result.binary_score for result in results]  # type: ignore[attr-defined]
+    logger.info(f"Batch graded {len(documents)} documents: {scores.count('yes')} relevant")
+
+    return scores
 
 
 def check_hallucination(documents: list[str], generation: str) -> str:
