@@ -35,7 +35,7 @@ def query_documents(question: str):
 
 
 def main():
-    st.set_page_config(page_title="RAG Security Agent", layout="wide")
+    st.set_page_config(page_title="Document Agent", layout="wide")
 
     init_session_state()
 
