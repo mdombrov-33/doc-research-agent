@@ -51,7 +51,8 @@ Production RAG system with LangGraph state machine, hybrid search, and NeMo Guar
                         │
               ┌─────────┴─────────┐
               │                   │
-       docs < threshold      docs >= threshold
+         no relevant          has relevant
+            docs                 docs
               │                   │
               ▼                   ▼
         ┌──────────┐          ┌──────────┐
@@ -122,7 +123,7 @@ Documents (PDF, DOCX, TXT) are chunked with 1000-character overlap, embedded usi
 - Batch LLM grading of all retrieved documents in parallel
 - Binary relevance scoring (yes/no) per document
 - Filters to relevant documents only
-- If below threshold (default: 3 docs), triggers web search fallback
+- Adaptive fallback: triggers web search only if zero relevant docs found
 - Web search results merged with vector results and re-graded
 
 **Generate Node:**
