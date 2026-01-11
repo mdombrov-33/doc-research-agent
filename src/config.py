@@ -34,8 +34,6 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    RELEVANCE_THRESHOLD: int = 3
-
     API_URL: str = "http://localhost:8000"
 
     def get_llm_api_key(self) -> str:

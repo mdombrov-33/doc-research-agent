@@ -63,8 +63,6 @@ def main():
         st.divider()
         st.subheader("Configuration")
         st.text(f"Backend: {settings.API_URL}")
-        st.text("Search: Hybrid (BM25 + Vector)")
-        st.text(f"Threshold: {settings.RELEVANCE_THRESHOLD} docs")
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):

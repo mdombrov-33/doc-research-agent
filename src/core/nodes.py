@@ -39,22 +39,62 @@ def get_llm():
     return llm
 
 
-def router_node(state: AgentState) -> dict[str, bool]:
-    logger.info("--- ROUTING QUERY ---")
-
-    question = state.get("question", "")
-    source = route_question(question)
-
+def detect_explicit_web_search(question: str) -> bool:
     explicit_phrases = [
         "web search",
         "search web",
         "check web",
         "online search",
         "search online",
+        "google",
+        "search google",
+        "look online",
+        "check internet",
         "both storage and web",
         "also search",
     ]
-    explicit_web_request = any(phrase in question.lower() for phrase in explicit_phrases)
+
+    if any(phrase in question.lower() for phrase in explicit_phrases):
+        logger.info("Explicit web search detected via pattern match")
+        return True
+
+    recent_indicators = ["today", "latest", "recent", "current", "now", "breaking", "this week", "this month"]
+
+    if any(word in question.lower() for word in recent_indicators):
+        logger.info("Recent info indicator detected, confirming with LLM...")
+
+        llm = get_llm()
+        prompt = f"""Determine if this question requires real-time or recent information from the web.
+
+Answer YES if:
+- Question asks about current events, breaking news, or today's information
+- Question needs up-to-date data (prices, weather, scores, etc.)
+- Question explicitly mentions time periods requiring recent data
+
+Answer NO if:
+- Question is about general knowledge or historical facts
+- Time reference is not critical to answering
+
+Question: "{question}"
+
+Should we use web search for current information? Answer only YES or NO:"""
+
+        response = llm.invoke([{"role": "user", "content": prompt}])
+        answer = str(response.content).strip().upper()
+
+        logger.info(f"LLM web search decision: {answer}")
+        return "YES" in answer
+
+    return False
+
+
+def router_node(state: AgentState) -> dict[str, bool]:
+    logger.info("--- ROUTING QUERY ---")
+
+    question = state.get("question", "")
+    source = route_question(question)
+
+    explicit_web_request = detect_explicit_web_search(question)
 
     if explicit_web_request:
         logger.info("Routing to vector store (with explicit web search request)")
@@ -159,12 +199,13 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
             if score == "yes":
                 filtered_docs.append(doc)
 
-        threshold = settings.RELEVANCE_THRESHOLD
-        web_search_needed = len(filtered_docs) < threshold or explicit_web
+        # Pure adaptive threshold: need at least 1 relevant doc OR explicit web request
+        web_search_needed = explicit_web or len(filtered_docs) == 0
 
         logger.info(
-            f"Filtered to {len(filtered_docs)} relevant documents (threshold: {threshold}). "
-            f"Web search needed: {web_search_needed}"
+            f"Filtered to {len(filtered_docs)} relevant documents. "
+            f"Web search needed: {web_search_needed} "
+            f"(explicit_web={explicit_web}, has_relevant_docs={len(filtered_docs) > 0})"
         )
 
         return {
