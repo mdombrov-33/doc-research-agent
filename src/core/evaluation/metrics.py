@@ -30,7 +30,7 @@ class QueryEvaluation:
 
 
 class EvaluationTracker:
-    def __init__(self):
+    def __init__(self, db_path: str | None = None):
         self.total_queries = 0
         self.hallucination_passed = 0
         self.quality_passed = 0
@@ -40,6 +40,21 @@ class EvaluationTracker:
         self.total_latency_ms = 0.0
         self.total_generation_attempts = 0
         self._lock = Lock()
+        self._db: Any = None
+
+        if db_path:
+            from src.core.evaluation.db import EvalDB
+            self._db = EvalDB(db_path)
+            saved = self._db.load()
+            if saved:
+                self.total_queries = saved["total_queries"]
+                self.hallucination_passed = saved["hallucination_passed"]
+                self.quality_passed = saved["quality_passed"]
+                self.web_search_triggered = saved["web_search_triggered"]
+                self.total_docs_retrieved = saved["total_docs_retrieved"]
+                self.total_docs_relevant = saved["total_docs_relevant"]
+                self.total_latency_ms = saved["total_latency_ms"]
+                self.total_generation_attempts = saved["total_generation_attempts"]
 
     def record(self, evaluation: QueryEvaluation) -> None:
         with self._lock:
@@ -58,6 +73,18 @@ class EvaluationTracker:
             self.total_docs_relevant += evaluation.docs_relevant
             self.total_latency_ms += evaluation.latency_ms
             self.total_generation_attempts += evaluation.generation_attempts
+
+            if self._db:
+                self._db.flush(
+                    self.total_queries,
+                    self.hallucination_passed,
+                    self.quality_passed,
+                    self.web_search_triggered,
+                    self.total_docs_retrieved,
+                    self.total_docs_relevant,
+                    self.total_latency_ms,
+                    self.total_generation_attempts,
+                )
 
     def get_stats(self) -> dict[str, Any]:
         with self._lock:
@@ -100,5 +127,6 @@ def get_evaluation_tracker() -> EvaluationTracker:
     if _tracker_instance is None:
         with _tracker_lock:
             if _tracker_instance is None:
-                _tracker_instance = EvaluationTracker()
+                from src.config import get_settings
+                _tracker_instance = EvaluationTracker(db_path=get_settings().METRICS_DB_PATH)
     return _tracker_instance

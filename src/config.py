@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIMENSION: int = 1536
 
+    METRICS_DB_PATH: str = "./data/metrics.db"
     UPLOAD_DIR: str = "./uploads"
     HOST: str = "0.0.0.0"
     PORT: int = 8000

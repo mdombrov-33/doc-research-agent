@@ -7,6 +7,7 @@ services:
       - .env
     volumes:
       - ./uploads:/app/uploads
+      - ./data:/app/data
     depends_on:
       - qdrant
     environment:

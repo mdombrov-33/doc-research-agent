@@ -69,12 +69,34 @@ def stream_query(question: str, model: str | None, top_k: int):
                 return
 
 
+def fetch_eval_stats() -> dict | None:
+    try:
+        r = requests.get(f"{settings.API_URL}/api/evaluation/stats", timeout=3)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.RequestException:
+        return None
+
+
+def render_eval_stats():
+    stats = fetch_eval_stats()
+    if not stats or stats.get("total_queries", 0) == 0:
+        return
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Queries", stats["total_queries"])
+    c2.metric("Retrieval precision", f"{stats['avg_retrieval_precision']:.0%}")
+    c3.metric("Web search rate", f"{stats['web_search_rate']:.0%}")
+    c4.metric("Avg latency", f"{stats['avg_latency_ms'] / 1000:.1f}s")
+    st.divider()
+
+
 def main():
     st.set_page_config(page_title="Document Agent", layout="wide")
 
     init_session_state()
 
     st.title("Document Research Agent")
+    render_eval_stats()
     st.markdown(
         "Upload documents using the sidebar, then ask questions about their content. "
         "The agent searches your documents first — if it doesn't find enough relevant information, "
