@@ -75,8 +75,6 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
             retrieval_precision=sources_count / docs_retrieved_total if docs_retrieved_total else 0.0,
             docs_retrieved=docs_retrieved_total,
             docs_relevant=sources_count,
-            hallucination_check="yes",
-            quality_check="yes",
             web_search_triggered=web_search_triggered,
             generation_attempts=generation_attempts,
             latency_ms=latency_ms,

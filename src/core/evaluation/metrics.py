@@ -9,8 +9,6 @@ class QueryEvaluation:
     retrieval_precision: float
     docs_retrieved: int
     docs_relevant: int
-    hallucination_check: str
-    quality_check: str
     web_search_triggered: bool
     generation_attempts: int
     latency_ms: float
@@ -21,8 +19,6 @@ class QueryEvaluation:
             "retrieval_precision": self.retrieval_precision,
             "docs_retrieved": self.docs_retrieved,
             "docs_relevant": self.docs_relevant,
-            "hallucination_check": self.hallucination_check,
-            "quality_check": self.quality_check,
             "web_search_triggered": self.web_search_triggered,
             "generation_attempts": self.generation_attempts,
             "latency_ms": self.latency_ms,
@@ -32,8 +28,6 @@ class QueryEvaluation:
 class EvaluationTracker:
     def __init__(self, db_path: str | None = None):
         self.total_queries = 0
-        self.hallucination_passed = 0
-        self.quality_passed = 0
         self.web_search_triggered = 0
         self.total_docs_retrieved = 0
         self.total_docs_relevant = 0
@@ -48,8 +42,6 @@ class EvaluationTracker:
             saved = self._db.load()
             if saved:
                 self.total_queries = saved["total_queries"]
-                self.hallucination_passed = saved["hallucination_passed"]
-                self.quality_passed = saved["quality_passed"]
                 self.web_search_triggered = saved["web_search_triggered"]
                 self.total_docs_retrieved = saved["total_docs_retrieved"]
                 self.total_docs_relevant = saved["total_docs_relevant"]
@@ -59,12 +51,6 @@ class EvaluationTracker:
     def record(self, evaluation: QueryEvaluation) -> None:
         with self._lock:
             self.total_queries += 1
-
-            if evaluation.hallucination_check == "yes":
-                self.hallucination_passed += 1
-
-            if evaluation.quality_check == "yes":
-                self.quality_passed += 1
 
             if evaluation.web_search_triggered:
                 self.web_search_triggered += 1
@@ -77,8 +63,6 @@ class EvaluationTracker:
             if self._db:
                 self._db.flush(
                     self.total_queries,
-                    self.hallucination_passed,
-                    self.quality_passed,
                     self.web_search_triggered,
                     self.total_docs_retrieved,
                     self.total_docs_relevant,
@@ -91,8 +75,6 @@ class EvaluationTracker:
             if self.total_queries == 0:
                 return {
                     "total_queries": 0,
-                    "hallucination_pass_rate": 0.0,
-                    "quality_pass_rate": 0.0,
                     "web_search_rate": 0.0,
                     "avg_docs_retrieved": 0.0,
                     "avg_docs_relevant": 0.0,
@@ -103,8 +85,6 @@ class EvaluationTracker:
 
             return {
                 "total_queries": self.total_queries,
-                "hallucination_pass_rate": self.hallucination_passed / self.total_queries,
-                "quality_pass_rate": self.quality_passed / self.total_queries,
                 "web_search_rate": self.web_search_triggered / self.total_queries,
                 "avg_docs_retrieved": self.total_docs_retrieved / self.total_queries,
                 "avg_docs_relevant": self.total_docs_relevant / self.total_queries,
