@@ -2,6 +2,12 @@
 
 Production RAG system with LangGraph state machine, hybrid search, SSE streaming, and NeMo Guardrails security layer.
 
+## Screenshots
+
+![Document Research Agent UI](assets/1.png)
+
+![Qdrant vector store dashboard](assets/2.png)
+
 ## Architecture
 
 ### System Overview
