@@ -5,6 +5,7 @@ help: ## Show this help message
 
 install: ## Install dependencies with uv
 	uv sync
+	uv run python -m spacy download en_core_web_sm
 
 dev: ## Run development server locally
 	uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
