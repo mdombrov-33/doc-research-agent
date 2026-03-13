@@ -22,7 +22,7 @@ async def handle_query(request: QueryRequest) -> dict[str, Any]:
 
         async def run_rag_agent(question: str) -> str:
             agent = get_agent()
-            inputs: dict[str, str | bool | list[str] | int] = {
+            inputs: dict[str, str | bool | list | int] = {
                 "question": question,
                 "generation": "",
                 "web_search": False,
@@ -31,7 +31,8 @@ async def handle_query(request: QueryRequest) -> dict[str, Any]:
                 "retrieval_attempts": 0,
                 "generation_attempts": 0,
             }
-            result = agent.invoke(inputs)  # type: ignore[arg-type]
+            config = {"configurable": {"thread_id": request.session_id}}
+            result = agent.invoke(inputs, config=config)  # type: ignore[arg-type]
 
             rag_result["generation"] = result.get("generation", "No answer generated")
             rag_result["documents"] = result.get("documents", [])
@@ -84,6 +85,7 @@ async def handle_query(request: QueryRequest) -> dict[str, Any]:
             "question": request.question,
             "answer": answer,
             "sources_count": sources_count,
+            "session_id": request.session_id,
         }
 
     except Exception as e:

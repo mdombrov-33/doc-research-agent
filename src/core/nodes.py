@@ -235,12 +235,13 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
         }
 
 
-def generate_node(state: AgentState) -> dict[str, str | int]:
+def generate_node(state: AgentState) -> dict[str, str | int | list]:
     logger.info("--- GENERATING ANSWER ---")
 
     question = state.get("question", "")
     documents = state.get("documents", [])
     attempts = state.get("generation_attempts", 0)
+    chat_history = state.get("chat_history", [])
 
     context = "\n\n".join(documents)
 
@@ -248,6 +249,7 @@ def generate_node(state: AgentState) -> dict[str, str | int]:
 
     messages = [
         {"role": "system", "content": prompts.GENERATION_SYSTEM_PROMPT.format(context=context)},
+        *chat_history,
         {"role": "user", "content": prompts.GENERATION_USER_PROMPT.format(question=question)},
     ]
 
@@ -257,7 +259,16 @@ def generate_node(state: AgentState) -> dict[str, str | int]:
 
     logger.info(f"Generated answer: {len(generation)} chars (attempt {attempts + 1})")
 
-    return {"generation": generation, "generation_attempts": attempts + 1}
+    updated_history = chat_history + [
+        {"role": "user", "content": question},
+        {"role": "assistant", "content": generation},
+    ]
+
+    return {
+        "generation": generation,
+        "generation_attempts": attempts + 1,
+        "chat_history": updated_history,
+    }
 
 
 def rewrite_query_node(state: AgentState) -> dict[str, str]:

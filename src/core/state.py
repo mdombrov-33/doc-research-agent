@@ -12,3 +12,4 @@ class AgentState(TypedDict, total=False):
     hallucination_grounded: str
     answer_quality: str
     docs_retrieved_total: int
+    chat_history: list[dict[str, str]]

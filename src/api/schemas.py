@@ -1,14 +1,18 @@
+import uuid
+
 from pydantic import BaseModel, Field
 
 
 class QueryRequest(BaseModel):
-    question: str = Field(..., description="User question to answer", min_length=1)
+    question: str = Field(..., min_length=1)
+    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
 class QueryResponse(BaseModel):
-    question: str = Field(..., description="Original question")
-    answer: str = Field(..., description="Generated answer")
-    sources_count: int = Field(..., description="Number of documents used")
+    question: str
+    answer: str
+    sources_count: int
+    session_id: str
 
 
 class UploadResponse(BaseModel):

@@ -1,3 +1,6 @@
+from functools import lru_cache
+
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from src.core.nodes import (
@@ -33,10 +36,7 @@ def build_graph():
     workflow.add_conditional_edges(
         "router",
         lambda state: "websearch" if state.get("web_search") else "retrieve",
-        {
-            "websearch": "websearch",
-            "retrieve": "retrieve",
-        },
+        {"websearch": "websearch", "retrieve": "retrieve"},
     )
 
     workflow.add_edge("retrieve", "grade_documents")
@@ -45,10 +45,7 @@ def build_graph():
     workflow.add_conditional_edges(
         "grade_documents",
         decide_to_generate,
-        {
-            "websearch": "websearch",
-            "generate": "generate",
-        },
+        {"websearch": "websearch", "generate": "generate"},
     )
 
     workflow.add_edge("generate", "check_hallucination")
@@ -57,18 +54,16 @@ def build_graph():
     workflow.add_conditional_edges(
         "check_quality",
         grade_generation_quality,
-        {
-            "useful": END,
-            "not useful": "generate",
-        },
+        {"useful": END, "not useful": "generate"},
     )
 
-    app = workflow.compile()
+    app = workflow.compile(checkpointer=MemorySaver())
 
     logger.info("Graph compiled successfully")
 
     return app
 
 
+@lru_cache(maxsize=1)
 def get_agent():
     return build_graph()
