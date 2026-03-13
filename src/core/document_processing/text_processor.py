@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import aiofiles
-import pdfplumber
+import fitz  # pymupdf
 import spacy
 from docx import Document as DocxDocument
 
@@ -36,12 +36,13 @@ class TextExtractor:
 
     @staticmethod
     def _extract_pdf(file_path: str) -> str:
-        text = ""
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
+        pages = []
+        with fitz.open(file_path) as pdf:
+            for page in pdf:
+                page_text = page.get_text("text")
+                if page_text.strip():
+                    pages.append(page_text)
+        text = "\n\n".join(pages)
         logger.info(f"Extracted {len(text)} chars from PDF")
         return text
 
