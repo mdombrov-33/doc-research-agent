@@ -108,9 +108,10 @@ Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedd
 - Synthesizes answer from graded documents, streams tokens via SSE
 - Includes `chat_history` for session-aware multi-turn responses
 
-**Security (NeMo output check):**
-- After streaming completes, full response is checked via `self_check_output` prompt
-- If flagged, correction event is sent to client
+**Output check (post-streaming):**
+- After streaming completes, full response is checked using NeMo's `self_check_output` prompt template via direct LLM call
+- NeMo's colang output patterns are not executed (incompatible with streaming architecture)
+- If LLM returns "yes" to the policy check, correction event is sent to client
 
 ### 3. Streaming (SSE)
 
