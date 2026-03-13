@@ -14,8 +14,6 @@ def _make_eval(
         retrieval_precision=docs_relevant / docs_retrieved if docs_retrieved else 0.0,
         docs_retrieved=docs_retrieved,
         docs_relevant=docs_relevant,
-        hallucination_check="yes",
-        quality_check="yes",
         web_search_triggered=web_search_triggered,
         generation_attempts=1,
         latency_ms=latency_ms,
