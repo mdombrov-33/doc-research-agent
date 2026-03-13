@@ -5,6 +5,7 @@ Production RAG system with LangGraph state machine, hybrid search, SSE streaming
 ## Architecture
 
 ### System Overview
+
 ```
 ┌─────────────┐
 │   FastAPI   │  REST API (upload, stream endpoints)
@@ -71,7 +72,8 @@ Production RAG system with LangGraph state machine, hybrid search, SSE streaming
 ```
 
 **Node Descriptions:**
-- **Router**: LLM classifies query type (vectorstore vs websearch) and rewrites it for semantic search — one combined LLM call
+
+- **Router**: LLM classifies query type (vectorstore vs websearch) and rewrites it for semantic search.
 - **Retrieve**: Hybrid search (60% vector similarity + 40% BM25 keyword), top-5 results
 - **WebSearch**: DuckDuckGo fallback when docs insufficient
 - **Grade Docs**: Batch LLM grading (5 docs in parallel)
@@ -81,34 +83,40 @@ Production RAG system with LangGraph state machine, hybrid search, SSE streaming
 
 ### 1. Document Upload & Processing
 
-Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedding-3-small` (1536 dimensions), and stored in Qdrant with metadata (filename, page numbers, chunk index). PDFs are parsed with PyMuPDF for accurate text extraction including two-column layouts.
+Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedding-3-small` (1536 dimensions), and stored in Qdrant with metadata (filename, page numbers, chunk index).
 
 ### 2. Query Flow
 
 **Security (NeMo input check):**
+
 - LLM-based input rail using `self_check_input` prompt
 - Colang flows catch: prompt injection, jailbreaks, off-topic requests, system probing, code execution attempts
 - Blocked inputs return refusal immediately, before LangGraph runs
 
 **Router Node:**
+
 - Single LLM call: classifies as `vectorstore` or `websearch` AND rewrites query for semantic search
 - Explicit phrases ("search web", "check online") override to web search path
 
 **Retrieve Node (Hybrid Search):**
+
 - Vector search: Qdrant cosine similarity (k=5)
 - BM25 search: Keyword-based ranking using spaCy tokenization
 - Fusion ranking: Weighted combination (60% vector, 40% BM25), scores normalized
 
 **Grade Documents Node:**
+
 - Batch LLM grading of 5 retrieved documents in parallel
 - Binary relevance scoring (yes/no) per document
 - Triggers web search if zero relevant docs found
 
 **Generate Node:**
+
 - Synthesizes answer from graded documents, streams tokens via SSE
 - Includes `chat_history` for session-aware multi-turn responses
 
 **Output check (post-streaming):**
+
 - After streaming completes, full response is checked using NeMo's `self_check_output` prompt template via direct LLM call
 - NeMo's colang output patterns are not executed (incompatible with streaming architecture)
 - If LLM returns "yes" to the policy check, correction event is sent to client
@@ -131,6 +139,7 @@ Session-based conversation memory via LangGraph `MemorySaver` checkpointer. Pass
 ### 5. State Management
 
 LangGraph `AgentState` (TypedDict) tracks:
+
 - `question`: Rewritten query (updated by router)
 - `documents`: Retrieved/graded document list
 - `generation`: Current answer
@@ -142,6 +151,7 @@ LangGraph `AgentState` (TypedDict) tracks:
 ### 6. Qdrant Modes
 
 Controlled via `.env`:
+
 ```
 QDRANT_MODE=local   # uses QDRANT_LOCAL_URL (Docker)
 QDRANT_MODE=cloud   # uses QDRANT_CLOUD_URL + QDRANT_API_KEY
@@ -150,6 +160,7 @@ QDRANT_MODE=cloud   # uses QDRANT_CLOUD_URL + QDRANT_API_KEY
 ### 7. Evaluation & Monitoring
 
 RAG metrics tracked per query and accessible via `/api/evaluation/stats`:
+
 - **Retrieval Precision**: Ratio of relevant to total retrieved documents
 - **Latency**: End-to-end query processing time
 - **Web Search Rate**: Percentage of queries using external search
@@ -157,64 +168,20 @@ RAG metrics tracked per query and accessible via `/api/evaluation/stats`:
 ## API Endpoints
 
 **POST /api/stream**
+
 - Query documents with full RAG pipeline, response streamed via SSE
 - Request: `{question, session_id?}`
 - Returns `text/event-stream` with token events
 
 **POST /api/upload**
+
 - Upload documents (PDF, DOCX, TXT)
 - Response: `{document_id, filename, chunks_created, file_size}`
 
 **GET /api/evaluation/stats**
+
 - Aggregated evaluation metrics
-
-**HEAD /api/ping**
-- Health check
-
-## Local Development
-
-```bash
-# Install dependencies
-make install
-
-# Run with Docker (API + Qdrant)
-make build && make up
-
-# Run API locally (requires Qdrant running separately)
-make dev
-
-# Run Streamlit UI
-make ui
-```
-
-## Environment Variables
-
-```env
-QDRANT_MODE=local|cloud
-QDRANT_LOCAL_URL=http://localhost:6333
-QDRANT_CLOUD_URL=https://...
-QDRANT_API_KEY=...
-QDRANT_COLLECTION_NAME=documents
-
-LLM_PROVIDER=openai|openrouter
-OPENAI_API_KEY=...
-OPENROUTER_API_KEY=...
-LLM_MODEL=gpt-4o-mini
-
-OPENAI_EMBEDDING_API_KEY=...
-TAVILY_API_KEY=...
-API_URL=http://localhost:8000
-```
 
 ## Tech Stack
 
-- **LangGraph** - State machine for agent flow control with session checkpointing
-- **LangChain** - LLM integration and prompt management
-- **NeMo Guardrails** - LLM-based input/output safety checks
-- **Qdrant** - Vector database (local Docker or cloud)
-- **FastAPI** - Async REST API with SSE streaming
-- **OpenAI** - Embeddings (`text-embedding-3-small`) and LLM inference
-- **PyMuPDF** - PDF text extraction
-- **BM25 + spaCy** - Keyword-based retrieval and tokenization
-- **Streamlit** - Chat UI
-- **Docker** - Containerized deployment
+**LangGraph**, **LangChain**, **NeMo Guardrails**, **Qdrant**, **FastAPI**, **OpenAI**, **PyMuPDF**, **BM25 + spaCy**, **Streamlit**, **Docker**
