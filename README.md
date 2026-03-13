@@ -1,23 +1,28 @@
 # Document Research Agent
 
-Production RAG system with LangGraph state machine, hybrid search, and NeMo Guardrails security layer.
+Production RAG system with LangGraph state machine, hybrid search, SSE streaming, and NeMo Guardrails security layer.
 
 ## Architecture
 
 ### System Overview
 ```
 ┌─────────────┐
-│   FastAPI   │  REST API (upload, query endpoints)
+│   FastAPI   │  REST API (upload, stream endpoints)
 └──────┬──────┘
        │
        ▼
 ┌──────────────────┐
-│ NeMo Guardrails  │  Security layer (jailbreak detection, prompt injection prevention)
+│ NeMo Guardrails  │  Input check (LLM-based: jailbreak, prompt injection)
 └──────┬───────────┘
-       │
+       │ safe
        ▼
 ┌──────────────────┐
-│  LangGraph Agent │  State machine orchestration (see flow below)
+│  LangGraph Agent │  State machine → streams tokens via SSE
+└──────┬───────────┘
+       │ full response
+       ▼
+┌──────────────────┐
+│ NeMo Guardrails  │  Output check (LLM-based: harmful content, policy)
 └──────────────────┘
 ```
 
@@ -30,7 +35,7 @@ Production RAG system with LangGraph state machine, hybrid search, and NeMo Guar
                          │
                          ▼
                    ┌───────────┐
-                   │  Router   │ (Classify: vectorstore or websearch?)
+                   │  Router   │ (Classify + rewrite query in one LLM call)
                    └─────┬─────┘
                          │
               ┌──────────┴──────────┐
@@ -56,151 +61,159 @@ Production RAG system with LangGraph state machine, hybrid search, and NeMo Guar
               │                   │
               ▼                   ▼
         ┌──────────┐          ┌──────────┐
-        │WebSearch │          │ Generate │ (Synthesize answer)
+        │WebSearch │          │ Generate │ (Stream answer via SSE)
         │ (retry)  │          └────┬─────┘
-        └────┬─────┘               │
-             │                     ▼
-             │              ┌────────────────┐
-             │              │Check Hallucin. │ (Grounded in docs?)
-             │              └───────┬────────┘
-             │                      │
-             │                      ▼
-             │              ┌────────────────┐
-             │              │ Check Quality  │ (Answers question?)
-             │              └───────┬────────┘
-             │                      │
-             └──────────────────────┤
-                              ┌─────┴─────┐
-                              │           │
-                          useful    not useful
-                              │           │
-                              ▼           │
-                          ┌─────┐        │
-                          │ END │        │
-                          └─────┘        │
-                                         │
-                              (max 3 attempts)
-                                         │
-                              ┌──────────┘
-                              │
-                              ▼
-                        ┌──────────┐
-                        │ Generate │ (Retry)
-                        │ (again)  │
-                        └──────────┘
+        └──────────┘               │
+                                   ▼
+                                 ┌─────┐
+                                 │ END │
+                                 └─────┘
 ```
 
 **Node Descriptions:**
-- **Router**: LLM classifies query type (vectorstore vs websearch)
-- **Retrieve**: Hybrid search (60% vector similarity + 40% BM25 keyword)
+- **Router**: LLM classifies query type (vectorstore vs websearch) and rewrites it for semantic search — one combined LLM call
+- **Retrieve**: Hybrid search (60% vector similarity + 40% BM25 keyword), top-5 results
 - **WebSearch**: DuckDuckGo fallback when docs insufficient
-- **Grade Docs**: Batch LLM grading (10 docs → 1 API call)
-- **Generate**: Synthesize answer from graded documents
-- **Check Hallucination**: Verify answer grounded in sources
-- **Check Quality**: Verify answer resolves user question
+- **Grade Docs**: Batch LLM grading (5 docs in parallel)
+- **Generate**: Synthesize answer from graded documents, stream tokens via SSE
 
 ## How It Works
 
 ### 1. Document Upload & Processing
 
-Documents (PDF, DOCX, TXT) are chunked with 1000-character overlap, embedded using `text-embedding-3-small` (1536 dimensions), and stored in Qdrant with metadata (filename, page numbers, chunk index).
+Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedding-3-small` (1536 dimensions), and stored in Qdrant with metadata (filename, page numbers, chunk index). PDFs are parsed with PyMuPDF for accurate text extraction including two-column layouts.
 
 ### 2. Query Flow
 
+**Security (NeMo input check):**
+- LLM-based input rail using `self_check_input` prompt
+- Colang flows catch: prompt injection, jailbreaks, off-topic requests, system probing, code execution attempts
+- Blocked inputs return refusal immediately, before LangGraph runs
+
 **Router Node:**
-- LLM classifies query as `vectorstore` (document-based) or `websearch` (external knowledge)
-- Explicit phrases ("search web", "check online") force web search path
-- Routes to appropriate retrieval strategy
+- Single LLM call: classifies as `vectorstore` or `websearch` AND rewrites query for semantic search
+- Explicit phrases ("search web", "check online") override to web search path
 
 **Retrieve Node (Hybrid Search):**
-- Query rewriting via LLM for better semantic matching
-- Vector search: Qdrant cosine similarity (k=10)
+- Vector search: Qdrant cosine similarity (k=5)
 - BM25 search: Keyword-based ranking using spaCy tokenization
-- Fusion ranking: Weighted combination (60% vector, 40% BM25)
-- Scores normalized and combined for final ranking
+- Fusion ranking: Weighted combination (60% vector, 40% BM25), scores normalized
 
 **Grade Documents Node:**
-- Batch LLM grading of all retrieved documents in parallel
+- Batch LLM grading of 5 retrieved documents in parallel
 - Binary relevance scoring (yes/no) per document
-- Filters to relevant documents only
-- Adaptive fallback: triggers web search only if zero relevant docs found
-- Web search results merged with vector results and re-graded
+- Triggers web search if zero relevant docs found
 
 **Generate Node:**
-- Synthesizes answer from graded documents
-- Uses structured prompt with document context
-- Tracks generation attempts for retry logic
+- Synthesizes answer from graded documents, streams tokens via SSE
+- Includes `chat_history` for session-aware multi-turn responses
 
-**Quality Check:**
-- Hallucination detection: Verifies answer is grounded in source documents
-- Answer quality: Checks if response resolves the original question
-- Regenerates if quality checks fail (max 3 attempts)
+**Security (NeMo output check):**
+- After streaming completes, full response is checked via `self_check_output` prompt
+- If flagged, correction event is sent to client
 
-### 3. Security Layer (NeMo Guardrails)
+### 3. Streaming (SSE)
 
-Colang flows wrap the RAG pipeline:
-- Pre-query: Jailbreak detection, prompt injection filtering
-- Post-generation: Output validation, PII redaction
-- Rejects malicious inputs before reaching LLM
+`POST /api/stream` returns `text/event-stream`. Each event is a JSON object:
 
-### 4. State Management
+```
+data: {"token": "partial text"}        # during generation
+data: {"done": true, "sources_count": 5, "session_id": "..."}  # on completion
+data: {"token": "...", "done": true, "correction": true}       # if output flagged
+data: {"error": "...", "done": true}   # on error
+```
+
+### 4. Memory
+
+Session-based conversation memory via LangGraph `MemorySaver` checkpointer. Pass a consistent `session_id` across requests to maintain context. Each session stores `chat_history` injected into the generation prompt.
+
+### 5. State Management
 
 LangGraph `AgentState` (TypedDict) tracks:
-- `question`: Original user query
+- `question`: Rewritten query (updated by router)
 - `documents`: Retrieved/graded document list
 - `generation`: Current answer
-- `web_search`: Boolean flag for web search routing
-- `retrieval_attempts`: Retry counter for document retrieval
-- `generation_attempts`: Retry counter for answer generation
+- `web_search`: Routing flag
+- `retrieval_attempts`: Retry counter
+- `generation_attempts`: Retry counter
+- `chat_history`: Multi-turn conversation history
 
-Nodes return partial state updates (dicts), LangGraph merges them automatically.
+### 6. Qdrant Modes
 
-### 5. Performance Optimizations
+Controlled via `.env`:
+```
+QDRANT_MODE=local   # uses QDRANT_LOCAL_URL (Docker)
+QDRANT_MODE=cloud   # uses QDRANT_CLOUD_URL + QDRANT_API_KEY
+```
 
-- Batch document grading: Single LLM call for N documents (vs N sequential calls)
-- Fusion retrieval: Combines semantic + keyword search strengths
-- Async processing: FastAPI async handlers with concurrent LLM calls
-- Connection pooling: Qdrant client reuse across requests
+### 7. Evaluation & Monitoring
 
-### 6. Evaluation & Monitoring
-
-RAG-specific metrics tracked per query:
-- **Retrieval Precision**: Ratio of relevant documents to total retrieved
-- **Faithfulness**: Hallucination detection via LLM-as-judge (answer grounded in sources)
-- **Answer Quality**: LLM evaluation of response usefulness
-- **Latency Tracking**: End-to-end query processing time
-- **Web Search Rate**: Percentage of queries requiring external knowledge
-
-Metrics aggregated in-memory and accessible via `/api/evaluation/stats` endpoint. Logs structured evaluation data for each query (JSON format) enabling post-hoc analysis and performance monitoring.
+RAG metrics tracked per query and accessible via `/api/evaluation/stats`:
+- **Retrieval Precision**: Ratio of relevant to total retrieved documents
+- **Latency**: End-to-end query processing time
+- **Web Search Rate**: Percentage of queries using external search
 
 ## API Endpoints
 
+**POST /api/stream**
+- Query documents with full RAG pipeline, response streamed via SSE
+- Request: `{question, session_id?}`
+- Returns `text/event-stream` with token events
+
 **POST /api/upload**
 - Upload documents (PDF, DOCX, TXT)
-- Chunks, embeds, and stores in Qdrant with metadata
 - Response: `{document_id, filename, chunks_created, file_size}`
 
-**POST /api/query**
-- Query documents with RAG pipeline
-- Request: `{question}`
-- Response: `{question, answer, sources_count}`
-- Triggers full agent flow: routing → retrieval → grading → generation → quality checks
-
 **GET /api/evaluation/stats**
-- Aggregated evaluation metrics across all queries
-- Response: `{total_queries, hallucination_pass_rate, quality_pass_rate, avg_retrieval_precision, avg_latency_ms, web_search_rate, avg_docs_retrieved, avg_docs_relevant, avg_generation_attempts}`
+- Aggregated evaluation metrics
 
 **HEAD /api/ping**
-- Health check endpoint for monitoring (UptimeRobot, etc.)
+- Health check
+
+## Local Development
+
+```bash
+# Install dependencies
+make install
+
+# Run with Docker (API + Qdrant)
+make build && make up
+
+# Run API locally (requires Qdrant running separately)
+make dev
+
+# Run Streamlit UI
+make ui
+```
+
+## Environment Variables
+
+```env
+QDRANT_MODE=local|cloud
+QDRANT_LOCAL_URL=http://localhost:6333
+QDRANT_CLOUD_URL=https://...
+QDRANT_API_KEY=...
+QDRANT_COLLECTION_NAME=documents
+
+LLM_PROVIDER=openai|openrouter
+OPENAI_API_KEY=...
+OPENROUTER_API_KEY=...
+LLM_MODEL=gpt-4o-mini
+
+OPENAI_EMBEDDING_API_KEY=...
+TAVILY_API_KEY=...
+API_URL=http://localhost:8000
+```
 
 ## Tech Stack
 
-- **LangGraph** - State machine for agent flow control
+- **LangGraph** - State machine for agent flow control with session checkpointing
 - **LangChain** - LLM integration and prompt management
-- **NeMo Guardrails** - Security and safety layer
-- **Qdrant** - Vector database for embeddings
-- **FastAPI** - Async REST API framework
-- **OpenAI** - Embeddings and LLM inference
+- **NeMo Guardrails** - LLM-based input/output safety checks
+- **Qdrant** - Vector database (local Docker or cloud)
+- **FastAPI** - Async REST API with SSE streaming
+- **OpenAI** - Embeddings (`text-embedding-3-small`) and LLM inference
+- **PyMuPDF** - PDF text extraction
 - **BM25 + spaCy** - Keyword-based retrieval and tokenization
-- **Pydantic** - Configuration and type safety
+- **Streamlit** - Chat UI
 - **Docker** - Containerized deployment

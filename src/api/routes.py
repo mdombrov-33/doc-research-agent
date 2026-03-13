@@ -2,9 +2,9 @@ from typing import Any
 
 from fastapi import APIRouter, File, UploadFile
 
-from src.api.handlers.query import handle_query
+from src.api.handlers.stream import handle_stream
 from src.api.handlers.upload import handle_upload
-from src.api.schemas import QueryRequest, QueryResponse, UploadResponse
+from src.api.schemas import QueryRequest, UploadResponse
 from src.core.evaluation.metrics import get_evaluation_tracker
 
 router = APIRouter()
@@ -21,10 +21,9 @@ async def upload_document(file: UploadFile = File(...)):
     return UploadResponse(**result)
 
 
-@router.post("/query", response_model=QueryResponse)
-async def query_documents(request: QueryRequest):
-    result = await handle_query(request)
-    return QueryResponse(**result)
+@router.post("/stream")
+async def stream_query(request: QueryRequest):
+    return await handle_stream(request)
 
 
 @router.get("/evaluation/stats")

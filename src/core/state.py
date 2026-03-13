@@ -9,7 +9,5 @@ class AgentState(TypedDict, total=False):
     documents: list[str]
     retrieval_attempts: int
     generation_attempts: int
-    hallucination_grounded: str
-    answer_quality: str
     docs_retrieved_total: int
     chat_history: list[dict[str, str]]

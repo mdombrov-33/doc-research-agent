@@ -4,11 +4,8 @@ from pydantic import SecretStr
 from src.config import get_settings
 from src.core import prompts
 from src.core.grading.graders import (
-    check_hallucination,
-    grade_answer_quality,
     grade_documents_batch,
-    rewrite_query,
-    route_question,
+    route_and_rewrite,
 )
 from src.core.retrieval.fusion_retriever import FusionRetriever
 from src.core.state import AgentState
@@ -88,23 +85,23 @@ Should we use web search for current information? Answer only YES or NO:"""
     return False
 
 
-def router_node(state: AgentState) -> dict[str, bool]:
+def router_node(state: AgentState) -> dict[str, bool | str]:
     logger.info("--- ROUTING QUERY ---")
 
     question = state.get("question", "")
-    source = route_question(question)
-
     explicit_web_request = detect_explicit_web_search(question)
 
+    result = route_and_rewrite(question)
+
     if explicit_web_request:
-        logger.info("Routing to vector store (with explicit web search request)")
-        return {"web_search": False, "explicit_web_search": True}
-    elif source == "websearch":
-        logger.info("Routing to web search (router decision)")
-        return {"web_search": True, "explicit_web_search": False}
+        logger.info("Routing to vector store (explicit web search request)")
+        return {"web_search": False, "explicit_web_search": True, "question": result.rewritten_query}
+    elif result.datasource == "websearch":
+        logger.info("Routing to web search")
+        return {"web_search": True, "explicit_web_search": False, "question": result.rewritten_query}
     else:
         logger.info("Routing to vector store")
-        return {"web_search": False, "explicit_web_search": False}
+        return {"web_search": False, "explicit_web_search": False, "question": result.rewritten_query}
 
 
 def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
@@ -112,11 +109,8 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
 
     question = state.get("question", "")
 
-    preprocessed_query = rewrite_query(question)
-    logger.info(f"Preprocessed query: '{question}' -> '{preprocessed_query}'")
-
     vector_store = get_vector_store_tool()
-    results = vector_store.similarity_search_with_score(preprocessed_query, k=10)
+    results = vector_store.similarity_search_with_score(question, k=5)
 
     doc_contents = []
     vector_scores = []
@@ -148,7 +142,7 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
         fusion = FusionRetriever(alpha=0.6)
         try:
             fused_results = fusion.fuse_results(
-                doc_contents, vector_scores[: len(doc_contents)], preprocessed_query
+                doc_contents, vector_scores[: len(doc_contents)], question
             )
             doc_contents = [doc_contents[idx] for idx, score in fused_results]
             logger.info(f"Reranked documents using fusion (top score: {fused_results[0][1]:.4f})")
@@ -271,16 +265,6 @@ def generate_node(state: AgentState) -> dict[str, str | int | list]:
     }
 
 
-def rewrite_query_node(state: AgentState) -> dict[str, str]:
-    logger.info("--- REWRITING QUERY ---")
-
-    question = state.get("question", "")
-
-    better_question = rewrite_query(question)
-
-    return {"question": better_question}
-
-
 def decide_to_generate(state: AgentState) -> str:
     logger.info("--- DECIDING TO GENERATE OR WEB SEARCH ---")
 
@@ -295,51 +279,3 @@ def decide_to_generate(state: AgentState) -> str:
         return "generate"
 
 
-def grade_generation_grounded_node(state: AgentState) -> dict[str, str]:
-    logger.info("--- CHECKING HALLUCINATION ---")
-
-    documents = state.get("documents", [])
-    generation = state.get("generation", "")
-
-    score = check_hallucination(documents, generation)
-
-    return {"hallucination_grounded": score}
-
-
-def grade_generation_grounded(state: AgentState) -> str:
-    score = state.get("hallucination_grounded", "yes")
-
-    if score == "yes":
-        logger.info("Decision: Answer is grounded")
-        return "useful"
-    else:
-        logger.info("Decision: Answer has hallucinations, regenerating")
-        return "not useful"
-
-
-def grade_answer_quality_node(state: AgentState) -> dict[str, str]:
-    logger.info("--- CHECKING ANSWER QUALITY ---")
-
-    question = state.get("question", "")
-    generation = state.get("generation", "")
-    attempts = state.get("generation_attempts", 0)
-
-    if attempts >= 3:
-        logger.warning(f"Max generation attempts ({attempts}) reached, accepting answer")
-        return {"answer_quality": "yes"}
-
-    score = grade_answer_quality(question, generation)
-
-    return {"answer_quality": score}
-
-
-def grade_generation_quality(state: AgentState) -> str:
-    score = state.get("answer_quality", "yes")
-    attempts = state.get("generation_attempts", 0)
-
-    if score == "yes":
-        logger.info("Decision: Answer is useful")
-        return "useful"
-    else:
-        logger.info(f"Decision: Answer not useful, re-generating (attempt {attempts}/3)")
-        return "not useful"

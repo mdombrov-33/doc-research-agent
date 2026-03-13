@@ -10,9 +10,12 @@ from src.utils.logger import logger
 settings = get_settings()
 
 
-class RouteQuery(BaseModel):
+class RouteAndRewrite(BaseModel):
     datasource: Literal["vectorstore", "websearch"] = Field(
         description="Route to 'vectorstore' or 'websearch' based on the question"
+    )
+    rewritten_query: str = Field(
+        description="Optimized version of the question for semantic search"
     )
 
 
@@ -53,19 +56,25 @@ def get_llm():
     return llm
 
 
-def route_question(question: str) -> str:
+def route_and_rewrite(question: str) -> RouteAndRewrite:
     llm = get_llm()
-    structured_llm = llm.with_structured_output(RouteQuery)  # type: ignore[misc]
+    structured_llm = llm.with_structured_output(RouteAndRewrite)  # type: ignore[misc]
 
     messages = [
-        {"role": "system", "content": prompts.ROUTER_SYSTEM_PROMPT},
+        {
+            "role": "system",
+            "content": (
+                f"{prompts.ROUTER_SYSTEM_PROMPT}\n\n"
+                "Also rewrite the question into an optimized search query "
+                "(remove filler words, expand abbreviations, use precise terminology)."
+            ),
+        },
         {"role": "user", "content": prompts.ROUTER_USER_PROMPT.format(question=question)},
     ]
 
-    result: RouteQuery = structured_llm.invoke(messages)  # type: ignore[assignment]
-
-    logger.info(f"Routed question to: {result.datasource}")
-    return result.datasource
+    result: RouteAndRewrite = structured_llm.invoke(messages)  # type: ignore[assignment]
+    logger.info(f"Routed to: {result.datasource}, rewritten: '{result.rewritten_query}'")
+    return result
 
 
 def grade_documents_batch(question: str, documents: list[str]) -> list[str]:
@@ -138,17 +147,3 @@ def grade_answer_quality(question: str, generation: str) -> str:
     return result.binary_score
 
 
-def rewrite_query(question: str) -> str:
-    llm = get_llm()
-
-    messages = [
-        {"role": "system", "content": prompts.QUERY_REWRITER_SYSTEM_PROMPT},
-        {"role": "user", "content": prompts.QUERY_REWRITER_USER_PROMPT.format(question=question)},
-    ]
-
-    result = llm.invoke(messages)
-
-    rewritten = result.content if isinstance(result.content, str) else str(result.content)
-
-    logger.info(f"Rewritten query: {question} -> {rewritten}")
-    return rewritten
