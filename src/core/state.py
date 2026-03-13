@@ -11,3 +11,5 @@ class AgentState(TypedDict, total=False):
     generation_attempts: int
     docs_retrieved_total: int
     chat_history: list[dict[str, str]]
+    model: str | None
+    top_k: int

@@ -15,20 +15,28 @@ from src.utils.logger import logger
 settings = get_settings()
 
 
-def get_llm():
-    api_key = settings.get_llm_api_key()
-    model = settings.get_llm_model()
+def get_llm(model_override: str | None = None):
+    model = model_override or settings.get_llm_model()
+    logger.info(f"Using model: {model}")
 
-    if settings.LLM_PROVIDER == "openrouter":
+    # Auto-detect provider: OpenRouter models contain '/', OpenAI models don't
+    if model_override and "/" in model_override:
         llm = ChatOpenAI(
-            api_key=SecretStr(api_key),
+            api_key=SecretStr(settings.OPENROUTER_API_KEY),
+            base_url="https://openrouter.ai/api/v1",
+            model=model,
+            temperature=0.7,
+        )
+    elif settings.LLM_PROVIDER == "openrouter":
+        llm = ChatOpenAI(
+            api_key=SecretStr(settings.OPENROUTER_API_KEY),
             base_url="https://openrouter.ai/api/v1",
             model=model,
             temperature=0.7,
         )
     else:
         llm = ChatOpenAI(
-            api_key=SecretStr(api_key),
+            api_key=SecretStr(settings.OPENAI_API_KEY),
             model=model,
             temperature=0.7,
         )
@@ -91,7 +99,7 @@ def router_node(state: AgentState) -> dict[str, bool | str]:
     question = state.get("question", "")
     explicit_web_request = detect_explicit_web_search(question)
 
-    result = route_and_rewrite(question)
+    result = route_and_rewrite(question, model=state.get("model"))
 
     if explicit_web_request:
         logger.info("Routing to vector store (explicit web search request)")
@@ -109,8 +117,9 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
 
     question = state.get("question", "")
 
+    top_k = state.get("top_k") or 5
     vector_store = get_vector_store_tool()
-    results = vector_store.similarity_search_with_score(question, k=5)
+    results = vector_store.similarity_search_with_score(question, k=top_k)
 
     doc_contents = []
     vector_scores = []
@@ -186,7 +195,7 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
     explicit_web = state.get("explicit_web_search", False)
 
     if attempts == 0:
-        scores = grade_documents_batch(question, documents)
+        scores = grade_documents_batch(question, documents, model=state.get("model"))
 
         filtered_docs = []
         for doc, score in zip(documents, scores):
@@ -211,7 +220,7 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]
         existing_count = len([d for d in documents if d])
         logger.info(f"Grading {existing_count} total documents (vector + web)")
 
-        scores = grade_documents_batch(question, documents)
+        scores = grade_documents_batch(question, documents, model=state.get("model"))
 
         filtered_docs = []
         for doc, score in zip(documents, scores):
@@ -239,7 +248,7 @@ def generate_node(state: AgentState) -> dict[str, str | int | list]:
 
     context = "\n\n".join(documents)
 
-    llm = get_llm()
+    llm = get_llm(state.get("model"))
 
     messages = [
         {"role": "system", "content": prompts.GENERATION_SYSTEM_PROMPT.format(context=context)},

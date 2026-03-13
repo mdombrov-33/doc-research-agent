@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1)
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    model: str | None = None
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 class UploadResponse(BaseModel):

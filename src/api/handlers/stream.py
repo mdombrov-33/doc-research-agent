@@ -26,6 +26,8 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
         "documents": [],
         "retrieval_attempts": 0,
         "generation_attempts": 0,
+        "model": request.model,
+        "top_k": request.top_k,
     }
     config = {"configurable": {"thread_id": request.session_id}}
 

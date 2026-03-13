@@ -35,20 +35,28 @@ class GradeAnswer(BaseModel):
     )
 
 
-def get_llm():
-    api_key = settings.get_llm_api_key()
-    model = settings.get_llm_model()
+def get_llm(model_override: str | None = None):
+    model = model_override or settings.get_llm_model()
+    logger.info(f"Using model: {model}")
 
-    if settings.LLM_PROVIDER == "openrouter":
+    # Auto-detect provider: OpenRouter models contain '/', OpenAI models don't
+    if model_override and "/" in model_override:
         llm = ChatOpenAI(
-            api_key=SecretStr(api_key),
+            api_key=SecretStr(settings.OPENROUTER_API_KEY),
+            base_url="https://openrouter.ai/api/v1",
+            model=model,
+            temperature=0,
+        )
+    elif settings.LLM_PROVIDER == "openrouter":
+        llm = ChatOpenAI(
+            api_key=SecretStr(settings.OPENROUTER_API_KEY),
             base_url="https://openrouter.ai/api/v1",
             model=model,
             temperature=0,
         )
     else:
         llm = ChatOpenAI(
-            api_key=SecretStr(api_key),
+            api_key=SecretStr(settings.OPENAI_API_KEY),
             model=model,
             temperature=0,
         )
@@ -56,8 +64,8 @@ def get_llm():
     return llm
 
 
-def route_and_rewrite(question: str) -> RouteAndRewrite:
-    llm = get_llm()
+def route_and_rewrite(question: str, model: str | None = None) -> RouteAndRewrite:
+    llm = get_llm(model)
     structured_llm = llm.with_structured_output(RouteAndRewrite)  # type: ignore[misc]
 
     messages = [
@@ -77,11 +85,11 @@ def route_and_rewrite(question: str) -> RouteAndRewrite:
     return result
 
 
-def grade_documents_batch(question: str, documents: list[str]) -> list[str]:
+def grade_documents_batch(question: str, documents: list[str], model: str | None = None) -> list[str]:
     if not documents:
         return []
 
-    llm = get_llm()
+    llm = get_llm(model)
     structured_llm = llm.with_structured_output(GradeDocuments)  # type: ignore[misc]
 
     batch_messages = []

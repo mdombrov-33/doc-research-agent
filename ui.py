@@ -8,6 +8,18 @@ from src.config import get_settings
 
 settings = get_settings()
 
+OPENAI_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-5"]
+OPENROUTER_MODELS = [
+    "deepseek/deepseek-v3.2",
+    "anthropic/claude-haiku-4.5",
+    "anthropic/claude-sonnet-4.6",
+    "anthropic/claude-opus-4.6",
+    "google/gemini-2.5-flash",
+    "x-ai/grok-4.1-fast",
+    "moonshotai/kimi-k2.5",
+    "openai/gpt-oss-120b",
+]
+
 
 def init_session_state():
     if "messages" not in st.session_state:
@@ -27,13 +39,18 @@ def upload_file(uploaded_file):
         return None
 
 
-def stream_query(question: str):
+def stream_query(question: str, model: str | None, top_k: int):
     """Generator that yields tokens from the SSE stream and stores final metadata."""
     st.session_state.stream_meta = {}
 
     with requests.post(
         f"{settings.API_URL}/api/stream",
-        json={"question": question, "session_id": st.session_state.session_id},
+        json={
+            "question": question,
+            "session_id": st.session_state.session_id,
+            "model": model,
+            "top_k": top_k,
+        },
         stream=True,
         timeout=300,
     ) as response:
@@ -79,6 +96,14 @@ def main():
 
         st.divider()
         st.subheader("Configuration")
+
+        all_models = OPENAI_MODELS + OPENROUTER_MODELS
+        default_model = settings.get_llm_model()
+        default_index = all_models.index(default_model) if default_model in all_models else 0
+        selected_model = st.selectbox("Model", all_models, index=default_index)
+
+        top_k = st.slider("Top-K results", min_value=3, max_value=15, value=5, step=1)
+
         st.text(f"Backend: {settings.API_URL}")
         st.caption(f"Session: {st.session_state.session_id[:8]}...")
 
@@ -94,7 +119,7 @@ def main():
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            answer = st.write_stream(stream_query(prompt))
+            answer = st.write_stream(stream_query(prompt, selected_model, top_k))
             meta = st.session_state.get("stream_meta", {})
             sources = meta.get("sources_count", 0)
             if sources:
