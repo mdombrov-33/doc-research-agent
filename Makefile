@@ -9,6 +9,9 @@ install: ## Install dependencies with uv
 dev: ## Run development server locally
 	uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
+ui: ## Run Streamlit UI
+	uv run streamlit run ui.py
+
 build: ## Build Docker images
 	docker compose build
 
