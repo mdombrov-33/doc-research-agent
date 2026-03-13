@@ -13,19 +13,13 @@ settings = get_settings()
 
 @lru_cache
 def get_qdrant_client() -> QdrantClient:
-    is_local = any(
-        x in settings.QDRANT_URL for x in ["localhost", "127.0.0.1", "qdrant:6333"]
-    )
+    if settings.QDRANT_MODE == "local":
+        logger.info(f"Connecting to local Qdrant at {settings.qdrant_url}")
+        return QdrantClient(url=settings.qdrant_url)
 
-    if is_local:
-        logger.info(f"Connecting to local Qdrant at {settings.QDRANT_URL}")
-        return QdrantClient(
-            url=settings.QDRANT_URL,
-        )
-
-    logger.info(f"Connecting to Qdrant Cloud at {settings.QDRANT_URL}")
+    logger.info(f"Connecting to Qdrant Cloud at {settings.qdrant_url}")
     return QdrantClient(
-        url=settings.QDRANT_URL,
+        url=settings.qdrant_url,
         api_key=settings.QDRANT_API_KEY,
         prefer_grpc=False,
         timeout=30,
