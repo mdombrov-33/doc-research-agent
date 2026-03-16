@@ -7,6 +7,7 @@ from fastapi import HTTPException, UploadFile
 
 from src.config import get_settings
 from src.core.document_processing.document_processor import DocumentProcessor
+from src.core.exceptions import DocumentProcessingError, EmptyDocumentError
 from src.utils.logger import logger
 
 settings = get_settings()
@@ -43,9 +44,12 @@ async def handle_upload(file: UploadFile) -> dict[str, Any]:
 
         return result
 
-    except ValueError as e:
+    except EmptyDocumentError as e:
         logger.error(f"Validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+    except DocumentProcessingError as e:
+        logger.error(f"Failed to process document: {e}")
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
     except Exception as e:
         logger.error(f"Failed to process document: {e}")
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")

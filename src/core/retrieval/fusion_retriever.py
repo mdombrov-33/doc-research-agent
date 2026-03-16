@@ -1,5 +1,6 @@
 import numpy as np
 
+from src.core.exceptions import FusionRetrievalError
 from src.core.retrieval.bm25_indexer import BM25Indexer
 from src.utils.logger import logger
 
@@ -58,14 +59,14 @@ class FusionRetriever:
             logger.info("BM25 index built successfully")
         except Exception as e:
             logger.error(f"BM25 index build failed: {e}", exc_info=True)
-            raise
+            raise FusionRetrievalError(f"BM25 index build failed: {e}") from e
 
         try:
             bm25_scores = self.bm25_indexer.get_scores(query)
             logger.info(f"BM25 scores retrieved: {len(bm25_scores)} scores")
         except Exception as e:
             logger.error(f"BM25 scoring failed: {e}", exc_info=True)
-            raise
+            raise FusionRetrievalError(f"BM25 scoring failed: {e}") from e
 
         # Normalize BM25 scores to 0-1 range with safe handling
         try:
@@ -74,7 +75,7 @@ class FusionRetriever:
             bm25_max = float(np.max(bm25_array))
         except Exception as e:
             logger.error(f"BM25 array conversion failed: {e}", exc_info=True)
-            raise
+            raise FusionRetrievalError(f"BM25 array conversion failed: {e}") from e
 
         if bm25_max > bm25_min:
             bm25_normalized = ((bm25_array - bm25_min) / (bm25_max - bm25_min)).tolist()

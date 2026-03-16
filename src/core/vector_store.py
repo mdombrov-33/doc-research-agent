@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
 from src.config import get_settings
+from src.core.exceptions import EmbeddingConfigError
 from src.utils.logger import logger
 
 settings = get_settings()
@@ -31,7 +32,7 @@ def get_qdrant_client() -> QdrantClient:
 def get_embeddings() -> OpenAIEmbeddings:
     api_key = settings.get_llm_api_key()
     if not api_key:
-        raise ValueError("LLM API key not configured")
+        raise EmbeddingConfigError("LLM API key not configured")
 
     return OpenAIEmbeddings(
         api_key=SecretStr(api_key),

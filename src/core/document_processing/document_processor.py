@@ -6,6 +6,7 @@ from qdrant_client.models import PointStruct
 
 from src.config import get_settings
 from src.core.document_processing.text_processor import TextExtractor, get_spacy_model
+from src.core.exceptions import EmptyDocumentError
 from src.core.vector_store import get_embeddings, get_qdrant_client
 from src.utils.logger import logger
 
@@ -25,7 +26,7 @@ class DocumentProcessor:
 
         raw_text = await self.extractor.extract_from_file(file_path, filename)
         if not raw_text.strip():
-            raise ValueError("No text extracted from document")
+            raise EmptyDocumentError("No text extracted from document")
 
         chunks = self._chunk_text(raw_text)
         logger.info(f"Created {len(chunks)} chunks")

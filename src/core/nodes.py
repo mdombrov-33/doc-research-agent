@@ -3,6 +3,7 @@ from pydantic import SecretStr
 
 from src.config import get_settings
 from src.core import prompts
+from src.core.exceptions import FusionRetrievalError
 from src.core.grading.graders import (
     grade_documents_batch,
     route_and_rewrite,
@@ -155,7 +156,7 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
             )
             doc_contents = [doc_contents[idx] for idx, score in fused_results]
             logger.info(f"Reranked documents using fusion (top score: {fused_results[0][1]:.4f})")
-        except Exception as e:
+        except FusionRetrievalError as e:
             logger.warning(f"Fusion failed: {e}, using vector scores only")
     else:
         logger.warning("No non-empty documents for fusion, skipping")

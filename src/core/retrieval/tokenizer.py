@@ -1,6 +1,7 @@
 import spacy
 from spacy.language import Language
 
+from src.core.exceptions import ModelLoadError
 from src.utils.logger import logger
 
 _nlp: Language | None = None
@@ -13,11 +14,9 @@ def get_spacy_model() -> Language:
         try:
             _nlp = spacy.load("en_core_web_sm")
             logger.info("Loaded spaCy model for tokenization")
-        except OSError:
-            logger.error(
-                "spaCy model 'en_core_web_sm' not found"  # noqa: E501
-            )
-            raise
+        except OSError as exc:
+            logger.error("spaCy model 'en_core_web_sm' not found")
+            raise ModelLoadError("spaCy model 'en_core_web_sm' not found") from exc
     return _nlp
 
 

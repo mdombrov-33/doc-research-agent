@@ -6,6 +6,7 @@ import fitz  # pymupdf
 import spacy
 from docx import Document as DocxDocument
 
+from src.core.exceptions import ModelLoadError, UnsupportedFileTypeError
 from src.utils.logger import logger
 
 
@@ -15,9 +16,9 @@ def get_spacy_model():
         nlp = spacy.load("en_core_web_sm")
         logger.info("Loaded spaCy model: en_core_web_sm")
         return nlp
-    except OSError:
+    except OSError as exc:
         logger.error("spaCy model not found.")
-        raise
+        raise ModelLoadError("spaCy model 'en_core_web_sm' not found") from exc
 
 
 class TextExtractor:
@@ -32,7 +33,7 @@ class TextExtractor:
         elif ext == ".txt":
             return await TextExtractor._extract_txt(file_path)
         else:
-            raise ValueError(f"Unsupported file type: {ext}")
+            raise UnsupportedFileTypeError(f"Unsupported file type: {ext}")
 
     @staticmethod
     def _extract_pdf(file_path: str) -> str:
