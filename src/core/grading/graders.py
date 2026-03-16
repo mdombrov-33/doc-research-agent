@@ -23,17 +23,6 @@ class GradeDocuments(BaseModel):
     binary_score: Literal["yes", "no"] = Field(description="Relevance score 'yes' or 'no'")
 
 
-class GradeHallucinations(BaseModel):
-    binary_score: Literal["yes", "no"] = Field(
-        description="Answer is grounded in facts, 'yes' or 'no'"
-    )
-
-
-class GradeAnswer(BaseModel):
-    binary_score: Literal["yes", "no"] = Field(
-        description="Answer resolves question, 'yes' or 'no'"
-    )
-
 
 def get_llm(model_override: str | None = None):
     model = model_override or settings.get_llm_model()
@@ -111,47 +100,3 @@ def grade_documents_batch(question: str, documents: list[str], model: str | None
     logger.info(f"Batch graded {len(documents)} documents: {scores.count('yes')} relevant")
 
     return scores
-
-
-def check_hallucination(documents: list[str], generation: str) -> str:
-    llm = get_llm()
-    structured_llm = llm.with_structured_output(GradeHallucinations)  # type: ignore[misc]
-
-    docs_text = "\n\n".join(documents)
-
-    messages = [
-        {"role": "system", "content": prompts.HALLUCINATION_GRADER_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": prompts.HALLUCINATION_GRADER_USER_PROMPT.format(
-                documents=docs_text, generation=generation
-            ),
-        },
-    ]
-
-    result: GradeHallucinations = structured_llm.invoke(messages)  # type: ignore[assignment]
-
-    logger.info(f"Hallucination check: {result.binary_score}")
-    return result.binary_score
-
-
-def grade_answer_quality(question: str, generation: str) -> str:
-    llm = get_llm()
-    structured_llm = llm.with_structured_output(GradeAnswer)  # type: ignore[misc]
-
-    messages = [
-        {"role": "system", "content": prompts.ANSWER_GRADER_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": prompts.ANSWER_GRADER_USER_PROMPT.format(
-                question=question, generation=generation
-            ),
-        },
-    ]
-
-    result: GradeAnswer = structured_llm.invoke(messages)  # type: ignore[assignment]
-
-    logger.info(f"Answer quality: {result.binary_score}")
-    return result.binary_score
-
-
