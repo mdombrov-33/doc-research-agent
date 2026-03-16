@@ -4,7 +4,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from src.core.nodes import (
-    decide_to_generate,
     generate_node,
     grade_documents_node,
     retrieve_node,
@@ -22,27 +21,20 @@ def build_graph():
 
     workflow.add_node("router", router_node)
     workflow.add_node("retrieve", retrieve_node)
-    workflow.add_node("grade_documents", grade_documents_node)
     workflow.add_node("websearch", web_search_node)
+    workflow.add_node("grade_documents", grade_documents_node)
     workflow.add_node("generate", generate_node)
 
     workflow.set_entry_point("router")
 
     workflow.add_conditional_edges(
         "router",
-        lambda state: "websearch" if state.get("web_search") else "retrieve",
-        {"websearch": "websearch", "retrieve": "retrieve"},
+        lambda state: ["retrieve", "websearch"] if state.get("web_search") else ["retrieve"],
     )
 
     workflow.add_edge("retrieve", "grade_documents")
     workflow.add_edge("websearch", "grade_documents")
-
-    workflow.add_conditional_edges(
-        "grade_documents",
-        decide_to_generate,
-        {"websearch": "websearch", "generate": "generate"},
-    )
-
+    workflow.add_edge("grade_documents", "generate")
     workflow.add_edge("generate", END)
 
     app = workflow.compile(checkpointer=MemorySaver())

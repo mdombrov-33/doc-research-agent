@@ -47,43 +47,39 @@ Production RAG system with LangGraph state machine, hybrid search, SSE streaming
                          │
               ┌──────────┴──────────┐
               │                     │
-         web_search=true       web_search=false
+           always            web_search=true
               │                     │
               ▼                     ▼
         ┌──────────┐          ┌──────────┐
-        │WebSearch │          │ Retrieve │ (Hybrid: Vector + BM25)
+        │ Retrieve │          │WebSearch │
+        │(Hybrid)  │          │          │
         └────┬─────┘          └────┬─────┘
              │                     │
              └──────────┬──────────┘
-                        │
+                        │  (parallel fan-in)
                         ▼
                  ┌─────────────┐
                  │ Grade Docs  │ (Batch LLM: relevant?)
                  └──────┬──────┘
                         │
-              ┌─────────┴─────────┐
-              │                   │
-         no relevant          has relevant
-            docs                 docs
-              │                   │
-              ▼                   ▼
-        ┌──────────┐          ┌──────────┐
-        │WebSearch │          │ Generate │ (Stream answer via SSE)
-        │ (retry)  │          └────┬─────┘
-        └──────────┘               │
-                                   ▼
-                                 ┌─────┐
-                                 │ END │
-                                 └─────┘
+                        ▼
+                   ┌──────────┐
+                   │ Generate │ (Stream answer via SSE)
+                   └────┬─────┘
+                        │
+                        ▼
+                      ┌─────┐
+                      │ END │
+                      └─────┘
 ```
 
 **Node Descriptions:**
 
-- **Router**: LLM classifies query type (vectorstore vs websearch) and rewrites it for semantic search.
-- **Retrieve**: Hybrid search (60% vector similarity + 40% BM25 keyword), top-5 results
-- **WebSearch**: DuckDuckGo fallback when docs insufficient
-- **Grade Docs**: Batch LLM grading (5 docs in parallel)
-- **Generate**: Synthesize answer from graded documents, stream tokens via SSE
+- **Router**: LLM classifies query type and rewrites it for semantic search. If web search is needed, both branches run in parallel.
+- **Retrieve**: Always runs. Hybrid search (60% vector similarity + 40% BM25 keyword), top-5 results.
+- **WebSearch**: Runs in parallel with Retrieve when router flags `web_search=true`.
+- **Grade Docs**: Batch LLM grading over the merged result set from both sources.
+- **Generate**: Synthesize answer from graded documents, stream tokens via SSE.
 
 ## How It Works
 
@@ -112,9 +108,8 @@ Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedd
 
 **Grade Documents Node:**
 
-- Batch LLM grading of 5 retrieved documents in parallel
+- Batch LLM grading over the merged result set from both retrieval sources
 - Binary relevance scoring (yes/no) per document
-- Triggers web search if zero relevant docs found
 
 **Generate Node:**
 
@@ -147,11 +142,12 @@ Session-based conversation memory via LangGraph `MemorySaver` checkpointer. Pass
 LangGraph `AgentState` (TypedDict) tracks:
 
 - `question`: Rewritten query (updated by router)
-- `documents`: Retrieved/graded document list
+- `raw_documents`: Merged result set from parallel retrieval branches (reducer: append)
+- `documents`: Filtered document list after grading
 - `generation`: Current answer
 - `web_search`: Routing flag
-- `retrieval_attempts`: Retry counter
-- `generation_attempts`: Retry counter
+- `generation_attempts`: Generation retry counter
+- `docs_retrieved_total`: Total docs retrieved across all sources (reducer: sum)
 - `chat_history`: Multi-turn conversation history
 
 ### 6. Qdrant Modes

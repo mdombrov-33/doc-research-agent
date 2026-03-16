@@ -99,18 +99,16 @@ def router_node(state: AgentState) -> dict[str, bool | str]:
 
     question = state.get("question", "")
     explicit_web_request = detect_explicit_web_search(question)
-
     result = route_and_rewrite(question, model=state.get("model"))
 
-    if explicit_web_request:
-        logger.info("Routing to vector store (explicit web search request)")
-        return {"web_search": False, "explicit_web_search": True, "question": result.rewritten_query}
-    elif result.datasource == "websearch":
-        logger.info("Routing to web search")
-        return {"web_search": True, "explicit_web_search": False, "question": result.rewritten_query}
+    web_search = explicit_web_request or result.datasource == "websearch"
+
+    if web_search:
+        logger.info("Routing to vectorstore + web search (parallel)")
     else:
-        logger.info("Routing to vector store")
-        return {"web_search": False, "explicit_web_search": False, "question": result.rewritten_query}
+        logger.info("Routing to vectorstore only")
+
+    return {"web_search": web_search, "question": result.rewritten_query}
 
 
 def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
@@ -140,8 +138,7 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
             f"mean={sum(vector_scores) / len(vector_scores):.4f}"
         )
 
-    # Step 3: Fusion retrieval (combine vector + BM25 scores)
-    # Filter out empty documents first
+    # Filter out empty documents before fusion
     non_empty_docs = [doc for doc in doc_contents if doc and doc.strip()]
 
     if len(non_empty_docs) < len(doc_contents):
@@ -161,82 +158,41 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
     else:
         logger.warning("No non-empty documents for fusion, skipping")
 
-    return {"documents": doc_contents, "docs_retrieved_total": docs_retrieved_total}
+    return {"raw_documents": doc_contents, "docs_retrieved_total": docs_retrieved_total}
 
 
-def web_search_node(state: AgentState) -> dict[str, list[str]]:
+def web_search_node(state: AgentState) -> dict[str, list[str] | int]:
     logger.info("--- WEB SEARCH ---")
 
     question = state.get("question", "")
-    existing_docs = state.get("documents", [])  # Keep relevant docs from vector store
     web_search = get_web_search_tool()
 
+    web_docs: list[str] = []
     try:
         result = web_search.invoke(question)
-        web_docs = [result]
+        web_docs = [str(result)]
         logger.info(f"Web search completed, got {len(web_docs)} results")
     except Exception as e:
         logger.error(f"Web search failed: {e}")
-        web_docs = []
 
-    combined = existing_docs + web_docs
-    logger.info(
-        f"Combined {len(existing_docs)} vector docs + {len(web_docs)} web docs = {len(combined)} total"  # noqa: E501
-    )
-
-    return {"documents": combined}
+    return {"raw_documents": web_docs, "docs_retrieved_total": len(web_docs)}
 
 
-def grade_documents_node(state: AgentState) -> dict[str, list[str] | bool | int]:
+def grade_documents_node(state: AgentState) -> dict[str, list[str]]:
     logger.info("--- GRADING DOCUMENTS ---")
 
     question = state.get("question", "")
-    documents = state.get("documents", [])
-    attempts = state.get("retrieval_attempts", 0)
-    explicit_web = state.get("explicit_web_search", False)
+    documents = state.get("raw_documents", [])
 
-    if attempts == 0:
-        scores = grade_documents_batch(question, documents, model=state.get("model"))
+    if not documents:
+        logger.warning("No documents to grade")
+        return {"documents": []}
 
-        filtered_docs = []
-        for doc, score in zip(documents, scores):
-            if score == "yes":
-                filtered_docs.append(doc)
+    scores = grade_documents_batch(question, documents, model=state.get("model"))
+    filtered_docs = [doc for doc, score in zip(documents, scores) if score == "yes"]
 
-        # Pure adaptive threshold: need at least 1 relevant doc OR explicit web request
-        web_search_needed = explicit_web or len(filtered_docs) == 0
-
-        logger.info(
-            f"Filtered to {len(filtered_docs)} relevant documents. "
-            f"Web search needed: {web_search_needed} "
-            f"(explicit_web={explicit_web}, has_relevant_docs={len(filtered_docs) > 0})"
-        )
-
-        return {
-            "documents": filtered_docs,
-            "web_search": web_search_needed,
-            "retrieval_attempts": attempts + 1,
-        }
-    else:
-        existing_count = len([d for d in documents if d])
-        logger.info(f"Grading {existing_count} total documents (vector + web)")
-
-        scores = grade_documents_batch(question, documents, model=state.get("model"))
-
-        filtered_docs = []
-        for doc, score in zip(documents, scores):
-            if score == "yes":
-                filtered_docs.append(doc)
-
-        logger.info(
-            f"Filtered to {len(filtered_docs)} relevant documents. Web search needed: False"
-        )
-
-        return {
-            "documents": filtered_docs,
-            "web_search": False,
-            "retrieval_attempts": attempts + 1,
-        }
+    logger.info(f"Filtered to {len(filtered_docs)} relevant documents from {len(documents)}")
+    return {"documents": filtered_docs}
 
 
 def generate_node(state: AgentState) -> dict[str, str | int | list]:
@@ -274,18 +230,5 @@ def generate_node(state: AgentState) -> dict[str, str | int | list]:
         "chat_history": updated_history,
     }
 
-
-def decide_to_generate(state: AgentState) -> str:
-    logger.info("--- DECIDING TO GENERATE OR WEB SEARCH ---")
-
-    web_search = state.get("web_search", False)
-    attempts = state.get("retrieval_attempts", 0)
-
-    if web_search and attempts < 2:
-        logger.info("Decision: Need web search")
-        return "websearch"
-    else:
-        logger.info("Decision: Generate answer")
-        return "generate"
 
 
