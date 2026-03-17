@@ -74,11 +74,11 @@ def route_and_rewrite(question: str, model: str | None = None) -> RouteAndRewrit
     return result
 
 
-def grade_documents_batch(question: str, documents: list[str], model: str | None = None) -> list[str]:
+def grade_documents_batch(question: str, documents: list[str]) -> list[str]:
     if not documents:
         return []
 
-    llm = get_llm(model)
+    llm = get_llm("gpt-4o-mini")
     structured_llm = llm.with_structured_output(GradeDocuments)  # type: ignore[misc]
 
     batch_messages = []
