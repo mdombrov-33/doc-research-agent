@@ -36,3 +36,4 @@ terraform.tfvars
 **/.terraform/
 *.tfstate
 *.tfstate.backup
+*.tfstate.lock.info
