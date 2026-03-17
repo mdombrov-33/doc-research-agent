@@ -144,6 +144,10 @@ resource "google_cloud_run_service" "app" {
           value = "0.0.0.0"
         }
         env {
+          name  = "API_URL"
+          value = "https://doc-research-agent-630126548823.europe-central2.run.app"
+        }
+        env {
           name  = "PYTHONUNBUFFERED"
           value = "1"
         }

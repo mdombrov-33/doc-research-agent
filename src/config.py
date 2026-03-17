@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    API_URL: str = "https://doc-research-agent-inuibteqrq-lm.a.run.app"
+    API_URL: str = "http://localhost:8000"
 
     def get_llm_api_key(self) -> str:
         if self.LLM_PROVIDER == "openai":
