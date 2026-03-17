@@ -1,6 +1,6 @@
 # Document Research Agent
 
-Production RAG system with LangGraph state machine, hybrid search, SSE streaming, and NeMo Guardrails security layer.
+RAG system with LangGraph state machine, hybrid search, SSE streaming, and NeMo Guardrails security layer.
 
 ## Screenshots
 
