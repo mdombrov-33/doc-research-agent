@@ -15,7 +15,6 @@ def _make_eval(
         docs_retrieved=docs_retrieved,
         docs_relevant=docs_relevant,
         web_search_triggered=web_search_triggered,
-        generation_attempts=1,
         latency_ms=latency_ms,
     )
 

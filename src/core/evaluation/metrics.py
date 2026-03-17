@@ -19,7 +19,6 @@ class QueryEvaluation:
             "docs_retrieved": self.docs_retrieved,
             "docs_relevant": self.docs_relevant,
             "web_search_triggered": self.web_search_triggered,
-            "generation_attempts": self.generation_attempts,
             "latency_ms": self.latency_ms,
         }
 
