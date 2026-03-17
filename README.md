@@ -166,6 +166,11 @@ RAG metrics tracked per query and accessible via `/api/evaluation/stats`:
 - **Retrieval Precision**: Ratio of relevant to total retrieved documents
 - **Latency**: End-to-end query processing time
 - **Web Search Rate**: Percentage of queries using external search
+- **Avg Docs Retrieved**: Average number of chunks fetched per query
+- **Avg Docs Relevant**: Average number of chunks passing the grader
+- **Avg Generation Attempts**: Average LLM generation calls per query
+
+All metrics are displayed in the UI.
 
 ## API Endpoints
 
