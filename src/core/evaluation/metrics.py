@@ -10,7 +10,6 @@ class QueryEvaluation:
     docs_retrieved: int
     docs_relevant: int
     web_search_triggered: bool
-    generation_attempts: int
     latency_ms: float
 
     def to_dict(self) -> dict[str, Any]:
@@ -32,7 +31,6 @@ class EvaluationTracker:
         self.total_docs_retrieved = 0
         self.total_docs_relevant = 0
         self.total_latency_ms = 0.0
-        self.total_generation_attempts = 0
         self._lock = Lock()
         self._db: Any = None
 
@@ -46,7 +44,6 @@ class EvaluationTracker:
                 self.total_docs_retrieved = saved["total_docs_retrieved"]
                 self.total_docs_relevant = saved["total_docs_relevant"]
                 self.total_latency_ms = saved["total_latency_ms"]
-                self.total_generation_attempts = saved["total_generation_attempts"]
 
     def record(self, evaluation: QueryEvaluation) -> None:
         with self._lock:
@@ -58,7 +55,6 @@ class EvaluationTracker:
             self.total_docs_retrieved += evaluation.docs_retrieved
             self.total_docs_relevant += evaluation.docs_relevant
             self.total_latency_ms += evaluation.latency_ms
-            self.total_generation_attempts += evaluation.generation_attempts
 
             if self._db:
                 self._db.flush(
@@ -67,7 +63,6 @@ class EvaluationTracker:
                     self.total_docs_retrieved,
                     self.total_docs_relevant,
                     self.total_latency_ms,
-                    self.total_generation_attempts,
                 )
 
     def get_stats(self) -> dict[str, Any]:
@@ -80,7 +75,6 @@ class EvaluationTracker:
                     "avg_docs_relevant": 0.0,
                     "avg_retrieval_precision": 0.0,
                     "avg_latency_ms": 0.0,
-                    "avg_generation_attempts": 0.0,
                 }
 
             return {
@@ -94,7 +88,6 @@ class EvaluationTracker:
                     else 0.0
                 ),
                 "avg_latency_ms": self.total_latency_ms / self.total_queries,
-                "avg_generation_attempts": self.total_generation_attempts / self.total_queries,
             }
 
 

@@ -22,11 +22,9 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
     agent = get_agent()
     inputs = {
         "question": request.question,
-        "generation": "",
         "web_search": False,
         "raw_documents": [],
         "documents": [],
-        "generation_attempts": 0,
         "model": request.model,
         "top_k": request.top_k,
     }
@@ -36,7 +34,6 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
     sources_count = 0
     sources_meta: list[dict] = []
     web_search_triggered = False
-    generation_attempts = 1
     docs_retrieved_total = 0
     start_ms = time.monotonic() * 1000
 
@@ -67,7 +64,6 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
                     for d in graded_docs
                 ]
                 web_search_triggered = output.get("web_search", False)
-                generation_attempts = output.get("generation_attempts", 1)
                 docs_retrieved_total = output.get("docs_retrieved_total", sources_count)
 
     except Exception as e:
@@ -86,7 +82,6 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
             docs_retrieved=docs_retrieved_total,
             docs_relevant=sources_count,
             web_search_triggered=web_search_triggered,
-            generation_attempts=generation_attempts,
             latency_ms=latency_ms,
         )
     )

@@ -82,14 +82,13 @@ def render_eval_stats():
     stats = fetch_eval_stats()
     if not stats or stats.get("total_queries", 0) == 0:
         return
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Queries", stats["total_queries"])
     c2.metric("Avg latency", f"{stats['avg_latency_ms'] / 1000:.1f}s")
     c3.metric("Retrieval precision", f"{stats['avg_retrieval_precision']:.0%}")
     c4.metric("Web search rate", f"{stats['web_search_rate']:.0%}")
     c5.metric("Avg docs retrieved", f"{stats['avg_docs_retrieved']:.1f}")
     c6.metric("Avg docs relevant", f"{stats['avg_docs_relevant']:.1f}")
-    c7.metric("Avg gen attempts", f"{stats['avg_generation_attempts']:.1f}")
     st.divider()
 
 

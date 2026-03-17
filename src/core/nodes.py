@@ -207,12 +207,11 @@ def grade_documents_node(state: AgentState) -> dict[str, list[dict]]:
     return {"documents": filtered_docs}
 
 
-def generate_node(state: AgentState) -> dict[str, str | int | list]:
+def generate_node(state: AgentState) -> dict[str, str | list]:
     logger.info("--- GENERATING ANSWER ---")
 
     question = state.get("question", "")
     documents = state.get("documents", [])
-    attempts = state.get("generation_attempts", 0)
     chat_history = state.get("chat_history", [])
 
     context = "\n\n".join(doc["content"] for doc in documents)
@@ -229,7 +228,7 @@ def generate_node(state: AgentState) -> dict[str, str | int | list]:
 
     generation = response.content if isinstance(response.content, str) else str(response.content)
 
-    logger.info(f"Generated answer: {len(generation)} chars (attempt {attempts + 1})")
+    logger.info(f"Generated answer: {len(generation)} chars")
 
     updated_history = chat_history + [
         {"role": "user", "content": question},
@@ -238,7 +237,6 @@ def generate_node(state: AgentState) -> dict[str, str | int | list]:
 
     return {
         "generation": generation,
-        "generation_attempts": attempts + 1,
         "chat_history": updated_history,
     }
 

@@ -19,7 +19,6 @@ class AgentState(TypedDict, total=False):
     web_search: bool
     raw_documents: Annotated[list[dict], _add_or_reset_list]
     documents: list[dict]
-    generation_attempts: int
     docs_retrieved_total: Annotated[int, _add_or_reset_int]
     chat_history: list[dict[str, str]]
     model: str | None
