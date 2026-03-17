@@ -64,7 +64,16 @@ def detect_explicit_web_search(question: str) -> bool:
         logger.info("Explicit web search detected via pattern match")
         return True
 
-    recent_indicators = ["today", "latest", "recent", "current", "now", "breaking", "this week", "this month"]
+    recent_indicators = [
+        "today",
+        "latest",
+        "recent",
+        "current",
+        "now",
+        "breaking",
+        "this week",
+        "this month",
+    ]  # noqa: E501
 
     if any(word in question.lower() for word in recent_indicators):
         logger.info("Recent info indicator detected, confirming with LLM...")
@@ -116,7 +125,7 @@ def router_node(state: AgentState) -> dict:
     }
 
 
-def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
+def retrieve_node(state: AgentState) -> dict[str, list[dict] | int]:
     logger.info("--- RETRIEVING FROM VECTOR STORE ---")
 
     question = state.get("question", "")
@@ -131,13 +140,15 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
     for doc, score in results:
         content = doc.page_content if hasattr(doc, "page_content") else str(doc)
         metadata = doc.metadata if hasattr(doc, "metadata") else {}
-        doc_items.append({
-            "content": content,
-            "filename": metadata.get("filename", "unknown"),
-            "chunk_index": metadata.get("chunk_index", 0),
-            "chunk_length": metadata.get("chunk_length", len(content)),
-            "source": "vectorstore",
-        })
+        doc_items.append(
+            {
+                "content": content,
+                "filename": metadata.get("filename", "unknown"),
+                "chunk_index": metadata.get("chunk_index", 0),
+                "chunk_length": metadata.get("chunk_length", len(content)),
+                "source": "vectorstore",
+            }
+        )
         vector_scores.append(float(score))
 
     docs_retrieved_total = len(doc_items)
@@ -171,7 +182,7 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
     return {"raw_documents": doc_items, "docs_retrieved_total": docs_retrieved_total}
 
 
-def web_search_node(state: AgentState) -> dict[str, list[str] | int]:
+def web_search_node(state: AgentState) -> dict[str, list[dict] | int]:
     logger.info("--- WEB SEARCH ---")
 
     question = state.get("question", "")
@@ -181,7 +192,15 @@ def web_search_node(state: AgentState) -> dict[str, list[str] | int]:
     try:
         result = web_search.invoke(question)
         content = str(result)
-        web_docs = [{"content": content, "filename": "web", "chunk_index": 0, "chunk_length": len(content), "source": "web"}]
+        web_docs = [
+            {
+                "content": content,
+                "filename": "web",
+                "chunk_index": 0,
+                "chunk_length": len(content),
+                "source": "web",
+            }
+        ]
         logger.info(f"Web search completed, got {len(web_docs)} results")
     except Exception as e:
         logger.error(f"Web search failed: {e}")
@@ -200,7 +219,7 @@ def grade_documents_node(state: AgentState) -> dict[str, list[dict]]:
         return {"documents": []}
 
     contents = [doc["content"] for doc in documents]
-    scores = grade_documents_batch(question, contents, model=state.get("model"))
+    scores = grade_documents_batch(question, contents)
     filtered_docs = [doc for doc, score in zip(documents, scores) if score == "yes"]
 
     logger.info(f"Filtered to {len(filtered_docs)} relevant documents from {len(documents)}")
@@ -239,6 +258,3 @@ def generate_node(state: AgentState) -> dict[str, str | list]:
         "generation": generation,
         "chat_history": updated_history,
     }
-
-
-
