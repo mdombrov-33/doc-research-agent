@@ -2,6 +2,8 @@
 
 RAG system with LangGraph state machine, hybrid search, SSE streaming, and NeMo Guardrails security layer.
 
+**Frontend:** Streamlit | **Backend:** GCP Cloud Run | **Vector DB:** Qdrant Cloud
+
 ## Screenshots
 
 ![Document Research Agent UI](assets/1.png)

@@ -30,3 +30,6 @@ Thumbs.db
 
 # Runtime data
 data/
+
+# Terraform
+terraform.tfvars
