@@ -33,3 +33,6 @@ data/
 
 # Terraform
 terraform.tfvars
+**/.terraform/
+*.tfstate
+*.tfstate.backup
