@@ -177,10 +177,11 @@ def web_search_node(state: AgentState) -> dict[str, list[str] | int]:
     question = state.get("question", "")
     web_search = get_web_search_tool()
 
-    web_docs: list[str] = []
+    web_docs: list[dict] = []
     try:
         result = web_search.invoke(question)
-        web_docs = [str(result)]
+        content = str(result)
+        web_docs = [{"content": content, "filename": "web", "chunk_index": 0, "chunk_length": len(content), "source": "web"}]
         logger.info(f"Web search completed, got {len(web_docs)} results")
     except Exception as e:
         logger.error(f"Web search failed: {e}")
