@@ -16,7 +16,6 @@ OPENROUTER_MODELS = [
     "anthropic/claude-opus-4.6",
     "google/gemini-2.5-flash",
     "x-ai/grok-4.1-fast",
-    "moonshotai/kimi-k2.5",
     "openai/gpt-oss-120b",
 ]
 
@@ -153,7 +152,9 @@ def main():
                         if s["source"] == "web":
                             st.caption("🌐 Web Search")
                         else:
-                            st.caption(f"📄 {s['filename']} · chunk {s['chunk_index']} · {s['chunk_length']} chars")
+                            st.caption(
+                                f"📄 {s['filename']} · chunk {s['chunk_index']} · {s['chunk_length']} chars"
+                            )
 
         st.session_state.messages.append(
             {"role": "assistant", "content": answer, "sources": sources}
