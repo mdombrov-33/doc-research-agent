@@ -94,7 +94,7 @@ Should we use web search for current information? Answer only YES or NO:"""
     return False
 
 
-def router_node(state: AgentState) -> dict[str, bool | str]:
+def router_node(state: AgentState) -> dict:
     logger.info("--- ROUTING QUERY ---")
 
     question = state.get("question", "")
@@ -125,17 +125,24 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
     vector_store = get_vector_store_tool()
     results = vector_store.similarity_search_with_score(question, k=top_k)
 
-    doc_contents = []
+    doc_items = []
     vector_scores = []
 
     for doc, score in results:
         content = doc.page_content if hasattr(doc, "page_content") else str(doc)
-        doc_contents.append(content)
+        metadata = doc.metadata if hasattr(doc, "metadata") else {}
+        doc_items.append({
+            "content": content,
+            "filename": metadata.get("filename", "unknown"),
+            "chunk_index": metadata.get("chunk_index", 0),
+            "chunk_length": metadata.get("chunk_length", len(content)),
+            "source": "vectorstore",
+        })
         vector_scores.append(float(score))
 
-    docs_retrieved_total = len(doc_contents)
+    docs_retrieved_total = len(doc_items)
 
-    logger.info(f"Retrieved {len(doc_contents)} documents from vector search")
+    logger.info(f"Retrieved {len(doc_items)} documents from vector search")
     if vector_scores:
         logger.info(
             f"Vector scores: min={min(vector_scores):.4f}, "
@@ -143,27 +150,25 @@ def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
             f"mean={sum(vector_scores) / len(vector_scores):.4f}"
         )
 
-    # Filter out empty documents before fusion
-    non_empty_docs = [doc for doc in doc_contents if doc and doc.strip()]
+    non_empty_items = [item for item in doc_items if item["content"].strip()]
 
-    if len(non_empty_docs) < len(doc_contents):
-        logger.warning(f"Filtered out {len(doc_contents) - len(non_empty_docs)} empty documents")
-        doc_contents = non_empty_docs
+    if len(non_empty_items) < len(doc_items):
+        logger.warning(f"Filtered out {len(doc_items) - len(non_empty_items)} empty documents")
+        doc_items = non_empty_items
 
-    if doc_contents and len(doc_contents) > 0:
+    if doc_items:
+        contents = [item["content"] for item in doc_items]
         fusion = FusionRetriever(alpha=0.6)
         try:
-            fused_results = fusion.fuse_results(
-                doc_contents, vector_scores[: len(doc_contents)], question
-            )
-            doc_contents = [doc_contents[idx] for idx, score in fused_results]
+            fused_results = fusion.fuse_results(contents, vector_scores[: len(contents)], question)
+            doc_items = [doc_items[idx] for idx, score in fused_results]
             logger.info(f"Reranked documents using fusion (top score: {fused_results[0][1]:.4f})")
         except FusionRetrievalError as e:
             logger.warning(f"Fusion failed: {e}, using vector scores only")
     else:
         logger.warning("No non-empty documents for fusion, skipping")
 
-    return {"raw_documents": doc_contents, "docs_retrieved_total": docs_retrieved_total}
+    return {"raw_documents": doc_items, "docs_retrieved_total": docs_retrieved_total}
 
 
 def web_search_node(state: AgentState) -> dict[str, list[str] | int]:
@@ -183,7 +188,7 @@ def web_search_node(state: AgentState) -> dict[str, list[str] | int]:
     return {"raw_documents": web_docs, "docs_retrieved_total": len(web_docs)}
 
 
-def grade_documents_node(state: AgentState) -> dict[str, list[str]]:
+def grade_documents_node(state: AgentState) -> dict[str, list[dict]]:
     logger.info("--- GRADING DOCUMENTS ---")
 
     question = state.get("question", "")
@@ -193,7 +198,8 @@ def grade_documents_node(state: AgentState) -> dict[str, list[str]]:
         logger.warning("No documents to grade")
         return {"documents": []}
 
-    scores = grade_documents_batch(question, documents, model=state.get("model"))
+    contents = [doc["content"] for doc in documents]
+    scores = grade_documents_batch(question, contents, model=state.get("model"))
     filtered_docs = [doc for doc, score in zip(documents, scores) if score == "yes"]
 
     logger.info(f"Filtered to {len(filtered_docs)} relevant documents from {len(documents)}")
@@ -208,7 +214,7 @@ def generate_node(state: AgentState) -> dict[str, str | int | list]:
     attempts = state.get("generation_attempts", 0)
     chat_history = state.get("chat_history", [])
 
-    context = "\n\n".join(documents)
+    context = "\n\n".join(doc["content"] for doc in documents)
 
     llm = get_llm(state.get("model"))
 

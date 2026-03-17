@@ -17,8 +17,8 @@ class AgentState(TypedDict, total=False):
     question: Required[str]
     generation: str
     web_search: bool
-    raw_documents: Annotated[list[str], _add_or_reset_list]
-    documents: list[str]
+    raw_documents: Annotated[list[dict], _add_or_reset_list]
+    documents: list[dict]
     generation_attempts: int
     docs_retrieved_total: Annotated[int, _add_or_reset_int]
     chat_history: list[dict[str, str]]

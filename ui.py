@@ -147,8 +147,14 @@ def main():
             answer = st.write_stream(stream_query(prompt, selected_model, top_k))
             meta = st.session_state.get("stream_meta", {})
             sources = meta.get("sources_count", 0)
-            if sources:
-                st.caption(f"Sources: {sources}")
+            sources_meta = meta.get("sources", [])
+            if sources_meta:
+                with st.expander(f"Sources ({sources})"):
+                    for s in sources_meta:
+                        if s["source"] == "web":
+                            st.caption("🌐 Web Search")
+                        else:
+                            st.caption(f"📄 {s['filename']} · chunk {s['chunk_index']} · {s['chunk_length']} chars")
 
         st.session_state.messages.append(
             {"role": "assistant", "content": answer, "sources": sources}

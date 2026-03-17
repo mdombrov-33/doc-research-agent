@@ -108,15 +108,17 @@ class DocumentProcessor:
         points = []
         for chunk_data, vector in zip(enriched_chunks, vectors):
             payload = {
-                "document_id": document_id,
-                "filename": filename,
-                "page_content": chunk_data["text"],  # LangChain expects "page_content"
-                "chunk_index": chunk_data["chunk_index"],
-                "chunk_length": chunk_data["chunk_length"],
-                "entities": chunk_data["entities"],
-                "entity_types": chunk_data["entity_types"],
-                "keywords": chunk_data["keywords"],
-                "file_extension": chunk_data["file_extension"],
+                "page_content": chunk_data["text"],
+                "metadata": {
+                    "document_id": document_id,
+                    "filename": filename,
+                    "chunk_index": chunk_data["chunk_index"],
+                    "chunk_length": chunk_data["chunk_length"],
+                    "entities": chunk_data["entities"],
+                    "entity_types": chunk_data["entity_types"],
+                    "keywords": chunk_data["keywords"],
+                    "file_extension": chunk_data["file_extension"],
+                },
             }
 
             points.append(

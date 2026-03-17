@@ -34,6 +34,7 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
 
     accumulated: list[str] = []
     sources_count = 0
+    sources_meta: list[dict] = []
     web_search_triggered = False
     generation_attempts = 1
     docs_retrieved_total = 0
@@ -54,7 +55,17 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
 
             elif kind == "on_chain_end" and event.get("name") == "LangGraph":
                 output = event.get("data", {}).get("output", {})
-                sources_count = len(output.get("documents", []))
+                graded_docs = output.get("documents", [])
+                sources_count = len(graded_docs)
+                sources_meta = [
+                    {
+                        "filename": d.get("filename", "unknown"),
+                        "chunk_index": d.get("chunk_index", 0),
+                        "chunk_length": d.get("chunk_length", 0),
+                        "source": d.get("source", "vectorstore"),
+                    }
+                    for d in graded_docs
+                ]
                 web_search_triggered = output.get("web_search", False)
                 generation_attempts = output.get("generation_attempts", 1)
                 docs_retrieved_total = output.get("docs_retrieved_total", sources_count)
@@ -83,7 +94,7 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
     if correction:
         yield f"data: {json.dumps({'token': correction, 'done': True, 'correction': True})}\n\n"
     else:
-        yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'session_id': request.session_id})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'sources': sources_meta, 'session_id': request.session_id})}\n\n"
 
 
 async def handle_stream(request: QueryRequest) -> StreamingResponse:
