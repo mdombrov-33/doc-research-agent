@@ -108,7 +108,12 @@ def router_node(state: AgentState) -> dict[str, bool | str]:
     else:
         logger.info("Routing to vectorstore only")
 
-    return {"web_search": web_search, "question": result.rewritten_query}
+    return {
+        "web_search": web_search,
+        "question": result.rewritten_query,
+        "raw_documents": None,
+        "docs_retrieved_total": None,
+    }
 
 
 def retrieve_node(state: AgentState) -> dict[str, list[str] | int]:
