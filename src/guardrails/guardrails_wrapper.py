@@ -19,7 +19,7 @@ class GuardrailsWrapper:
         async with self._lock:
             safe = asyncio.Event()
 
-            async def _probe(question: str = "") -> str:
+            async def _probe() -> str:
                 safe.set()
                 return "__SAFE__"
 

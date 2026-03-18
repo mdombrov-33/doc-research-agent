@@ -1,3 +1,4 @@
+import asyncio
 from functools import lru_cache
 from pathlib import Path
 
@@ -27,9 +28,9 @@ class TextExtractor:
         ext = Path(filename).suffix.lower()
 
         if ext == ".pdf":
-            return TextExtractor._extract_pdf(file_path)
+            return await asyncio.to_thread(TextExtractor._extract_pdf, file_path)
         elif ext == ".docx":
-            return TextExtractor._extract_docx(file_path)
+            return await asyncio.to_thread(TextExtractor._extract_docx, file_path)
         elif ext == ".txt":
             return await TextExtractor._extract_txt(file_path)
         else:

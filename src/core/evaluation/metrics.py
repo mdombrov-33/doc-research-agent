@@ -12,16 +12,6 @@ class QueryEvaluation:
     web_search_triggered: bool
     latency_ms: float
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "question": self.question,
-            "retrieval_precision": self.retrieval_precision,
-            "docs_retrieved": self.docs_retrieved,
-            "docs_relevant": self.docs_relevant,
-            "web_search_triggered": self.web_search_triggered,
-            "latency_ms": self.latency_ms,
-        }
-
 
 class EvaluationTracker:
     def __init__(self, db_path: str | None = None):
