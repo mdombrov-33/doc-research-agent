@@ -1,13 +1,7 @@
 from langchain_community.tools import DuckDuckGoSearchRun
 
-from src.core.retrieval.search import get_retriever, get_vector_store
+from src.core.retrieval.search import get_vector_store
 from src.utils.logger import logger
-
-
-def get_retriever_tool():
-    logger.info("Creating retriever tool")
-    retriever = get_retriever()
-    return retriever
 
 
 def get_vector_store_tool():
