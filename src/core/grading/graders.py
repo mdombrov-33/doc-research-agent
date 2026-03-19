@@ -15,7 +15,7 @@ class RouteAndRewrite(BaseModel):
         description="Route to 'vectorstore' or 'websearch' based on the question"
     )
     rewritten_query: str = Field(
-        description="Optimized version of the question for semantic search"
+        description="Optimized version of the question for semantic search. Preserve all parts of multi-part questions."
     )
 
 
