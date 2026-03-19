@@ -158,6 +158,7 @@ resource "google_cloud_run_service" "app" {
       annotations = {
         "autoscaling.knative.dev/minScale" = "0"
         "autoscaling.knative.dev/maxScale" = "1"
+        "client.knative.dev/updateTimestamp" = timestamp()
       }
     }
   }
