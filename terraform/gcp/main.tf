@@ -82,7 +82,7 @@ resource "google_cloud_run_service" "app" {
   template {
     spec {
       containers {
-        image = docker_image.app.name
+        image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.service_name}/${var.service_name}@${docker_registry_image.app.sha256_digest}"
 
         resources {
           limits = {
@@ -158,7 +158,6 @@ resource "google_cloud_run_service" "app" {
       annotations = {
         "autoscaling.knative.dev/minScale" = "0"
         "autoscaling.knative.dev/maxScale" = "1"
-        "client.knative.dev/updateTimestamp" = timestamp()
       }
     }
   }
