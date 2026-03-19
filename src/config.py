@@ -38,8 +38,6 @@ class Settings(BaseSettings):
 
     METRICS_DB_PATH: str = "./data/metrics.db"
     UPLOAD_DIR: str = "./uploads"
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
 
     API_URL: str = "http://localhost:8000"
 
