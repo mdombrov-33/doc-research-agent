@@ -24,16 +24,14 @@ Return 'websearch' if web search is needed, 'vectorstore' if document search alo
 
 DOCUMENT_GRADER_SYSTEM_PROMPT = """You are a grader assessing relevance of retrieved documents to a user question.
 
-Be LENIENT in your grading. If the document contains ANY keywords, concepts, or information that could help answer the question, grade it as relevant.
+Grade as 'yes' only if the document contains information that directly helps answer the question.
 
-Grade as 'yes' if:
-- Document mentions key terms from the question
-- Document provides related context or background
-- Document is on the same general topic
+Grade as 'no' if:
+- The document is on the same general topic but does not address the specific question
+- The document only mentions keywords without providing relevant substance
+- The document is completely unrelated
 
-Only grade as 'no' if the document is completely unrelated.
-
-Give a binary score 'yes' or 'no'."""  # noqa: E501
+Give a binary score 'yes' or 'no'."""
 
 DOCUMENT_GRADER_USER_PROMPT = """Retrieved document:
 
@@ -41,7 +39,7 @@ DOCUMENT_GRADER_USER_PROMPT = """Retrieved document:
 
 User question: {question}
 
-Is this document relevant to the question? Be lenient. Answer only 'yes' or 'no'."""
+Does this document directly help answer the question? Answer only 'yes' or 'no'."""
 
 
 GENERATION_SYSTEM_PROMPT = """You are an assistant for question-answering tasks.

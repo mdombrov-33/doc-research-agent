@@ -153,7 +153,11 @@ def generate_node(state: AgentState) -> dict[str, str | list]:
     documents = state.get("documents", [])
     chat_history = state.get("chat_history", [])
 
-    context = "\n\n".join(doc["content"] for doc in documents)
+    context_parts = []
+    for doc in documents:
+        label = "[Web Search]" if doc.get("source") == "web" else f"[Document: {doc.get('filename', 'unknown')}]"
+        context_parts.append(f"{label}\n{doc['content']}")
+    context = "\n\n".join(context_parts)
 
     llm = get_llm(state.get("model"), temperature=0.7)
 
