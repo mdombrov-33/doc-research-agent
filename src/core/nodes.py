@@ -116,10 +116,14 @@ def web_search_node(state: AgentState) -> dict[str, list[dict] | int]:
     except Exception as e:
         logger.error(f"Web search failed: {e}")
 
-    return {"raw_documents": web_docs, "docs_retrieved_total": len(web_docs), "web_search_done": True}
+    return {
+        "raw_documents": web_docs,
+        "docs_retrieved_total": len(web_docs),
+        "web_search_done": True,
+    }
 
 
-def grade_documents_node(state: AgentState) -> dict[str, list[dict]]:
+def grade_documents_node(state: AgentState) -> dict[str, list[dict] | None]:
     logger.info("--- GRADING DOCUMENTS ---")
 
     question = state.get("question", "")
