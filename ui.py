@@ -99,9 +99,8 @@ def main():
     st.title("Document Research Agent")
     render_eval_stats()
     st.markdown(
-        "Upload documents using the sidebar, then ask questions about their content. "
-        "The agent searches your documents first — if it doesn't find enough relevant information, "
-        "it automatically falls back to web search."
+        "Upload documents and ask questions. The agent always searches your documents — "
+        "for queries needing current information, it also runs a live web search in parallel."
     )
     st.divider()
 
