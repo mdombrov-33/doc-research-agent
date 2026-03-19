@@ -42,7 +42,7 @@ format: ## Format code
 	uv run ruff format .
 
 deploy: ## Deploy to GCP Cloud Run via Terraform
-	cd terraform/gcp && terraform apply
+	cd terraform/gcp && terraform apply -replace=docker_image.app -replace=docker_registry_image.app
 
 destroy: ## Tear down GCP Cloud Run deployment
 	cd terraform/gcp && terraform destroy
