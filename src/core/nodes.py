@@ -14,72 +14,13 @@ from src.utils.logger import logger
 settings = get_settings()
 
 
-def detect_explicit_web_search(question: str) -> bool:
-    explicit_phrases = [
-        "web search",
-        "search web",
-        "check web",
-        "online search",
-        "search online",
-        "google",
-        "search google",
-        "look online",
-        "check internet",
-        "both storage and web",
-        "also search",
-    ]
-
-    if any(phrase in question.lower() for phrase in explicit_phrases):
-        logger.info("Explicit web search detected via pattern match")
-        return True
-
-    recent_indicators = [
-        "today",
-        "latest",
-        "recent",
-        "current",
-        "now",
-        "breaking",
-        "this week",
-        "this month",
-    ]  # noqa: E501
-
-    if any(word in question.lower() for word in recent_indicators):
-        logger.info("Recent info indicator detected, confirming with LLM...")
-
-        llm = get_llm()
-        prompt = f"""Determine if this question requires real-time or recent information from the web.
-
-Answer YES if:
-- Question asks about current events, breaking news, or today's information
-- Question needs up-to-date data (prices, weather, scores, etc.)
-- Question explicitly mentions time periods requiring recent data
-
-Answer NO if:
-- Question is about general knowledge or historical facts
-- Time reference is not critical to answering
-
-Question: "{question}"
-
-Should we use web search for current information? Answer only YES or NO:"""  # noqa: E501
-
-        response = llm.invoke([{"role": "user", "content": prompt}])
-        answer = str(response.content).strip().upper()
-
-        logger.info(f"LLM web search decision: {answer}")
-        return "YES" in answer
-
-    return False
-
-
 def router_node(state: AgentState) -> dict:
     logger.info("--- ROUTING QUERY ---")
 
     question = state.get("question", "")
-    explicit_web_request = detect_explicit_web_search(question)
     result = route_and_rewrite(question, model=state.get("model"))
 
-    web_search = explicit_web_request or result.datasource == "websearch"
+    web_search = result.datasource == "websearch"
 
     if web_search:
         logger.info("Routing to vectorstore + web search (parallel)")
