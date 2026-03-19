@@ -16,11 +16,12 @@ def _add_or_reset_int(left: int, right: int | None) -> int:
 class AgentState(TypedDict, total=False):
     question: Required[str]
     generation: str
-    web_search: bool
-    raw_documents: Annotated[list[dict], _add_or_reset_list]
-    documents: list[dict]
-    docs_retrieved_total: Annotated[int, _add_or_reset_int]
+    web_search: bool                                          # router decision: run web search in parallel
+    raw_documents: Annotated[list[dict], _add_or_reset_list] # parallel fan-in merge, reset each query
+    documents: list[dict]                                     # graded/filtered docs passed to generator
+    docs_retrieved_total: Annotated[int, _add_or_reset_int]  # accumulated retrieval count for eval
     chat_history: list[dict[str, str]]
-    web_search_done: bool
+    web_search_done: bool                                     # guard: prevents fallback loop
+    web_fallback_needed: bool                                 # grader signal: not enough docs, trigger fallback
     model: str | None
     top_k: int

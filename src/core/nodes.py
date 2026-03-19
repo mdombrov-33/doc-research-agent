@@ -30,6 +30,7 @@ def router_node(state: AgentState) -> dict:
     return {
         "web_search": web_search,
         "web_search_done": False,
+        "web_fallback_needed": False,
         "question": result.rewritten_query,
         "raw_documents": None,
         "docs_retrieved_total": None,
@@ -139,11 +140,17 @@ def grade_documents_node(state: AgentState) -> dict[str, list[dict] | None]:
 
     logger.info(f"Filtered to {len(filtered_docs)} relevant documents from {len(documents)}")
 
-    if len(filtered_docs) < 3 and not state.get("web_search_done", False):
+    if len(filtered_docs) < 2 and not state.get("web_search_done", False):
         logger.info(f"Only {len(filtered_docs)} relevant docs, triggering web search fallback")
-        return {"documents": [], "raw_documents": None}
+        return {"documents": filtered_docs, "raw_documents": None, "web_fallback_needed": True}
 
-    return {"documents": filtered_docs}
+    if state.get("web_search_done", False):
+        existing_docs = state.get("documents", [])
+        merged = existing_docs + filtered_docs
+        logger.info(f"Fallback grading complete, merged {len(existing_docs)} existing + {len(filtered_docs)} web docs")
+        return {"documents": merged, "web_fallback_needed": False}
+
+    return {"documents": filtered_docs, "web_fallback_needed": False}
 
 
 def generate_node(state: AgentState) -> dict[str, str | list]:

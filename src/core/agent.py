@@ -37,7 +37,7 @@ def build_graph():
     workflow.add_conditional_edges(
         "grade_documents",
         lambda state: "websearch"
-        if not state.get("documents") and not state.get("web_search_done")
+        if state.get("web_fallback_needed") and not state.get("web_search_done")
         else "generate",
     )
     workflow.add_edge("generate", END)
