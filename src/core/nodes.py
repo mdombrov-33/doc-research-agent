@@ -139,8 +139,8 @@ def grade_documents_node(state: AgentState) -> dict[str, list[dict] | None]:
 
     logger.info(f"Filtered to {len(filtered_docs)} relevant documents from {len(documents)}")
 
-    if not filtered_docs and not state.get("web_search_done", False):
-        logger.info("No relevant docs found, triggering web search fallback")
+    if len(filtered_docs) < 3 and not state.get("web_search_done", False):
+        logger.info(f"Only {len(filtered_docs)} relevant docs, triggering web search fallback")
         return {"documents": [], "raw_documents": None}
 
     return {"documents": filtered_docs}
