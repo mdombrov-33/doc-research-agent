@@ -34,7 +34,12 @@ def build_graph():
 
     workflow.add_edge("retrieve", "grade_documents")
     workflow.add_edge("websearch", "grade_documents")
-    workflow.add_edge("grade_documents", "generate")
+    workflow.add_conditional_edges(
+        "grade_documents",
+        lambda state: "websearch"
+        if not state.get("documents") and not state.get("web_search_done")
+        else "generate",
+    )
     workflow.add_edge("generate", END)
 
     app = workflow.compile(checkpointer=MemorySaver())

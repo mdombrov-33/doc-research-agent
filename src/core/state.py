@@ -21,5 +21,6 @@ class AgentState(TypedDict, total=False):
     documents: list[dict]
     docs_retrieved_total: Annotated[int, _add_or_reset_int]
     chat_history: list[dict[str, str]]
+    web_search_done: bool
     model: str | None
     top_k: int

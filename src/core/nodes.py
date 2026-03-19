@@ -29,6 +29,7 @@ def router_node(state: AgentState) -> dict:
 
     return {
         "web_search": web_search,
+        "web_search_done": False,
         "question": result.rewritten_query,
         "raw_documents": None,
         "docs_retrieved_total": None,
@@ -115,7 +116,7 @@ def web_search_node(state: AgentState) -> dict[str, list[dict] | int]:
     except Exception as e:
         logger.error(f"Web search failed: {e}")
 
-    return {"raw_documents": web_docs, "docs_retrieved_total": len(web_docs)}
+    return {"raw_documents": web_docs, "docs_retrieved_total": len(web_docs), "web_search_done": True}
 
 
 def grade_documents_node(state: AgentState) -> dict[str, list[dict]]:
@@ -133,6 +134,11 @@ def grade_documents_node(state: AgentState) -> dict[str, list[dict]]:
     filtered_docs = [doc for doc, score in zip(documents, scores) if score == "yes"]
 
     logger.info(f"Filtered to {len(filtered_docs)} relevant documents from {len(documents)}")
+
+    if not filtered_docs and not state.get("web_search_done", False):
+        logger.info("No relevant docs found, triggering web search fallback")
+        return {"documents": [], "raw_documents": None}
+
     return {"documents": filtered_docs}
 
 
