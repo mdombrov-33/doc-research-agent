@@ -1,6 +1,3 @@
-from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
-
 from src.config import get_settings
 from src.core import prompts
 from src.core.exceptions import FusionRetrievalError
@@ -8,41 +5,13 @@ from src.core.grading.graders import (
     grade_documents_batch,
     route_and_rewrite,
 )
+from src.core.llm import get_llm
 from src.core.retrieval.fusion_retriever import FusionRetriever
 from src.core.state import AgentState
 from src.core.tools import get_vector_store_tool, get_web_search_tool
 from src.utils.logger import logger
 
 settings = get_settings()
-
-
-def get_llm(model_override: str | None = None):
-    model = model_override or settings.get_llm_model()
-    logger.info(f"Using model: {model}")
-
-    # Auto-detect provider: OpenRouter models contain '/', OpenAI models don't
-    if model_override and "/" in model_override:
-        llm = ChatOpenAI(
-            api_key=SecretStr(settings.OPENROUTER_API_KEY),
-            base_url="https://openrouter.ai/api/v1",
-            model=model,
-            temperature=0.7,
-        )
-    elif settings.LLM_PROVIDER == "openrouter":
-        llm = ChatOpenAI(
-            api_key=SecretStr(settings.OPENROUTER_API_KEY),
-            base_url="https://openrouter.ai/api/v1",
-            model=model,
-            temperature=0.7,
-        )
-    else:
-        llm = ChatOpenAI(
-            api_key=SecretStr(settings.OPENAI_API_KEY),
-            model=model,
-            temperature=0.7,
-        )
-
-    return llm
 
 
 def detect_explicit_web_search(question: str) -> bool:
@@ -92,7 +61,7 @@ Answer NO if:
 
 Question: "{question}"
 
-Should we use web search for current information? Answer only YES or NO:"""
+Should we use web search for current information? Answer only YES or NO:"""  # noqa: E501
 
         response = llm.invoke([{"role": "user", "content": prompt}])
         answer = str(response.content).strip().upper()
@@ -235,7 +204,7 @@ def generate_node(state: AgentState) -> dict[str, str | list]:
 
     context = "\n\n".join(doc["content"] for doc in documents)
 
-    llm = get_llm(state.get("model"))
+    llm = get_llm(state.get("model"), temperature=0.7)
 
     messages = [
         {"role": "system", "content": prompts.GENERATION_SYSTEM_PROMPT.format(context=context)},

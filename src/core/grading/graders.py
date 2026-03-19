@@ -1,10 +1,10 @@
 from typing import Literal
 
-from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 from src.config import get_settings
 from src.core import prompts
+from src.core.llm import get_llm
 from src.utils.logger import logger
 
 settings = get_settings()
@@ -21,36 +21,6 @@ class RouteAndRewrite(BaseModel):
 
 class GradeDocuments(BaseModel):
     binary_score: Literal["yes", "no"] = Field(description="Relevance score 'yes' or 'no'")
-
-
-
-def get_llm(model_override: str | None = None):
-    model = model_override or settings.get_llm_model()
-    logger.info(f"Using model: {model}")
-
-    # Auto-detect provider: OpenRouter models contain '/', OpenAI models don't
-    if model_override and "/" in model_override:
-        llm = ChatOpenAI(
-            api_key=SecretStr(settings.OPENROUTER_API_KEY),
-            base_url="https://openrouter.ai/api/v1",
-            model=model,
-            temperature=0,
-        )
-    elif settings.LLM_PROVIDER == "openrouter":
-        llm = ChatOpenAI(
-            api_key=SecretStr(settings.OPENROUTER_API_KEY),
-            base_url="https://openrouter.ai/api/v1",
-            model=model,
-            temperature=0,
-        )
-    else:
-        llm = ChatOpenAI(
-            api_key=SecretStr(settings.OPENAI_API_KEY),
-            model=model,
-            temperature=0,
-        )
-
-    return llm
 
 
 def route_and_rewrite(question: str, model: str | None = None) -> RouteAndRewrite:
