@@ -10,11 +10,6 @@ from src.core.evaluation.metrics import get_evaluation_tracker
 router = APIRouter()
 
 
-@router.head("/ping")
-async def ping():
-    return {"message": "pong"}
-
-
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...)):
     result = await handle_upload(file)
