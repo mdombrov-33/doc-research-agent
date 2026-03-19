@@ -117,7 +117,6 @@ def main():
                         f"Uploaded {result['filename']} — {result['chunks_created']} chunks created"
                     )
 
-        st.divider()
         st.subheader("Configuration")
 
         all_models = OPENAI_MODELS + OPENROUTER_MODELS
@@ -127,7 +126,7 @@ def main():
 
         top_k = st.slider("Top-K results", min_value=3, max_value=15, value=5, step=1)
 
-        st.text(f"Backend: {settings.API_URL}")
+        st.caption(f"Backend: {settings.API_URL}")
         st.caption(f"Session: {st.session_state.session_id[:8]}...")
 
     for message in st.session_state.messages:
