@@ -30,7 +30,7 @@ def get_qdrant_client() -> QdrantClient:
 
 
 def get_embeddings() -> OpenAIEmbeddings:
-    api_key = settings.get_llm_api_key()
+    api_key = settings.OPENAI_API_KEY
     if not api_key:
         raise EmbeddingConfigError("LLM API key not configured")
 

@@ -8,16 +8,15 @@ from src.config import get_settings
 
 settings = get_settings()
 
-OPENAI_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-5"]
-OPENROUTER_MODELS = [
-    "deepseek/deepseek-v3.2",
-    "anthropic/claude-haiku-4.5",
-    "anthropic/claude-sonnet-4.6",
-    "anthropic/claude-opus-4.6",
-    "google/gemini-2.5-flash",
-    "x-ai/grok-4.1-fast",
-    "openai/gpt-oss-120b",
-]
+MODELS: dict[str, str] = {
+    "anthropic/claude-opus-4.7": "Claude Opus 4.7",
+    "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
+    "google/gemini-3-flash-preview": "Gemini 3 Flash Preview",
+    "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
+    "openai/gpt-5.4-mini": "GPT 5.4 Mini",
+    "openai/gpt-5.5": "GPT 5.5",
+    "deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
+}
 
 
 def init_session_state():
@@ -118,10 +117,15 @@ def main():
 
         st.subheader("Configuration")
 
-        all_models = OPENAI_MODELS + OPENROUTER_MODELS
         default_model = settings.get_llm_model()
-        default_index = all_models.index(default_model) if default_model in all_models else 0
-        selected_model = st.selectbox("Model", all_models, index=default_index)
+        model_keys = list(MODELS.keys())
+        default_index = model_keys.index(default_model) if default_model in model_keys else 0
+        selected_model = st.selectbox(
+            "Model",
+            options=model_keys,
+            index=default_index,
+            format_func=lambda x: MODELS[x],
+        )
 
         top_k = st.slider("Top-K results", min_value=3, max_value=15, value=5, step=1)
 

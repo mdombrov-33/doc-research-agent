@@ -15,13 +15,9 @@ class Settings(BaseSettings):
     APP_ENV: Literal["development", "production", "test"] = "development"
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "DEBUG"
 
-    LLM_PROVIDER: Literal["openai", "openrouter"] = "openai"
-
-    OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-5"
-
+    OPENAI_API_KEY: str = ""  # used for embeddings only
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "openai/gpt-5"
+    LLM_MODEL: str = "anthropic/claude-sonnet-4.6"
 
     QDRANT_MODE: Literal["local", "cloud"] = "cloud"
     QDRANT_LOCAL_URL: str = "http://localhost:6333"
@@ -41,15 +37,8 @@ class Settings(BaseSettings):
 
     API_URL: str = "http://localhost:8000"
 
-    def get_llm_api_key(self) -> str:
-        if self.LLM_PROVIDER == "openai":
-            return self.OPENAI_API_KEY
-        return self.OPENROUTER_API_KEY
-
     def get_llm_model(self) -> str:
-        if self.LLM_PROVIDER == "openai":
-            return self.OPENAI_MODEL
-        return self.OPENROUTER_MODEL
+        return self.LLM_MODEL
 
 
 @lru_cache

@@ -48,7 +48,7 @@ def grade_documents_batch(question: str, documents: list[str]) -> list[str]:
     if not documents:
         return []
 
-    llm = get_llm("gpt-4o-mini")
+    llm = get_llm("openai/gpt-5.4-mini")
     structured_llm = llm.with_structured_output(GradeDocuments)  # type: ignore[misc]
 
     batch_messages = []
