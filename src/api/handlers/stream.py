@@ -14,7 +14,9 @@ from src.utils.logger import logger
 async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
     guardrails = get_guardrails()
 
+    _t = time.monotonic()
     refusal = await guardrails.check_input(request.question)
+    logger.info("node_complete", node="guardrails_input", duration_ms=round((time.monotonic() - _t) * 1000, 1))
     if refusal:
         yield f"data: {json.dumps({'token': refusal, 'done': True})}\n\n"
         return
@@ -72,7 +74,9 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
         return
 
     full_response = "".join(accumulated)
+    _t = time.monotonic()
     correction = await guardrails.check_output(full_response)
+    logger.info("node_complete", node="guardrails_output", duration_ms=round((time.monotonic() - _t) * 1000, 1))
 
     latency_ms = time.monotonic() * 1000 - start_ms
     get_evaluation_tracker().record(

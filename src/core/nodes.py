@@ -1,3 +1,5 @@
+import time
+from collections.abc import Callable
 from typing import Any
 
 from src.config import get_settings
@@ -14,6 +16,15 @@ from src.core.tools import get_vector_store_tool, get_web_search_tool
 from src.utils.logger import logger
 
 settings = get_settings()
+
+
+def _timed(name: str, fn: Callable) -> Callable:
+    def wrapper(state: AgentState) -> dict[str, Any]:
+        start = time.monotonic()
+        result = fn(state)
+        logger.info("node_complete", node=name, duration_ms=round((time.monotonic() - start) * 1000, 1))
+        return result
+    return wrapper
 
 
 def router_node(state: AgentState) -> dict[str, Any]:
