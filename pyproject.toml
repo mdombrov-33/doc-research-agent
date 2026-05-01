@@ -27,6 +27,7 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "spacy>=3.8.3",
     "streamlit>=1.52.2",
+    "structlog>=25.0.0",
     "types-requests>=2.32.4.20260107",
     "uvicorn[standard]>=0.40.0",
 ]

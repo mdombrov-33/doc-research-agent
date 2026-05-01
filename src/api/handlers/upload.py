@@ -37,23 +37,20 @@ async def handle_upload(file: UploadFile) -> dict[str, Any]:
         with open(file_path, "wb") as f:
             f.write(content)
 
-        logger.info(f"Saved uploaded file to {file_path}")
-
         processor = DocumentProcessor()
         result = await processor.process_and_store(str(file_path), file.filename)
-
+        logger.info("upload_complete", filename=file.filename, **result)
         return result
 
     except EmptyDocumentError as e:
-        logger.error(f"Validation error: {e}")
+        logger.info("upload_rejected", filename=file.filename, reason=str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except DocumentProcessingError as e:
-        logger.error(f"Failed to process document: {e}")
+        logger.error("upload_processing_failed", filename=file.filename, error=str(e))
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
     except Exception as e:
-        logger.error(f"Failed to process document: {e}")
+        logger.error("upload_failed", filename=file.filename, error=str(e))
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
     finally:
         if file_path.exists():
             os.remove(file_path)
-            logger.info(f"Cleaned up temp file {file_path}")

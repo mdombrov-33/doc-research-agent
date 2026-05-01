@@ -22,23 +22,26 @@ class DocumentProcessor:
 
     async def process_and_store(self, file_path: str, filename: str) -> dict:
         document_id = str(uuid.uuid4())
-        logger.info(f"Processing document {filename} with ID {document_id}")
 
         raw_text = await self.extractor.extract_from_file(file_path, filename)
         if not raw_text.strip():
             raise EmptyDocumentError("No text extracted from document")
 
         chunks = self._chunk_text(raw_text)
-        logger.info(f"Created {len(chunks)} chunks")
-
         enriched_chunks = self._enrich_chunks(chunks, filename)
-        logger.info(f"Enriched {len(enriched_chunks)} chunks with metadata")
 
         chunk_texts = [chunk["text"] for chunk in enriched_chunks]
         vectors = [self.embeddings.embed_query(text) for text in chunk_texts]
-        logger.info(f"Generated {len(vectors)} embeddings")
 
         self._store_in_qdrant(document_id, filename, enriched_chunks, vectors)
+
+        logger.info(
+            "document_processed",
+            document_id=document_id,
+            filename=filename,
+            chunks=len(chunks),
+            vectors=len(vectors),
+        )
 
         return {
             "document_id": document_id,
@@ -55,14 +58,7 @@ class DocumentProcessor:
             length_function=len,
         )
         chunks = splitter.split_text(text)
-
         chunks = [chunk for chunk in chunks if len(chunk.strip()) >= 100]
-
-        logger.info(
-            f"Chunked into {len(chunks)} pieces, avg size: {
-                sum(len(c) for c in chunks) // len(chunks) if chunks else 0
-            } chars"
-        )
         return chunks
 
     def _enrich_chunks(self, chunks: list[str], filename: str) -> list[dict]:
@@ -130,4 +126,3 @@ class DocumentProcessor:
             )
 
         self.qdrant_client.upsert(collection_name=settings.QDRANT_COLLECTION_NAME, points=points)
-        logger.info(f"Stored {len(points)} enriched points in Qdrant")

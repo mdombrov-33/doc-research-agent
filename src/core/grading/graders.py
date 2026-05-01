@@ -40,7 +40,7 @@ def route_and_rewrite(question: str, model: str | None = None) -> RouteAndRewrit
     ]
 
     result: RouteAndRewrite = structured_llm.invoke(messages)  # type: ignore[assignment]
-    logger.info(f"Routed to: {result.datasource}, rewritten: '{result.rewritten_query}'")
+    logger.debug("route_and_rewrite", datasource=result.datasource, query=result.rewritten_query)
     return result
 
 
@@ -65,8 +65,6 @@ def grade_documents_batch(question: str, documents: list[str]) -> list[str]:
         batch_messages.append(messages)
 
     results = structured_llm.batch(batch_messages)
-
     scores = [result.binary_score for result in results]  # type: ignore[attr-defined]
-    logger.info(f"Batch graded {len(documents)} documents: {scores.count('yes')} relevant")
-
+    logger.debug("grading_batch", total=len(documents), relevant=scores.count("yes"))
     return scores

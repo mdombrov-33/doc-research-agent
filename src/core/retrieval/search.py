@@ -11,7 +11,7 @@ settings = get_settings()
 
 @lru_cache(maxsize=1)
 def get_vector_store() -> QdrantVectorStore:
-    logger.info("Initializing Qdrant vector store for retrieval")
+    logger.info("vector_store_initialized", collection=settings.QDRANT_COLLECTION_NAME)
 
     vector_store = QdrantVectorStore(
         client=get_qdrant_client(),

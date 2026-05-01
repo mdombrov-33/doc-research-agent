@@ -15,10 +15,10 @@ settings = get_settings()
 @lru_cache
 def get_qdrant_client() -> QdrantClient:
     if settings.QDRANT_MODE == "local":
-        logger.info(f"Connecting to local Qdrant at {settings.qdrant_url}")
+        logger.info("qdrant_connecting", mode="local", url=settings.qdrant_url)
         return QdrantClient(url=settings.qdrant_url)
 
-    logger.info(f"Connecting to Qdrant Cloud at {settings.qdrant_url}")
+    logger.info("qdrant_connecting", mode="cloud", url=settings.qdrant_url)
     return QdrantClient(
         url=settings.qdrant_url,
         api_key=settings.QDRANT_API_KEY,
@@ -44,10 +44,10 @@ def ensure_collection_exists() -> None:
     client = get_qdrant_client()
 
     if client.collection_exists(settings.QDRANT_COLLECTION_NAME):
-        logger.info(f"Collection '{settings.QDRANT_COLLECTION_NAME}' already exists")
+        logger.info("qdrant_collection_exists", collection=settings.QDRANT_COLLECTION_NAME)
         return
 
-    logger.info(f"Creating collection '{settings.QDRANT_COLLECTION_NAME}'")
+    logger.info("qdrant_collection_creating", collection=settings.QDRANT_COLLECTION_NAME)
     client.create_collection(
         collection_name=settings.QDRANT_COLLECTION_NAME,
         vectors_config=VectorParams(
@@ -55,4 +55,4 @@ def ensure_collection_exists() -> None:
             distance=Distance.COSINE,
         ),
     )
-    logger.info(f"Collection '{settings.QDRANT_COLLECTION_NAME}' created successfully")
+    logger.info("qdrant_collection_created", collection=settings.QDRANT_COLLECTION_NAME)

@@ -9,7 +9,7 @@ settings = get_settings()
 
 def get_llm(model_override: str | None = None, temperature: float = 0):
     model = model_override or settings.get_llm_model()
-    logger.info(f"Using model: {model}")
+    logger.debug("llm_selected", model=model)
 
     if model_override and "/" in model_override:
         return ChatOpenAI(

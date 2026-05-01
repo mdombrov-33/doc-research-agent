@@ -67,7 +67,7 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
                 docs_retrieved_total = output.get("docs_retrieved_total", sources_count)
 
     except Exception as e:
-        logger.error(f"Stream error: {e}")
+        logger.error("stream_failed", error=str(e), exc_info=True)
         yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
         return
 

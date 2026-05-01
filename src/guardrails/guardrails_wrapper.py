@@ -12,7 +12,7 @@ class GuardrailsWrapper:
         self.config = RailsConfig.from_path(str(config_path))
         self.rails = LLMRails(self.config)
         self._lock = asyncio.Lock()
-        logger.info("NeMo Guardrails initialized")
+        logger.info("guardrails_initialized")
 
     async def check_input(self, question: str) -> str | None:
         """Returns refusal message if NeMo blocks the input, None if safe."""
@@ -30,14 +30,14 @@ class GuardrailsWrapper:
                     messages=[{"role": "user", "content": question}]
                 )
             except Exception as e:
-                logger.error(f"NeMo input check error: {e}")
+                logger.error("guardrails_input_check_failed", error=str(e))
                 return None  # fail open
 
             if safe.is_set():
                 return None
 
             content = response.get("content", "") if isinstance(response, dict) else str(response)
-            logger.info(f"NeMo blocked input: {content[:100]}")
+            logger.info("guardrails_input_blocked", preview=content[:100])
             return content or "I cannot process that request."
 
     async def check_output(self, response: str) -> str | None:
@@ -50,11 +50,11 @@ class GuardrailsWrapper:
             result = await self.rails.llm.ainvoke(prompt)
             content = result.content if hasattr(result, "content") else str(result)
             if "yes" in content.strip().lower():
-                logger.info(f"NeMo flagged output: {content[:100]}")
+                logger.info("guardrails_output_flagged", preview=content[:100])
                 return "I can only provide information related to document research and factual analysis."
             return None
         except Exception as e:
-            logger.error(f"NeMo output check error: {e}")
+            logger.error("guardrails_output_check_failed", error=str(e))
             return None  # fail open
 
 

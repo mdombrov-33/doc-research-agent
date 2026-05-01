@@ -15,8 +15,6 @@ from src.utils.logger import logger
 
 
 def build_graph():
-    logger.info("Building RAG agent graph")
-
     workflow = StateGraph(AgentState)
 
     workflow.add_node("router", router_node)
@@ -43,8 +41,7 @@ def build_graph():
     workflow.add_edge("generate", END)
 
     app = workflow.compile(checkpointer=MemorySaver())
-
-    logger.info("Graph compiled successfully")
+    logger.info("agent_graph_compiled")
     return app
 
 
