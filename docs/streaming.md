@@ -16,7 +16,7 @@ Plain chunked streaming works fine if all you're sending is text. But over the s
 
 - Tokens (the text itself, one by one)
 - Sources metadata at the end (filenames, chunk indices, where it came from)
-- A correction flag if NeMo flagged the output
+- A correction flag if the output guardrail flagged the response
 - Errors
 
 With raw chunked streaming the frontend gets a byte stream with no structure — it can't tell if what just arrived is a token, a source list, or an error. We'd end up inventing our own delimiter format anyway.
@@ -34,7 +34,7 @@ User types question
       ↓
 POST /api/stream
       ↓
-NeMo input check → blocked? send refusal and close stream
+Guardrails input check → blocked? send refusal and close stream
       ↓ (if safe)
 LangGraph agent starts running
       ↓
@@ -42,7 +42,7 @@ on_chat_model_stream events → each token → SSE line → client renders it
       ↓
 on_chain_end event → grab sources metadata
       ↓
-NeMo output check on full accumulated response
+Guardrails output check on full accumulated response
       ↓
 Final SSE event: done (with sources) or correction
 ```
@@ -99,7 +99,7 @@ Three types of messages the frontend can receive:
 {"done": true, "sources_count": 3, "sources": [...], "session_id": "..."}
 ```
 
-**Correction (output flagged by NeMo):**
+**Correction (output flagged by guardrails):**
 
 ```json
 {

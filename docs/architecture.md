@@ -12,7 +12,7 @@ Adaptive RAG agent: takes a user question, retrieves relevant context from uploa
 POST /api/stream
       │
       ▼
-NeMo Guardrails (input check)
+Guardrails (input check)
       │
       ▼
     Router
@@ -30,7 +30,7 @@ Retrieve              Web Search
           Generate
              │
              ▼
-NeMo Guardrails (output check)
+Guardrails (output check)
              │
              ▼
        SSE stream → client
@@ -90,7 +90,7 @@ Alpha=0.6 weights vector slightly higher since semantic match is usually more im
 
 ## Guardrails
 
-NeMo Guardrails wraps the entire agent — input is checked before the graph runs, output is checked after generation. Fails open on guardrails errors so a guardrails outage doesn't block the agent.
+Guardrails wrap the entire agent — input is checked before the graph runs, output is checked after generation. Input uses OpenAI Moderation API + a `gpt-4o-mini` injection classifier. Output uses Moderation API only. Fails open on errors so a guardrails outage doesn't block the agent.
 
 ---
 

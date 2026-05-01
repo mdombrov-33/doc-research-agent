@@ -1,6 +1,6 @@
 # Document Research Agent
 
-RAG system with LangGraph state machine, hybrid search, SSE streaming, and NeMo Guardrails security layer.
+RAG system with LangGraph state machine, hybrid search, SSE streaming, and LLM-based guardrails.
 
 **Frontend:** Streamlit | **Backend:** GCP Cloud Run | **Vector DB:** Qdrant Cloud
 
@@ -21,7 +21,7 @@ RAG system with LangGraph state machine, hybrid search, SSE streaming, and NeMo 
        │
        ▼
 ┌──────────────────┐
-│ NeMo Guardrails  │  Input check (LLM-based: jailbreak, prompt injection)
+│   Guardrails     │  Input check (moderation API + injection classifier)
 └──────┬───────────┘
        │ safe
        ▼
@@ -31,7 +31,7 @@ RAG system with LangGraph state machine, hybrid search, SSE streaming, and NeMo 
        │ full response
        ▼
 ┌──────────────────┐
-│ NeMo Guardrails  │  Output check (LLM-based: harmful content, policy)
+│   Guardrails     │  Output check (moderation API)
 └──────────────────┘
 ```
 
@@ -91,10 +91,10 @@ Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedd
 
 ### 2. Query Flow
 
-**Security (NeMo input check):**
+**Security (input check):**
 
-- LLM-based input rail using `self_check_input` prompt
-- Colang flows catch: prompt injection, jailbreaks, off-topic requests, system probing, code execution attempts
+- OpenAI Moderation API catches harmful/violent content
+- `gpt-5.4-mini` classifier catches prompt injection, jailbreaks, system probing
 - Blocked inputs return refusal immediately, before LangGraph runs
 
 **Router Node:**
@@ -120,9 +120,8 @@ Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedd
 
 **Output check (post-streaming):**
 
-- After streaming completes, full response is checked using NeMo's `self_check_output` prompt template via direct LLM call
-- NeMo's colang output patterns are not executed (incompatible with streaming architecture)
-- If LLM returns "yes" to the policy check, correction event is sent to client
+- After streaming completes, full response is checked via OpenAI Moderation API
+- If flagged, a correction event is sent to the client replacing the streamed content
 
 ### 3. Streaming (SSE)
 
@@ -193,4 +192,4 @@ All metrics are displayed in the UI.
 
 ## Tech Stack
 
-**LangGraph**, **LangChain**, **NeMo Guardrails**, **Qdrant**, **FastAPI**, **OpenAI**, **PyMuPDF**, **BM25 + spaCy**, **Streamlit**, **Docker**
+**LangGraph**, **LangChain**, **Qdrant**, **FastAPI**, **OpenAI**, **PyMuPDF**, **BM25 + spaCy**, **Streamlit**, **Docker**
