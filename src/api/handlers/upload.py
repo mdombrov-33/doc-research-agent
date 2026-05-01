@@ -39,7 +39,7 @@ async def handle_upload(file: UploadFile) -> dict[str, Any]:
 
         processor = DocumentProcessor()
         result = await processor.process_and_store(str(file_path), file.filename)
-        logger.info("upload_complete", filename=file.filename, **result)
+        logger.info("upload_complete", **result)
         return result
 
     except EmptyDocumentError as e:
