@@ -92,10 +92,6 @@ resource "google_cloud_run_service" "app" {
         }
 
         env {
-          name  = "LLM_PROVIDER"
-          value = "openai"
-        }
-        env {
           name  = "OPENAI_API_KEY"
           value = var.openai_api_key
         }
