@@ -24,7 +24,7 @@ class GradeDocuments(BaseModel):
 
 
 def route_and_rewrite(question: str, model: str | None = None) -> RouteAndRewrite:
-    llm = get_llm(model)
+    llm = get_llm("openai/gpt-5.4-mini")
     structured_llm = llm.with_structured_output(RouteAndRewrite)  # type: ignore[misc]
 
     messages = [
