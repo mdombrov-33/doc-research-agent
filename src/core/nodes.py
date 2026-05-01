@@ -1,3 +1,5 @@
+from typing import Any
+
 from src.config import get_settings
 from src.core import prompts
 from src.core.exceptions import FusionRetrievalError
@@ -14,7 +16,7 @@ from src.utils.logger import logger
 settings = get_settings()
 
 
-def router_node(state: AgentState) -> dict:
+def router_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
     result = route_and_rewrite(question, model=state.get("model"))
 
@@ -37,7 +39,7 @@ def router_node(state: AgentState) -> dict:
     }
 
 
-def retrieve_node(state: AgentState) -> dict[str, list[dict] | int]:
+def retrieve_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
     top_k = state.get("top_k") or 5
     vector_store = get_vector_store_tool()
@@ -109,7 +111,7 @@ def retrieve_node(state: AgentState) -> dict[str, list[dict] | int]:
     return {"raw_documents": doc_items, "docs_retrieved_total": docs_retrieved_total}
 
 
-def web_search_node(state: AgentState) -> dict[str, list[dict] | int]:
+def web_search_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
     web_search = get_web_search_tool()
 
@@ -137,7 +139,7 @@ def web_search_node(state: AgentState) -> dict[str, list[dict] | int]:
     }
 
 
-def grade_documents_node(state: AgentState) -> dict[str, list[dict] | None]:
+def grade_documents_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
     documents = state.get("raw_documents", [])
 
@@ -169,7 +171,7 @@ def grade_documents_node(state: AgentState) -> dict[str, list[dict] | None]:
     return {"documents": filtered_docs, "web_fallback_needed": False}
 
 
-def generate_node(state: AgentState) -> dict[str, str | list]:
+def generate_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
     documents = state.get("documents", [])
     chat_history = state.get("chat_history", [])

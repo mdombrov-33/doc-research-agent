@@ -6,7 +6,11 @@ import structlog
 from src.config import get_settings
 
 
-def _add_service_context(logger: object, method: str, event_dict: dict) -> dict:
+def _add_service_context(
+    logger: structlog.types.WrappedLogger,
+    method: str,
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
     settings = get_settings()
     event_dict.setdefault("service", "doc-research-agent")
     event_dict.setdefault("env", settings.APP_ENV)
@@ -26,8 +30,7 @@ def configure_logging() -> None:
     ]
 
     structlog.configure(
-        processors=shared_processors
-        + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+        processors=shared_processors + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
