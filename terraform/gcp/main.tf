@@ -58,6 +58,10 @@ resource "docker_image" "app" {
     dockerfile = "Dockerfile"
     platform   = "linux/amd64"
     no_cache   = true
+    build_args = {
+      GIT_SHA     = var.git_sha
+      APP_VERSION = var.app_version
+    }
   }
 
   depends_on = [

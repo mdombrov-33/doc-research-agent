@@ -21,6 +21,18 @@ variable "docker_image_tag" {
   default     = "latest"
 }
 
+variable "git_sha" {
+  description = "Git commit SHA, stamped into image for log forensics"
+  type        = string
+  default     = "unknown"
+}
+
+variable "app_version" {
+  description = "Human-readable app version (e.g. git describe output)"
+  type        = string
+  default     = "unknown"
+}
+
 variable "openai_api_key" {
   description = "OpenAI API key"
   type        = string

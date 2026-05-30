@@ -1,5 +1,10 @@
 .PHONY: help install dev build up down logs shell test lint format clean deploy destroy
 
+GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+APP_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
+export GIT_SHA
+export APP_VERSION
+
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
@@ -42,7 +47,11 @@ format: ## Format code
 	uv run ruff format .
 
 deploy: ## Deploy to GCP Cloud Run via Terraform
-	cd terraform/gcp && terraform apply -replace=docker_image.app -replace=docker_registry_image.app
+	cd terraform/gcp && terraform apply \
+		-var "git_sha=$(GIT_SHA)" \
+		-var "app_version=$(APP_VERSION)" \
+		-replace=docker_image.app \
+		-replace=docker_registry_image.app
 
 destroy: ## Tear down GCP Cloud Run deployment
 	cd terraform/gcp && terraform destroy

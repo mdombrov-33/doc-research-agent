@@ -1,6 +1,10 @@
 services:
   agent-api:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        APP_VERSION: ${APP_VERSION:-unknown}
     ports:
       - "8000:8000"
     env_file:
