@@ -1,5 +1,6 @@
-from typing import Literal
+from typing import Any, Literal, cast
 
+from langchain_core.language_models import LanguageModelInput
 from pydantic import BaseModel, Field
 
 from src.config import get_settings
@@ -15,7 +16,7 @@ class RouteAndRewrite(BaseModel):
         description="Route to 'vectorstore' or 'websearch' based on the question"
     )
     rewritten_query: str = Field(
-        description="Optimized version of the question for semantic search. Preserve all parts of multi-part questions."
+        description="Optimized version of the question for semantic search. Preserve all parts of multi-part questions."  # noqa
     )
 
 
@@ -44,16 +45,16 @@ def route_and_rewrite(question: str, model: str | None = None) -> RouteAndRewrit
     return result
 
 
-def grade_documents_batch(question: str, documents: list[str]) -> list[str]:
+def grade_documents_batch(question: str, documents: list[str]) -> list[Literal["yes", "no"]]:
     if not documents:
         return []
 
     llm = get_llm("openai/gpt-5.4-mini")
     structured_llm = llm.with_structured_output(GradeDocuments)  # type: ignore[misc]
 
-    batch_messages = []
+    batch_messages: list[LanguageModelInput] = []
     for document in documents:
-        messages = [
+        messages: list[dict[str, Any]] = [
             {"role": "system", "content": prompts.DOCUMENT_GRADER_SYSTEM_PROMPT},
             {
                 "role": "user",
@@ -64,7 +65,7 @@ def grade_documents_batch(question: str, documents: list[str]) -> list[str]:
         ]
         batch_messages.append(messages)
 
-    results = structured_llm.batch(batch_messages)
-    scores = [result.binary_score for result in results]  # type: ignore[attr-defined]
+    results = cast(list[GradeDocuments], structured_llm.batch(batch_messages))
+    scores = cast(list[Literal["yes", "no"]], [result.binary_score for result in results])
     logger.debug("grading_batch", total=len(documents), relevant=scores.count("yes"))
     return scores

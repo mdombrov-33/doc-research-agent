@@ -90,7 +90,7 @@ Alpha=0.6 weights vector slightly higher since semantic match is usually more im
 
 ## Guardrails
 
-Guardrails wrap the entire agent — input is checked before the graph runs, output is checked after generation. Input uses OpenAI Moderation API + a `gpt-4o-mini` injection classifier. Output uses Moderation API only. Fails open on errors so a guardrails outage doesn't block the agent.
+Guardrails wrap the entire agent — input is checked before the graph runs, output is checked after generation. Input uses OpenAI Moderation API + a `gpt-5.4-mini` injection classifier. Output uses Moderation API only. Fails open on errors so a guardrails outage doesn't block the agent.
 
 ---
 

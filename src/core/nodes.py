@@ -22,8 +22,11 @@ def _timed(name: str, fn: Callable) -> Callable:
     def wrapper(state: AgentState) -> dict[str, Any]:
         start = time.monotonic()
         result = fn(state)
-        logger.info("node_complete", node=name, duration_ms=round((time.monotonic() - start) * 1000, 1))
+        logger.info(
+            "node_complete", node=name, duration_ms=round((time.monotonic() - start) * 1000, 1)
+        )  # noqa: E501
         return result
+
     return wrapper
 
 

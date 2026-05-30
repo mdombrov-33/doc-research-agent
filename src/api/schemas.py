@@ -20,4 +20,4 @@ class UploadResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     environment: str
-    llm_provider: str
+    llm_model: str

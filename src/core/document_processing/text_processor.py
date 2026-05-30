@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import aiofiles
-import fitz  # pymupdf
+import fitz  # type: ignore[import-untyped]  # pymupdf
 import spacy
 from docx import Document as DocxDocument
 
@@ -41,7 +41,7 @@ class TextExtractor:
         pages = []
         with fitz.open(file_path) as pdf:
             for page in pdf:
-                page_text = page.get_text("text")
+                page_text: str = page.get_text("text")
                 if page_text.strip():
                     pages.append(page_text)
         text = "\n\n".join(pages)

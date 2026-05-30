@@ -19,7 +19,7 @@ ROUTER_USER_PROMPT = """Based on the user question below, decide if web search i
 
 Question: {question}
 
-Return 'websearch' if web search is needed, 'vectorstore' if document search alone is sufficient."""
+Return 'websearch' if web search is needed, 'vectorstore' if document search alone is sufficient."""  # noqa: E501
 
 
 DOCUMENT_GRADER_SYSTEM_PROMPT = """You are a grader assessing relevance of retrieved documents to a user question.
@@ -30,7 +30,7 @@ Grade as 'no' if:
 - The document mentions the topic only in passing without useful substance
 - The document is completely unrelated to the question
 
-Give a binary score 'yes' or 'no'."""
+Give a binary score 'yes' or 'no'."""  # noqa: E501
 
 DOCUMENT_GRADER_USER_PROMPT = """Retrieved document:
 
@@ -38,7 +38,7 @@ DOCUMENT_GRADER_USER_PROMPT = """Retrieved document:
 
 User question: {question}
 
-Does this document contain useful information for answering the question? Answer only 'yes' or 'no'."""
+Does this document contain useful information for answering the question? Answer only 'yes' or 'no'."""  # noqa: E501
 
 
 GENERATION_SYSTEM_PROMPT = """You are an assistant for question-answering tasks.

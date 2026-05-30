@@ -146,10 +146,13 @@ LangGraph `AgentState` (TypedDict) tracks:
 - `raw_documents`: Merged result set from parallel retrieval branches (reducer: append)
 - `documents`: Filtered document list after grading
 - `generation`: Current answer
-- `web_search`: Routing flag
-- `generation_attempts`: Generation retry counter
+- `web_search`: Router decision to run web search in parallel
+- `web_search_done`: Guard flag preventing fallback loop
+- `web_fallback_needed`: Grader signal that triggers web fallback
 - `docs_retrieved_total`: Total docs retrieved across all sources (reducer: sum)
 - `chat_history`: Multi-turn conversation history
+- `model`: Per-query LLM model override
+- `top_k`: Per-query retrieval depth override
 
 ### 6. Qdrant Modes
 
@@ -169,7 +172,6 @@ RAG metrics tracked per query and accessible via `/api/evaluation/stats`:
 - **Web Search Rate**: Percentage of queries using external search
 - **Avg Docs Retrieved**: Average number of chunks fetched per query
 - **Avg Docs Relevant**: Average number of chunks passing the grader
-- **Avg Generation Attempts**: Average LLM generation calls per query
 
 All metrics are displayed in the UI.
 

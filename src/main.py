@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from src.api.routes import router
 from src.api.schemas import HealthResponse
@@ -34,7 +34,7 @@ class RequestLoggingMiddleware:
         start = time.monotonic()
         status_code = 200
 
-        async def send_wrapper(message: dict) -> None:
+        async def send_wrapper(message: Message) -> None:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]
@@ -82,5 +82,5 @@ async def health_check():
     return {
         "status": "healthy",
         "environment": settings.APP_ENV,
-        "llm_provider": settings.LLM_PROVIDER,
+        "llm_model": settings.LLM_MODEL,
     }
