@@ -1,9 +1,19 @@
 import logging
+import os
+import socket
 import sys
 
 import structlog
 
 from src.config import get_settings
+
+_SENSITIVE_KEYS = {
+    "api_key",
+    "apikey",
+    "openrouter_api_key",
+    "openai_api_key",
+    "qdrant_api_key",
+}
 
 
 def _add_service_context(
@@ -14,6 +24,20 @@ def _add_service_context(
     settings = get_settings()
     event_dict.setdefault("service", "doc-research-agent")
     event_dict.setdefault("env", settings.APP_ENV)
+    event_dict.setdefault("version", os.getenv("APP_VERSION", "unknown"))
+    event_dict.setdefault("git_sha", os.getenv("GIT_SHA", "unknown"))
+    event_dict.setdefault("hostname", socket.gethostname())
+    return event_dict
+
+
+def _redact_sensitive(
+    logger: structlog.types.WrappedLogger,
+    method: str,
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
+    for key in list(event_dict.keys()):
+        if key.lower() in _SENSITIVE_KEYS:
+            event_dict[key] = "[REDACTED]"
     return event_dict
 
 
@@ -24,6 +48,7 @@ def configure_logging() -> None:
     shared_processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         _add_service_context,
+        _redact_sensitive,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso"),

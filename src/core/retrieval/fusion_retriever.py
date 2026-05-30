@@ -32,13 +32,11 @@ class FusionRetriever:
         try:
             self.bm25_indexer.build_index(documents)
         except Exception as e:
-            logger.error("bm25_index_build_failed", error=str(e), exc_info=True)
             raise FusionRetrievalError(f"BM25 index build failed: {e}") from e
 
         try:
             bm25_scores = self.bm25_indexer.get_scores(query)
         except Exception as e:
-            logger.error("bm25_scoring_failed", error=str(e), exc_info=True)
             raise FusionRetrievalError(f"BM25 scoring failed: {e}") from e
 
         try:
@@ -46,7 +44,6 @@ class FusionRetriever:
             bm25_min = float(np.min(bm25_array))
             bm25_max = float(np.max(bm25_array))
         except Exception as e:
-            logger.error("bm25_array_conversion_failed", error=str(e), exc_info=True)
             raise FusionRetrievalError(f"BM25 array conversion failed: {e}") from e
 
         if bm25_max > bm25_min:

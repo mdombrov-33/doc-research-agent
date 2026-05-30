@@ -18,7 +18,6 @@ def get_spacy_model():
         logger.info("spacy_model_loaded", model="en_core_web_sm")
         return nlp
     except OSError as exc:
-        logger.error("spacy_model_not_found", model="en_core_web_sm")
         raise ModelLoadError("spaCy model 'en_core_web_sm' not found") from exc
 
 
