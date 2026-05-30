@@ -3,6 +3,7 @@ import time
 from collections.abc import AsyncGenerator
 
 from fastapi.responses import StreamingResponse
+from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
 from src.core.agent import get_agent
@@ -16,7 +17,11 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
 
     _t = time.monotonic()
     refusal = await guardrails.check_input(request.question)
-    logger.info("node_complete", node="guardrails_input", duration_ms=round((time.monotonic() - _t) * 1000, 1))
+    logger.info(
+        "node_complete",
+        node="guardrails_input",
+        duration_ms=round((time.monotonic() - _t) * 1000, 1),
+    )
     if refusal:
         yield f"data: {json.dumps({'token': refusal, 'done': True})}\n\n"
         return
@@ -30,7 +35,7 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
         "model": request.model,
         "top_k": request.top_k,
     }
-    config = {"configurable": {"thread_id": request.session_id}}
+    config: RunnableConfig = {"configurable": {"thread_id": request.session_id}}
 
     accumulated: list[str] = []
     sources_count = 0
@@ -47,7 +52,7 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
                 kind == "on_chat_model_stream"
                 and event.get("metadata", {}).get("langgraph_node") == "generate"
             ):
-                token = event["data"]["chunk"].content
+                token = event["data"]["chunk"].content  # type: ignore[typeddict-item]
                 if token:
                     accumulated.append(token)
                     yield f"data: {json.dumps({'token': token})}\n\n"
@@ -76,13 +81,19 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
     full_response = "".join(accumulated)
     _t = time.monotonic()
     correction = await guardrails.check_output(full_response)
-    logger.info("node_complete", node="guardrails_output", duration_ms=round((time.monotonic() - _t) * 1000, 1))
+    logger.info(
+        "node_complete",
+        node="guardrails_output",
+        duration_ms=round((time.monotonic() - _t) * 1000, 1),
+    )  # noqa: E501
 
     latency_ms = time.monotonic() * 1000 - start_ms
     get_evaluation_tracker().record(
         QueryEvaluation(
             question=request.question,
-            retrieval_precision=sources_count / docs_retrieved_total if docs_retrieved_total else 0.0,
+            retrieval_precision=sources_count / docs_retrieved_total
+            if docs_retrieved_total
+            else 0.0,
             docs_retrieved=docs_retrieved_total,
             docs_relevant=sources_count,
             web_search_triggered=web_search_triggered,
@@ -93,7 +104,7 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
     if correction:
         yield f"data: {json.dumps({'token': correction, 'done': True, 'correction': True})}\n\n"
     else:
-        yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'sources': sources_meta, 'session_id': request.session_id})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'sources': sources_meta, 'session_id': request.session_id})}\n\n"  # noqa: E501
 
 
 async def handle_stream(request: QueryRequest) -> StreamingResponse:
