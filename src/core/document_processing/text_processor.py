@@ -1,6 +1,7 @@
 import asyncio
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 import aiofiles
 import fitz  # type: ignore[import-untyped]  # pymupdf
@@ -40,7 +41,7 @@ class TextExtractor:
         pages = []
         with fitz.open(file_path) as pdf:
             for page in pdf:
-                page_text: str = page.get_text("text")
+                page_text = cast(str, page.get_text("text"))
                 if page_text.strip():
                     pages.append(page_text)
         text = "\n\n".join(pages)
