@@ -61,9 +61,13 @@ RAG system with LangGraph state machine, hybrid search, SSE streaming, and LLM-b
                         │  (parallel fan-in)
                         ▼
                  ┌─────────────┐
-                 │ Grade Docs  │ (Batch LLM: relevant?)
-                 └──────┬──────┘
-                        │
+                 │ Grade Docs  │ ◄──────┐ (Batch LLM: relevant?)
+                 └──────┬──────┘        │
+                        │               │ <2 relevant
+                        │               │ & web not yet tried
+                        │               │
+                        ├───────────────┘
+                        │  (fallback to WebSearch)
                         ▼
                    ┌──────────┐
                    │ Generate │ (Stream answer via SSE)
@@ -80,7 +84,7 @@ RAG system with LangGraph state machine, hybrid search, SSE streaming, and LLM-b
 - **Router**: LLM classifies query type and rewrites it for semantic search. If web search is needed, both branches run in parallel.
 - **Retrieve**: Always runs. Hybrid search (60% vector similarity + 40% BM25 keyword), top-5 results.
 - **WebSearch**: Runs in parallel with Retrieve when router flags `web_search=true`.
-- **Grade Docs**: Batch LLM grading over the merged result set from both sources.
+- **Grade Docs**: Batch LLM grading over the merged result set from both sources. If fewer than 2 docs pass and web search hasn't run yet, loops back to WebSearch as a fallback.
 - **Generate**: Synthesize answer from graded documents, stream tokens via SSE.
 
 ## How It Works
@@ -100,7 +104,7 @@ Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedd
 **Router Node:**
 
 - Single LLM call: classifies as `vectorstore` or `websearch` AND rewrites query for semantic search
-- Explicit phrases ("search web", "check online") override to web search path
+- Prompt instructs the model to route explicit phrases ("search web", "check online") to the web search path (best-effort, not a hard override)
 
 **Retrieve Node (Hybrid Search):**
 

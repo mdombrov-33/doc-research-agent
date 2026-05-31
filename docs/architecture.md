@@ -41,7 +41,7 @@ Guardrails (output check)
 ## Node by node
 
 **Router**
-- Detects if the query needs recent/web information (keyword match → LLM confirmation)
+- Single structured-output LLM call decides if the query needs recent/web information
 - Rewrites the query into a search-optimized phrase
 - Returns `web_search: True/False` — determines whether web search runs in parallel
 - Resets `raw_documents` state so previous turn's docs don't bleed in
