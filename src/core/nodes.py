@@ -86,16 +86,21 @@ def retrieve_node(state: AgentState) -> dict[str, Any]:
             "score_mean": round(sum(vector_scores) / len(vector_scores), 4),
         }
 
-    non_empty_items = [item for item in doc_items if item["content"].strip()]
-    empty_filtered = len(doc_items) - len(non_empty_items)
+    paired = [
+        (item, score)
+        for item, score in zip(doc_items, vector_scores)
+        if item["content"].strip()
+    ]
+    empty_filtered = len(doc_items) - len(paired)
     if empty_filtered:
-        doc_items = non_empty_items
+        doc_items = [item for item, _ in paired]
+        vector_scores = [score for _, score in paired]
 
     if doc_items:
         contents = [item["content"] for item in doc_items]
         fusion = FusionRetriever(alpha=0.6)
         try:
-            fused_results = fusion.fuse_results(contents, vector_scores[: len(contents)], question)
+            fused_results = fusion.fuse_results(contents, vector_scores, question)
             doc_items = [doc_items[idx] for idx, score in fused_results]
             logger.info(
                 "docs_retrieved",

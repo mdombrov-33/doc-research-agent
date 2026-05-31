@@ -70,7 +70,9 @@ async def _token_generator(request: QueryRequest) -> AsyncGenerator[str, None]:
                     }
                     for d in graded_docs
                 ]
-                web_search_triggered = output.get("web_search", False)
+                web_search_triggered = output.get("web_search_done", False) or output.get(
+                    "web_search", False
+                )
                 docs_retrieved_total = output.get("docs_retrieved_total", sources_count)
 
     except Exception as e:

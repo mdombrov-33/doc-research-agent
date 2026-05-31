@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from src.config import get_settings
 from src.core import prompts
+from src.core.constants import CLASSIFIER_MODEL
 from src.core.llm import get_llm
 from src.utils.logger import logger
 
@@ -25,7 +26,7 @@ class GradeDocuments(BaseModel):
 
 
 def route_and_rewrite(question: str, model: str | None = None) -> RouteAndRewrite:
-    llm = get_llm("openai/gpt-5.4-mini")
+    llm = get_llm(CLASSIFIER_MODEL)
     structured_llm = llm.with_structured_output(RouteAndRewrite)  # type: ignore[misc]
 
     messages = [
@@ -49,7 +50,7 @@ def grade_documents_batch(question: str, documents: list[str]) -> list[Literal["
     if not documents:
         return []
 
-    llm = get_llm("openai/gpt-5.4-mini")
+    llm = get_llm(CLASSIFIER_MODEL)
     structured_llm = llm.with_structured_output(GradeDocuments)  # type: ignore[misc]
 
     batch_messages: list[LanguageModelInput] = []
