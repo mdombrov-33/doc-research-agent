@@ -30,7 +30,7 @@ def _timed(name: str, fn: Callable) -> Callable:
 
 def router_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
-    result = route_and_rewrite(question, model=state.get("model"))
+    result = route_and_rewrite(question)
 
     web_search = result.datasource == "websearch"
 

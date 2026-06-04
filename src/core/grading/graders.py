@@ -25,7 +25,7 @@ class GradeDocuments(BaseModel):
     binary_score: Literal["yes", "no"] = Field(description="Relevance score 'yes' or 'no'")
 
 
-def route_and_rewrite(question: str, model: str | None = None) -> RouteAndRewrite:
+def route_and_rewrite(question: str) -> RouteAndRewrite:
     llm = get_llm(CLASSIFIER_MODEL)
     structured_llm = llm.with_structured_output(RouteAndRewrite)  # type: ignore[misc]
 
