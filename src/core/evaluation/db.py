@@ -1,7 +1,6 @@
 import sqlite3
 from pathlib import Path
 
-
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS eval_stats (
     id INTEGER PRIMARY KEY CHECK (id = 1),

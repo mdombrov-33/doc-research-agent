@@ -155,7 +155,8 @@ def main():
                             st.caption("🌐 Web Search")
                         else:
                             st.caption(
-                                f"📄 {s['filename']} · chunk {s['chunk_index']} · {s['chunk_length']} chars"
+                                f"📄 {s['filename']} · chunk {s['chunk_index']} · "
+                                f"{s['chunk_length']} chars"
                             )
 
         st.session_state.messages.append(
