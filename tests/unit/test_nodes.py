@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from qdrant_client import models
 
 from src.core import nodes
 from src.core.grading.graders import RouteAndRewrite
@@ -50,8 +51,15 @@ def test_entity_filter_none_for_empty():
 
 def test_entity_filter_builds_match_any():
     flt = nodes._entity_filter(["Acme", "Bob"])
-    assert flt is not None
-    assert flt.must[0].match.any == ["Acme", "Bob"]
+    expected = models.Filter(
+        must=[
+            models.FieldCondition(
+                key="metadata.entities",
+                match=models.MatchAny(any=["Acme", "Bob"]),
+            )
+        ]
+    )
+    assert flt == expected
 
 
 # --------------------------- retrieve_node ---------------------------
