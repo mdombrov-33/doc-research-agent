@@ -12,7 +12,7 @@ from qdrant_client.models import (
 )
 
 from src.config import get_settings
-from src.core.constants import SPARSE_VECTOR_NAME
+from src.constants import SPARSE_VECTOR_NAME
 from src.core.exceptions import EmbeddingConfigError
 from src.utils.logger import logger
 

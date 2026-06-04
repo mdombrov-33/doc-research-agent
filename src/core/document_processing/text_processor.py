@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import cast
 
 import aiofiles
-import fitz  # pymupdf
+import fitz  # pymupdf [import-untyped]
 import spacy
 from docx import Document as DocxDocument
 
