@@ -82,7 +82,7 @@ RAG system with LangGraph state machine, hybrid search, SSE streaming, and LLM-b
 **Node Descriptions:**
 
 - **Router**: LLM classifies query type and rewrites it for semantic search. If web search is needed, both branches run in parallel.
-- **Retrieve**: Always runs. Hybrid search (60% vector similarity + 40% BM25 keyword), top-5 results.
+- **Retrieve**: Always runs. Hybrid search — dense vector + BM25 sparse, fused with Reciprocal Rank Fusion (RRF) in Qdrant, top-k results.
 - **WebSearch**: Runs in parallel with Retrieve when router flags `web_search=true`.
 - **Grade Docs**: Batch LLM grading over the merged result set from both sources. If fewer than 2 docs pass and web search hasn't run yet, loops back to WebSearch as a fallback.
 - **Generate**: Synthesize answer from graded documents, stream tokens via SSE.
@@ -91,7 +91,7 @@ RAG system with LangGraph state machine, hybrid search, SSE streaming, and LLM-b
 
 ### 1. Document Upload & Processing
 
-Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedding-3-small` (1536 dimensions), and stored in Qdrant with metadata (filename, page numbers, chunk index).
+Documents (PDF, DOCX, TXT) are chunked with overlap, then stored in Qdrant with both a dense embedding (`text-embedding-3-small`, 1536 dimensions) and a BM25 sparse vector per chunk, alongside metadata (filename, page numbers, chunk index).
 
 ### 2. Query Flow
 
@@ -108,9 +108,10 @@ Documents (PDF, DOCX, TXT) are chunked with overlap, embedded using `text-embedd
 
 **Retrieve Node (Hybrid Search):**
 
-- Vector search: Qdrant cosine similarity (k=5)
-- BM25 search: Keyword-based ranking using spaCy tokenization
-- Fusion ranking: Weighted combination (60% vector, 40% BM25), scores normalized
+- Two independent retrievers over the full corpus, in a single Qdrant query:
+  - Dense vector: cosine similarity over `text-embedding-3-small` embeddings
+  - Sparse BM25: keyword ranking via a `langchain-sparse` vector with IDF computed server-side
+- Fusion: Reciprocal Rank Fusion (RRF) applied by Qdrant; returns the top-k fused chunks
 
 **Grade Documents Node:**
 
@@ -198,4 +199,4 @@ All metrics are displayed in the UI.
 
 ## Tech Stack
 
-**LangGraph**, **LangChain**, **Qdrant**, **FastAPI**, **OpenAI**, **PyMuPDF**, **BM25 + spaCy**, **Streamlit**, **Docker**
+**LangGraph**, **LangChain**, **Qdrant** (hybrid dense + BM25 sparse), **FastAPI**, **OpenAI**, **PyMuPDF**, **FastEmbed**, **spaCy**, **Streamlit**, **Docker**

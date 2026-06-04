@@ -47,10 +47,10 @@ Guardrails (output check)
 - Resets `raw_documents` state so previous turn's docs don't bleed in
 
 **Retrieve** (always runs)
-- Pulls top-k chunks from Qdrant via cosine similarity
-- Re-ranks using fusion: `score = 0.6 × vector + 0.4 × BM25`
-- BM25 index is built on the fly from retrieved chunks using spaCy tokenization
-- Both score arrays are normalized to [0,1] before blending
+- Single hybrid query to Qdrant runs two independent retrievers over the full corpus:
+  - Dense: cosine similarity over `text-embedding-3-small` embeddings
+  - Sparse: BM25 over a `langchain-sparse` vector, with IDF computed server-side
+- Qdrant fuses the two ranked lists with Reciprocal Rank Fusion (RRF) and returns the top-k
 
 **Web Search** (parallel with Retrieve when triggered)
 - Calls DuckDuckGo with the rewritten query
@@ -82,9 +82,9 @@ Key fields:
 
 ## Retrieval: why hybrid
 
-Pure vector search misses exact keyword matches. Pure BM25 misses semantic similarity. Fusion covers both — e.g. a query about "scaled dot-product attention" scores high on BM25 for the exact term and high on vector for semantic neighbors like "attention mechanism efficiency".
+Pure vector search misses exact keyword matches. Pure BM25 misses semantic similarity. Hybrid covers both — e.g. a query about "scaled dot-product attention" ranks high on BM25 for the exact term and high on vector for semantic neighbors like "attention mechanism efficiency".
 
-Alpha=0.6 weights vector slightly higher since semantic match is usually more important for document Q&A.
+Both retrievers run over the full corpus and their rankings are combined with Reciprocal Rank Fusion (RRF): each document scores `Σ 1/(k + rank_i)` across the lists it appears in. RRF needs no score normalization or weight tuning — it fuses on rank position alone, which is robust to the different score scales of cosine similarity vs BM25. Qdrant computes this server-side.
 
 ---
 

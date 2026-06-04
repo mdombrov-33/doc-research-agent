@@ -4,13 +4,11 @@ from typing import Any
 
 from src.config import get_settings
 from src.core import prompts
-from src.core.exceptions import FusionRetrievalError
 from src.core.grading.graders import (
     grade_documents_batch,
     route_and_rewrite,
 )
 from src.core.llm import get_llm
-from src.core.retrieval.fusion_retriever import FusionRetriever
 from src.core.state import AgentState
 from src.core.tools import get_vector_store_tool, get_web_search_tool
 from src.utils.logger import logger
@@ -24,7 +22,7 @@ def _timed(name: str, fn: Callable) -> Callable:
         result = fn(state)
         logger.info(
             "node_complete", node=name, duration_ms=round((time.monotonic() - start) * 1000, 1)
-        )  # noqa: E501
+        )
         return result
 
     return wrapper
@@ -57,13 +55,16 @@ def retrieve_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
     top_k = state.get("top_k") or 5
     vector_store = get_vector_store_tool()
+    # Hybrid search: dense + BM25 sparse, fused server-side by Qdrant (RRF).
     results = vector_store.similarity_search_with_score(question, k=top_k)
 
     doc_items = []
-    vector_scores = []
+    scores = []
 
     for doc, score in results:
         content = doc.page_content if hasattr(doc, "page_content") else str(doc)
+        if not content.strip():
+            continue
         metadata = doc.metadata if hasattr(doc, "metadata") else {}
         doc_items.append(
             {
@@ -74,58 +75,25 @@ def retrieve_node(state: AgentState) -> dict[str, Any]:
                 "source": "vectorstore",
             }
         )
-        vector_scores.append(float(score))
+        scores.append(float(score))
 
+    empty_filtered = len(results) - len(doc_items)
     docs_retrieved_total = len(doc_items)
 
     score_stats = {}
-    if vector_scores:
+    if scores:
         score_stats = {
-            "score_min": round(min(vector_scores), 4),
-            "score_max": round(max(vector_scores), 4),
-            "score_mean": round(sum(vector_scores) / len(vector_scores), 4),
+            "score_min": round(min(scores), 4),
+            "score_max": round(max(scores), 4),
+            "score_mean": round(sum(scores) / len(scores), 4),
         }
 
-    paired = [
-        (item, score)
-        for item, score in zip(doc_items, vector_scores)
-        if item["content"].strip()
-    ]
-    empty_filtered = len(doc_items) - len(paired)
-    if empty_filtered:
-        doc_items = [item for item, _ in paired]
-        vector_scores = [score for _, score in paired]
-
-    if doc_items:
-        contents = [item["content"] for item in doc_items]
-        fusion = FusionRetriever(alpha=0.6)
-        try:
-            fused_results = fusion.fuse_results(contents, vector_scores, question)
-            doc_items = [doc_items[idx] for idx, score in fused_results]
-            logger.info(
-                "docs_retrieved",
-                count=docs_retrieved_total,
-                empty_filtered=empty_filtered,
-                fusion_top_score=round(fused_results[0][1], 4),
-                **score_stats,
-            )
-        except FusionRetrievalError as e:
-            logger.info(
-                "docs_retrieved",
-                count=docs_retrieved_total,
-                empty_filtered=empty_filtered,
-                fusion="skipped",
-                fusion_reason=str(e),
-                **score_stats,
-            )
-    else:
-        logger.info(
-            "docs_retrieved",
-            count=docs_retrieved_total,
-            empty_filtered=empty_filtered,
-            fusion="skipped",
-            fusion_reason="no non-empty documents",
-        )
+    logger.info(
+        "docs_retrieved",
+        count=docs_retrieved_total,
+        empty_filtered=empty_filtered,
+        **score_stats,
+    )
 
     return {"raw_documents": doc_items, "docs_retrieved_total": docs_retrieved_total}
 

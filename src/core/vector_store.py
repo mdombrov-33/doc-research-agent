@@ -3,7 +3,12 @@ from functools import lru_cache
 from langchain_openai import OpenAIEmbeddings
 from pydantic import SecretStr
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import (
+    Distance,
+    Modifier,
+    SparseVectorParams,
+    VectorParams,
+)
 
 from src.config import get_settings
 from src.core.exceptions import EmbeddingConfigError
@@ -40,6 +45,10 @@ def get_embeddings() -> OpenAIEmbeddings:
     )
 
 
+# Must match the sparse vector name used by langchain_qdrant's QdrantVectorStore.
+SPARSE_VECTOR_NAME = "langchain-sparse"
+
+
 def ensure_collection_exists() -> None:
     client = get_qdrant_client()
 
@@ -54,5 +63,9 @@ def ensure_collection_exists() -> None:
             size=settings.EMBEDDING_DIMENSION,
             distance=Distance.COSINE,
         ),
+        sparse_vectors_config={
+            # modifier=IDF lets Qdrant compute BM25 IDF from corpus statistics server-side.
+            SPARSE_VECTOR_NAME: SparseVectorParams(modifier=Modifier.IDF),
+        },
     )
     logger.info("qdrant_collection_created", collection=settings.QDRANT_COLLECTION_NAME)

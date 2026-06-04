@@ -32,7 +32,3 @@ class EmbeddingConfigError(VectorStoreError):
 
 class RetrievalError(DocResearchError):
     pass
-
-
-class FusionRetrievalError(RetrievalError):
-    pass

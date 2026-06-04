@@ -1,23 +1,19 @@
 import uuid
 from pathlib import Path
 
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from qdrant_client.models import PointStruct
 
-from src.config import get_settings
 from src.core.document_processing.text_processor import TextExtractor, get_spacy_model
 from src.core.exceptions import EmptyDocumentError
-from src.core.vector_store import get_embeddings, get_qdrant_client
+from src.core.retrieval.search import get_vector_store
 from src.utils.logger import logger
-
-settings = get_settings()
 
 
 class DocumentProcessor:
     def __init__(self):
         self.extractor = TextExtractor()
-        self.embeddings = get_embeddings()
-        self.qdrant_client = get_qdrant_client()
+        self.vector_store = get_vector_store()
         self.nlp = get_spacy_model()
 
     async def process_and_store(self, file_path: str, filename: str) -> dict:
@@ -30,17 +26,13 @@ class DocumentProcessor:
         chunks = self._chunk_text(raw_text)
         enriched_chunks = self._enrich_chunks(chunks, filename)
 
-        chunk_texts = [chunk["text"] for chunk in enriched_chunks]
-        vectors = [self.embeddings.embed_query(text) for text in chunk_texts]
-
-        self._store_in_qdrant(document_id, filename, enriched_chunks, vectors)
+        self._store_in_qdrant(document_id, filename, enriched_chunks)
 
         logger.info(
             "document_processed",
             document_id=document_id,
             filename=filename,
             chunks=len(chunks),
-            vectors=len(vectors),
         )
 
         return {
@@ -99,13 +91,11 @@ class DocumentProcessor:
         document_id: str,
         filename: str,
         enriched_chunks: list[dict],
-        vectors: list[list[float]],
     ):
-        points = []
-        for chunk_data, vector in zip(enriched_chunks, vectors):
-            payload = {
-                "page_content": chunk_data["text"],
-                "metadata": {
+        documents = [
+            Document(
+                page_content=chunk_data["text"],
+                metadata={
                     "document_id": document_id,
                     "filename": filename,
                     "chunk_index": chunk_data["chunk_index"],
@@ -115,14 +105,9 @@ class DocumentProcessor:
                     "keywords": chunk_data["keywords"],
                     "file_extension": chunk_data["file_extension"],
                 },
-            }
-
-            points.append(
-                PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=vector,
-                    payload=payload,
-                )
             )
+            for chunk_data in enriched_chunks
+        ]
 
-        self.qdrant_client.upsert(collection_name=settings.QDRANT_COLLECTION_NAME, points=points)
+        # add_documents computes both the dense (OpenAI) and sparse (BM25) vectors.
+        self.vector_store.add_documents(documents)
