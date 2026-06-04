@@ -8,7 +8,7 @@ from src.api.schemas import HealthResponse
 from src.config import Settings, get_settings
 from src.core.agent import build_graph
 from src.core.document_processing.text_processor import get_spacy_model
-from src.core.evaluation.metrics import EvaluationTracker
+from src.core.monitoring.tracker import MetricsTracker
 from src.core.retrieval.search import get_vector_store
 from src.core.vector_store import ensure_collection_exists
 from src.guardrails.guardrails_wrapper import GuardrailsWrapper
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     app.state.nlp = get_spacy_model()
     app.state.agent = build_graph()
     app.state.guardrails = GuardrailsWrapper()
-    app.state.eval_tracker = EvaluationTracker(db_path=settings.METRICS_DB_PATH)
+    app.state.metrics_tracker = MetricsTracker(db_path=settings.METRICS_DB_PATH)
 
     logger.info("startup_complete")
     yield

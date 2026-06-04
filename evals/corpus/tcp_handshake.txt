@@ -1,0 +1,18 @@
+The Transmission Control Protocol, or TCP, establishes a reliable connection between two
+hosts before any application data is exchanged. This setup procedure is known as the
+three-way handshake, because it involves three messages passed between the client and the
+server.
+
+The handshake begins when the client sends a segment with the SYN flag set, short for
+synchronize. This first message proposes an initial sequence number that the client will
+use to order the bytes it sends. The server replies with a segment that has both the SYN
+and ACK flags set: the ACK acknowledges the client's sequence number, and the SYN carries
+the server's own initial sequence number. Finally, the client responds with an ACK segment
+that acknowledges the server's sequence number. After this third message, the connection is
+established and both sides may send data.
+
+Sequence and acknowledgment numbers let TCP detect lost or out-of-order segments and
+retransmit them, which is what makes the protocol reliable. When the conversation is over,
+the connection is closed with a separate exchange of FIN and ACK segments. The deliberate
+handshake is also why establishing a TCP connection adds a full round trip of latency
+before any useful data can flow.

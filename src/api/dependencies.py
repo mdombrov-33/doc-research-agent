@@ -5,7 +5,7 @@ from langchain_qdrant import QdrantVectorStore
 from spacy.language import Language
 
 from src.config import Settings, get_settings
-from src.core.evaluation.metrics import EvaluationTracker
+from src.core.monitoring.tracker import MetricsTracker
 from src.guardrails.guardrails_wrapper import GuardrailsWrapper
 
 __all__ = [
@@ -15,7 +15,7 @@ __all__ = [
     "get_nlp",
     "get_agent",
     "get_guardrails",
-    "get_eval_tracker",
+    "get_metrics_tracker",
 ]
 
 
@@ -35,5 +35,5 @@ def get_guardrails(request: Request) -> GuardrailsWrapper:
     return request.app.state.guardrails
 
 
-def get_eval_tracker(request: Request) -> EvaluationTracker:
-    return request.app.state.eval_tracker
+def get_metrics_tracker(request: Request) -> MetricsTracker:
+    return request.app.state.metrics_tracker

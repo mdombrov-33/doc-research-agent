@@ -4,7 +4,7 @@ from typing import Any
 
 
 @dataclass
-class QueryEvaluation:
+class QueryMetrics:
     question: str
     retrieval_precision: float
     docs_retrieved: int
@@ -13,7 +13,13 @@ class QueryEvaluation:
     latency_ms: float
 
 
-class EvaluationTracker:
+class MetricsTracker:
+    """Online/runtime telemetry — aggregates live query stats during serving.
+
+    Distinct from the offline retrieval evaluation in evals/, which scores
+    retrieval quality against a golden set.
+    """
+
     def __init__(self, db_path: str | None = None):
         self.total_queries = 0
         self.web_search_triggered = 0
@@ -24,9 +30,9 @@ class EvaluationTracker:
         self._db: Any = None
 
         if db_path:
-            from src.core.evaluation.db import EvalDB
+            from src.core.monitoring.db import MetricsDB
 
-            self._db = EvalDB(db_path)
+            self._db = MetricsDB(db_path)
             saved = self._db.load()
             if saved:
                 self.total_queries = saved["total_queries"]
@@ -35,7 +41,7 @@ class EvaluationTracker:
                 self.total_docs_relevant = saved["total_docs_relevant"]
                 self.total_latency_ms = saved["total_latency_ms"]
 
-    def record(self, evaluation: QueryEvaluation) -> None:
+    def record(self, evaluation: QueryMetrics) -> None:
         with self._lock:
             self.total_queries += 1
 

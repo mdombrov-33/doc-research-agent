@@ -1,0 +1,16 @@
+{"question": "How do plants convert sunlight into chemical energy?", "relevant_filenames": ["photosynthesis.txt"], "expected_route": "vectorstore"}
+{"question": "How do mitochondria release energy from glucose to make ATP?", "relevant_filenames": ["cellular_respiration.txt"], "expected_route": "vectorstore"}
+{"question": "How did Roman aqueducts keep water flowing across deep valleys?", "relevant_filenames": ["roman_aqueducts.txt"], "expected_route": "vectorstore"}
+{"question": "Why was the Great Wall of China built and how did its towers relay warnings?", "relevant_filenames": ["great_wall.txt"], "expected_route": "vectorstore"}
+{"question": "What are the three messages of the TCP three-way handshake?", "relevant_filenames": ["tcp_handshake.txt"], "expected_route": "vectorstore"}
+{"question": "Why does UDP have lower latency than TCP?", "relevant_filenames": ["udp_protocol.txt"], "expected_route": "vectorstore"}
+{"question": "How does a DNS resolver find the IP address for a domain name?", "relevant_filenames": ["dns_resolution.txt"], "expected_route": "vectorstore"}
+{"question": "What happens during first crack when roasting coffee beans?", "relevant_filenames": ["coffee_roasting.txt"], "expected_route": "vectorstore"}
+{"question": "Why does grind size matter so much for espresso extraction?", "relevant_filenames": ["espresso_extraction.txt"], "expected_route": "vectorstore"}
+{"question": "Who discovered the four large moons of Jupiter and when?", "relevant_filenames": ["jupiter_moons.txt"], "expected_route": "vectorstore"}
+{"question": "What are Saturn's rings made of and how thin are they?", "relevant_filenames": ["saturn_rings.txt"], "expected_route": "vectorstore"}
+{"question": "What happens at convergent plate boundaries?", "relevant_filenames": ["plate_tectonics.txt"], "expected_route": "vectorstore"}
+{"question": "How do photosynthesis and cellular respiration form a single energy cycle?", "relevant_filenames": ["photosynthesis.txt", "cellular_respiration.txt"], "expected_route": "vectorstore"}
+{"question": "How do the transport protocols TCP and UDP differ in reliability and speed?", "relevant_filenames": ["tcp_handshake.txt", "udp_protocol.txt"], "expected_route": "vectorstore"}
+{"question": "How do roasting and extraction together shape the flavor of an espresso?", "relevant_filenames": ["coffee_roasting.txt", "espresso_extraction.txt"], "expected_route": "vectorstore"}
+{"question": "What makes the gas giants Jupiter and Saturn notable to observers?", "relevant_filenames": ["jupiter_moons.txt", "saturn_rings.txt"], "expected_route": "vectorstore"}

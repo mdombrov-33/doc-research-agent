@@ -1,0 +1,18 @@
+The User Datagram Protocol, or UDP, is one of the core transport-layer protocols of the
+internet, sitting alongside TCP. Unlike TCP, UDP is connectionless: it sends independent
+packets called datagrams without first establishing a connection and without any handshake.
+There is no built-in mechanism to confirm that a datagram arrived, to retransmit lost data,
+or to put packets back into order.
+
+This stripped-down design is a deliberate trade-off. Because UDP skips connection setup,
+acknowledgments, and retransmission, it has very low overhead and latency. That makes it the
+right choice for applications where speed matters more than perfect reliability, and where a
+late packet is worse than a missing one. Live video and voice calls, online games, and DNS
+lookups all commonly run over UDP; a momentary dropped frame in a video call is preferable to
+the stall that waiting for a retransmission would cause.
+
+Applications that use UDP but still need some reliability must build it themselves on top of
+the protocol. UDP simply provides ports, so that multiple programs on the same machine can
+send and receive datagrams, and a lightweight checksum to detect corruption. Everything
+else is left to the application. In short, TCP favors reliable, ordered delivery, while UDP
+favors low latency and simplicity.

@@ -1,0 +1,18 @@
+Cellular respiration is the process cells use to release the energy stored in food and
+convert it into a usable form. It is, in a sense, the mirror image of photosynthesis: where
+photosynthesis builds glucose and gives off oxygen, respiration breaks glucose down and
+consumes oxygen. Most of the action happens inside organelles called mitochondria, often
+described as the powerhouses of the cell.
+
+The process unfolds in three main stages. Glycolysis, in the cell's cytoplasm, splits a
+molecule of glucose into two molecules of pyruvate and yields a small amount of energy. The
+pyruvate then enters the mitochondria, where the citric acid cycle, also called the Krebs
+cycle, strips away high-energy electrons and releases carbon dioxide. Finally, those
+electrons pass along the electron transport chain, which uses their energy to pump protons
+and drive the production of ATP, the molecule that powers almost everything a cell does.
+
+The overall reaction combines glucose and oxygen to produce carbon dioxide, water, and a
+large amount of ATP. Because it relies on oxygen, this full pathway is called aerobic
+respiration. When oxygen is scarce, cells fall back on fermentation, a much less efficient
+route that produces lactic acid or alcohol instead. Together, photosynthesis and respiration
+form the energy cycle that sustains nearly all life on Earth.

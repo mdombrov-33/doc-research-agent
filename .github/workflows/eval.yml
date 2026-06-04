@@ -1,0 +1,52 @@
+name: RAG Eval
+
+# Alarm for "did a change break retrieval?". Retrieval + embedding checks only — deterministic and cheap (no generation, no
+# LLM judges), so it never flakes. The expensive, noisy generation eval is local: make eval.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: rag eval gate
+    runs-on: ubuntu-latest
+
+    env:
+      APP_ENV: test
+      QDRANT_MODE: local
+      QDRANT_LOCAL_URL: http://localhost:6333
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    services:
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:6333/healthz; then
+              echo "Qdrant is healthy!"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Error: Qdrant failed to start within 30 seconds"
+          exit 1
+
+      - name: Run retrieval eval
+        run: uv run python -m evals.run_eval

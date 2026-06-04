@@ -14,9 +14,6 @@ wheels/
 
 # Uploads directory (user-uploaded documents)
 uploads/
-*.pdf
-*.docx
-*.txt
 
 # IDE
 .vscode/

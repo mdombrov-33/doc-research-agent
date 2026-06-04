@@ -7,8 +7,8 @@ from spacy.language import Language
 from src.api.dependencies import (
     Settings,
     get_agent,
-    get_eval_tracker,
     get_guardrails,
+    get_metrics_tracker,
     get_nlp,
     get_settings,
     get_vector_store,
@@ -16,7 +16,7 @@ from src.api.dependencies import (
 from src.api.handlers.stream import handle_stream
 from src.api.handlers.upload import handle_upload
 from src.api.schemas import QueryRequest, UploadResponse
-from src.core.evaluation.metrics import EvaluationTracker
+from src.core.monitoring.tracker import MetricsTracker
 from src.guardrails.guardrails_wrapper import GuardrailsWrapper
 
 router = APIRouter()
@@ -38,13 +38,13 @@ async def stream_query(
     payload: QueryRequest,
     guardrails: GuardrailsWrapper = Depends(get_guardrails),
     agent: Any = Depends(get_agent),
-    tracker: EvaluationTracker = Depends(get_eval_tracker),
+    tracker: MetricsTracker = Depends(get_metrics_tracker),
 ):
     return await handle_stream(payload, guardrails, agent, tracker)
 
 
-@router.get("/evaluation/stats")
-async def get_evaluation_stats(
-    tracker: EvaluationTracker = Depends(get_eval_tracker),
+@router.get("/monitoring/stats")
+async def get_monitoring_stats(
+    tracker: MetricsTracker = Depends(get_metrics_tracker),
 ) -> dict[str, Any]:
     return tracker.get_stats()

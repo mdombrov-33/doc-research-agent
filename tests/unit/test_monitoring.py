@@ -1,6 +1,6 @@
 import pytest
 
-from src.core.evaluation.metrics import EvaluationTracker, QueryEvaluation
+from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 
 
 def _make_eval(
@@ -8,8 +8,8 @@ def _make_eval(
     docs_relevant: int = 4,
     web_search_triggered: bool = False,
     latency_ms: float = 1000.0,
-) -> QueryEvaluation:
-    return QueryEvaluation(
+) -> QueryMetrics:
+    return QueryMetrics(
         question="test question",
         retrieval_precision=docs_relevant / docs_retrieved if docs_retrieved else 0.0,
         docs_retrieved=docs_retrieved,
@@ -20,7 +20,7 @@ def _make_eval(
 
 
 def test_empty_tracker():
-    tracker = EvaluationTracker()
+    tracker = MetricsTracker()
     stats = tracker.get_stats()
     assert stats["total_queries"] == 0
     assert stats["avg_retrieval_precision"] == 0.0
@@ -28,7 +28,7 @@ def test_empty_tracker():
 
 
 def test_single_query_stats():
-    tracker = EvaluationTracker()
+    tracker = MetricsTracker()
     tracker.record(_make_eval(docs_retrieved=5, docs_relevant=4, latency_ms=2000.0))
     stats = tracker.get_stats()
     assert stats["total_queries"] == 1
@@ -39,7 +39,7 @@ def test_single_query_stats():
 
 
 def test_retrieval_precision_across_multiple_queries():
-    tracker = EvaluationTracker()
+    tracker = MetricsTracker()
     tracker.record(_make_eval(docs_retrieved=4, docs_relevant=4))  # precision 1.0
     tracker.record(_make_eval(docs_retrieved=4, docs_relevant=2))  # precision 0.5
     stats = tracker.get_stats()
@@ -48,7 +48,7 @@ def test_retrieval_precision_across_multiple_queries():
 
 
 def test_web_search_rate():
-    tracker = EvaluationTracker()
+    tracker = MetricsTracker()
     tracker.record(_make_eval(web_search_triggered=True))
     tracker.record(_make_eval(web_search_triggered=True))
     tracker.record(_make_eval(web_search_triggered=False))
@@ -57,7 +57,7 @@ def test_web_search_rate():
 
 
 def test_avg_latency():
-    tracker = EvaluationTracker()
+    tracker = MetricsTracker()
     tracker.record(_make_eval(latency_ms=1000.0))
     tracker.record(_make_eval(latency_ms=3000.0))
     stats = tracker.get_stats()
@@ -65,7 +65,7 @@ def test_avg_latency():
 
 
 def test_zero_docs_retrieved_precision():
-    tracker = EvaluationTracker()
+    tracker = MetricsTracker()
     tracker.record(_make_eval(docs_retrieved=0, docs_relevant=0))
     stats = tracker.get_stats()
     assert stats["avg_retrieval_precision"] == 0.0

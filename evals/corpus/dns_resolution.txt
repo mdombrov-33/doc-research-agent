@@ -1,0 +1,17 @@
+The Domain Name System, or DNS, is the part of the internet that translates human-friendly
+domain names like example.com into the numeric IP addresses that computers use to find one
+another. It works like a distributed directory, and looking up a name is called resolution.
+
+When a program needs the address for a domain, it asks a recursive resolver, often run by an
+internet provider. If the resolver does not already have the answer cached, it walks the DNS
+hierarchy on the program's behalf. It first asks a root server, which points it toward the
+servers responsible for the top-level domain such as .com. Those servers point it toward the
+authoritative name server for the specific domain, which finally returns the IP address. The
+resolver caches the result for a period set by the record's time-to-live, so repeated lookups
+are fast and do not repeat the whole journey.
+
+Most DNS queries travel over UDP because they are small and speed matters; the protocol
+falls back to TCP for larger responses. DNS records come in several types: an A record maps a
+name to an IPv4 address, an AAAA record to an IPv6 address, an MX record directs email, and a
+CNAME record makes one name an alias for another. Because nearly every connection begins with
+a name lookup, DNS is one of the most heavily used services on the internet.

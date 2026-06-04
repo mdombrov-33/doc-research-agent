@@ -1,4 +1,4 @@
-.PHONY: help install dev build up down logs shell test lint format clean deploy destroy
+.PHONY: help install dev build up down logs shell test eval eval-retrieval lint format clean deploy destroy
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 APP_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
@@ -38,6 +38,12 @@ shell: ## Open shell in agent-api container
 
 test: ## Run tests
 	uv run pytest
+
+eval: ## Run the full RAG eval: retrieval + generation + judges (needs Qdrant + API keys)
+	uv run python -m evals.run_eval --full
+
+eval-retrieval: ## Run retrieval + embedding checks only, no LLM (what CI runs on push to main)
+	uv run python -m evals.run_eval
 
 lint: ## Run linter
 	uv run ruff check .

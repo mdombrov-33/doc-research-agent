@@ -38,7 +38,7 @@ _MIGRATE = [
 ]
 
 
-class EvalDB:
+class MetricsDB:
     def __init__(self, db_path: str) -> None:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db_path = db_path

@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
-from src.core.evaluation.metrics import EvaluationTracker, QueryEvaluation
+from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 from src.guardrails.guardrails_wrapper import GuardrailsWrapper
 from src.utils.logger import logger
 
@@ -16,7 +16,7 @@ async def _token_generator(
     request: QueryRequest,
     guardrails: GuardrailsWrapper,
     agent: Any,
-    tracker: EvaluationTracker,
+    tracker: MetricsTracker,
 ) -> AsyncGenerator[str, None]:
     _t = time.monotonic()
     refusal = await guardrails.check_input(request.question)
@@ -93,7 +93,7 @@ async def _token_generator(
 
     latency_ms = time.monotonic() * 1000 - start_ms
     tracker.record(
-        QueryEvaluation(
+        QueryMetrics(
             question=request.question,
             retrieval_precision=sources_count / docs_retrieved_total
             if docs_retrieved_total
@@ -115,7 +115,7 @@ async def handle_stream(
     request: QueryRequest,
     guardrails: GuardrailsWrapper,
     agent: Any,
-    tracker: EvaluationTracker,
+    tracker: MetricsTracker,
 ) -> StreamingResponse:
     return StreamingResponse(
         _token_generator(request, guardrails, agent, tracker),

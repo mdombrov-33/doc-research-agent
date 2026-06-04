@@ -1,0 +1,18 @@
+Photosynthesis is the process by which green plants, algae, and some bacteria convert
+light energy into chemical energy stored in sugars. It takes place mainly in the leaves,
+inside organelles called chloroplasts. The green pigment chlorophyll absorbs light most
+strongly in the blue and red parts of the spectrum and reflects green light, which is why
+most leaves appear green.
+
+The process has two linked stages. In the light-dependent reactions, chlorophyll in the
+thylakoid membranes captures photons and uses that energy to split water molecules into
+oxygen, protons, and electrons. This step releases oxygen as a by-product and produces the
+energy carriers ATP and NADPH. In the second stage, the Calvin cycle, those carriers drive
+the fixation of carbon dioxide from the air into three-carbon sugars, which the plant later
+combines into glucose and other carbohydrates.
+
+Overall, photosynthesis converts carbon dioxide and water, in the presence of sunlight,
+into glucose and oxygen. The glucose fuels the plant's growth and respiration, while the
+oxygen sustains most life on Earth. The rate of photosynthesis depends on light intensity,
+carbon dioxide concentration, and temperature; when any one of these is in short supply it
+becomes the limiting factor that caps the overall rate.
