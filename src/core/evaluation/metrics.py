@@ -25,6 +25,7 @@ class EvaluationTracker:
 
         if db_path:
             from src.core.evaluation.db import EvalDB
+
             self._db = EvalDB(db_path)
             saved = self._db.load()
             if saved:
@@ -90,5 +91,6 @@ def get_evaluation_tracker() -> EvaluationTracker:
         with _tracker_lock:
             if _tracker_instance is None:
                 from src.config import get_settings
+
                 _tracker_instance = EvaluationTracker(db_path=get_settings().METRICS_DB_PATH)
     return _tracker_instance
