@@ -5,7 +5,9 @@ from src.main import app
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client():
     # Plain TestClient (no context manager) does not run the lifespan handler,
-    # so ensure_collection_exists / Qdrant is never touched.
-    return TestClient(app)
+    # so app.state is never populated and Qdrant is never touched - tests inject
+    # their own resources via app.dependency_overrides (cleared after each test).
+    yield TestClient(app)
+    app.dependency_overrides.clear()

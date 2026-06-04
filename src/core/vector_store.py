@@ -15,11 +15,10 @@ from src.config import get_settings
 from src.core.exceptions import EmbeddingConfigError
 from src.utils.logger import logger
 
-settings = get_settings()
-
 
 @lru_cache
 def get_qdrant_client() -> QdrantClient:
+    settings = get_settings()
     if settings.QDRANT_MODE == "local":
         logger.info("qdrant_connecting", mode="local", url=settings.qdrant_url)
         return QdrantClient(url=settings.qdrant_url)
@@ -36,6 +35,7 @@ def get_qdrant_client() -> QdrantClient:
 
 
 def get_embeddings() -> OpenAIEmbeddings:
+    settings = get_settings()
     api_key = settings.OPENAI_API_KEY
     if not api_key:
         raise EmbeddingConfigError("LLM API key not configured")
@@ -51,6 +51,7 @@ SPARSE_VECTOR_NAME = "langchain-sparse"
 
 
 def ensure_collection_exists() -> None:
+    settings = get_settings()
     client = get_qdrant_client()
 
     if client.collection_exists(settings.QDRANT_COLLECTION_NAME):

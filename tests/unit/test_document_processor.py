@@ -2,7 +2,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.core.document_processing import document_processor as dp_module
 from src.core.document_processing.document_processor import DocumentProcessor
 from src.core.exceptions import EmptyDocumentError
 
@@ -17,15 +16,11 @@ class _FakeDoc:
 
 
 @pytest.fixture
-def processor(monkeypatch):
-    """A DocumentProcessor with the Qdrant and spaCy boundaries mocked out."""
+def processor():
+    """A DocumentProcessor with the Qdrant and spaCy boundaries injected as mocks."""
     vector_store = MagicMock()
     fake_nlp = MagicMock(return_value=_FakeDoc())
-    monkeypatch.setattr(dp_module, "get_vector_store", lambda: vector_store)
-    monkeypatch.setattr(dp_module, "get_spacy_model", lambda: fake_nlp)
-    proc = DocumentProcessor()
-    proc.vector_store = vector_store
-    return proc
+    return DocumentProcessor(vector_store, fake_nlp)
 
 
 def test_chunk_text_drops_short_chunks(processor):

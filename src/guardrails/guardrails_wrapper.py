@@ -56,13 +56,3 @@ class GuardrailsWrapper:
             logger.error("guardrails_output_check_failed", error=str(e))
 
         return None
-
-
-_instance: GuardrailsWrapper | None = None
-
-
-def get_guardrails() -> GuardrailsWrapper:
-    global _instance
-    if _instance is None:
-        _instance = GuardrailsWrapper()
-    return _instance

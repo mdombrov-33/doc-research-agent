@@ -4,16 +4,21 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, UploadFile
+from langchain_qdrant import QdrantVectorStore
+from spacy.language import Language
 
-from src.config import get_settings
+from src.config import Settings
 from src.core.document_processing.document_processor import DocumentProcessor
 from src.core.exceptions import DocumentProcessingError, EmptyDocumentError
 from src.utils.logger import logger
 
-settings = get_settings()
 
-
-async def handle_upload(file: UploadFile) -> dict[str, Any]:
+async def handle_upload(
+    file: UploadFile,
+    settings: Settings,
+    vector_store: QdrantVectorStore,
+    nlp: Language,
+) -> dict[str, Any]:
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
@@ -37,7 +42,7 @@ async def handle_upload(file: UploadFile) -> dict[str, Any]:
         with open(file_path, "wb") as f:
             f.write(content)
 
-        processor = DocumentProcessor()
+        processor = DocumentProcessor(vector_store, nlp)
         result = await processor.process_and_store(str(file_path), file.filename)
         logger.info("upload_complete", **result)
         return result

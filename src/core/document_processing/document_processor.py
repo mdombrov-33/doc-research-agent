@@ -2,19 +2,20 @@ import uuid
 from pathlib import Path
 
 from langchain_core.documents import Document
+from langchain_qdrant import QdrantVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from spacy.language import Language
 
-from src.core.document_processing.text_processor import TextExtractor, get_spacy_model
+from src.core.document_processing.text_processor import TextExtractor
 from src.core.exceptions import EmptyDocumentError
-from src.core.retrieval.search import get_vector_store
 from src.utils.logger import logger
 
 
 class DocumentProcessor:
-    def __init__(self):
+    def __init__(self, vector_store: QdrantVectorStore, nlp: Language):
         self.extractor = TextExtractor()
-        self.vector_store = get_vector_store()
-        self.nlp = get_spacy_model()
+        self.vector_store = vector_store
+        self.nlp = nlp
 
     async def process_and_store(self, file_path: str, filename: str) -> dict:
         document_id = str(uuid.uuid4())

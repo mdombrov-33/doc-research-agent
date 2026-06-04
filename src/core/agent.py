@@ -1,5 +1,3 @@
-from functools import lru_cache
-
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
@@ -44,8 +42,3 @@ def build_graph():
     app = workflow.compile(checkpointer=MemorySaver())
     logger.info("agent_graph_compiled")
     return app
-
-
-@lru_cache(maxsize=1)
-def get_agent():
-    return build_graph()

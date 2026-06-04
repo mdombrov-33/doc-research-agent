@@ -4,7 +4,6 @@ from typing import Any
 
 from qdrant_client import models
 
-from src.config import get_settings
 from src.core import prompts
 from src.core.document_processing.text_processor import extract_entities
 from src.core.grading.graders import (
@@ -15,8 +14,6 @@ from src.core.llm import get_llm
 from src.core.state import AgentState
 from src.core.tools import get_vector_store_tool, get_web_search_tool
 from src.utils.logger import logger
-
-settings = get_settings()
 
 
 def _timed(name: str, fn: Callable) -> Callable:

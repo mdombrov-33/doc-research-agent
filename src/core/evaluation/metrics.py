@@ -79,18 +79,3 @@ class EvaluationTracker:
                 ),
                 "avg_latency_ms": self.total_latency_ms / self.total_queries,
             }
-
-
-_tracker_instance: EvaluationTracker | None = None
-_tracker_lock = Lock()
-
-
-def get_evaluation_tracker() -> EvaluationTracker:
-    global _tracker_instance
-    if _tracker_instance is None:
-        with _tracker_lock:
-            if _tracker_instance is None:
-                from src.config import get_settings
-
-                _tracker_instance = EvaluationTracker(db_path=get_settings().METRICS_DB_PATH)
-    return _tracker_instance

@@ -6,11 +6,10 @@ from src.config import get_settings
 from src.core.vector_store import SPARSE_VECTOR_NAME, get_embeddings, get_qdrant_client
 from src.utils.logger import logger
 
-settings = get_settings()
-
 
 @lru_cache(maxsize=1)
 def get_vector_store() -> QdrantVectorStore:
+    settings = get_settings()
     logger.info("vector_store_initialized", collection=settings.QDRANT_COLLECTION_NAME)
 
     vector_store = QdrantVectorStore(

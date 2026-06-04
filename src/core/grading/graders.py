@@ -3,13 +3,10 @@ from typing import Any, Literal, cast
 from langchain_core.language_models import LanguageModelInput
 from pydantic import BaseModel, Field
 
-from src.config import get_settings
 from src.core import prompts
 from src.core.constants import CLASSIFIER_MODEL
 from src.core.llm import get_llm
 from src.utils.logger import logger
-
-settings = get_settings()
 
 
 class RouteAndRewrite(BaseModel):
@@ -51,7 +48,7 @@ def grade_documents_batch(question: str, documents: list[str]) -> list[Literal["
         return []
 
     llm = get_llm(CLASSIFIER_MODEL)
-    structured_llm = llm.with_structured_output(GradeDocuments)  # type: ignore[misc]
+    structured_llm = llm.with_structured_output(GradeDocuments)
 
     batch_messages: list[LanguageModelInput] = []
     for document in documents:
