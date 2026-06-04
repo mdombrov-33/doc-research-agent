@@ -49,4 +49,4 @@ jobs:
           exit 1
 
       - name: Run retrieval eval
-        run: uv run python -m evals.run_eval
+        run: uv run python -m src/evals.run_eval
