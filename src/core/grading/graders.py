@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any, Literal, cast
 
 from langchain_core.language_models import LanguageModelInput
@@ -7,6 +8,22 @@ from src.core import prompts
 from src.core.constants import CLASSIFIER_MODEL
 from src.core.llm import get_llm
 from src.utils.logger import logger
+
+
+def _with_retry[T](call: Callable[[], T], *, attempts: int = 2) -> T:
+    """Retry a structured-output call on parse/validation failures.
+
+    ChatOpenAI's max_retries covers transient API errors but not malformed model
+    output; this fills that gap with a small bounded retry.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return call()
+        except Exception as exc:
+            if attempt == attempts:
+                raise
+            logger.warning("structured_output_retry", attempt=attempt, error=str(exc))
+    raise AssertionError("unreachable")
 
 
 class RouteAndRewrite(BaseModel):
@@ -38,7 +55,7 @@ def route_and_rewrite(question: str) -> RouteAndRewrite:
         {"role": "user", "content": prompts.ROUTER_USER_PROMPT.format(question=question)},
     ]
 
-    result: RouteAndRewrite = structured_llm.invoke(messages)  # type: ignore[assignment]
+    result: RouteAndRewrite = _with_retry(lambda: structured_llm.invoke(messages))  # type: ignore[assignment]
     logger.debug("route_and_rewrite", datasource=result.datasource, query=result.rewritten_query)
     return result
 
@@ -63,7 +80,7 @@ def grade_documents_batch(question: str, documents: list[str]) -> list[Literal["
         ]
         batch_messages.append(messages)
 
-    results = cast(list[GradeDocuments], structured_llm.batch(batch_messages))
+    results = cast(list[GradeDocuments], _with_retry(lambda: structured_llm.batch(batch_messages)))
     scores = cast(list[Literal["yes", "no"]], [result.binary_score for result in results])
     logger.debug("grading_batch", total=len(documents), relevant=scores.count("yes"))
     return scores
