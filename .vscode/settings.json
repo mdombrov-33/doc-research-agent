@@ -1,0 +1,17 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}.venv/bin/python",
+  "mypy-type-checker.interpreter": ["${workspaceFolder}.venv/bin/python"],
+  "mypy-type-checker.cwd": "${workspaceFolder}",
+  "mypy-type-checker.preferDaemon": false,
+  "mypy-type-checker.args": ["--config-file=${workspaceFolder}/pyproject.toml"],
+  "ruff.interpreter": ["${workspaceFolder}/.venv/bin/python"],
+  "ruff.configuration": "${workspaceFolder}/pyproject.toml",
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports.ruff": "explicit",
+      "source.fixAll.ruff": "explicit"
+    }
+  }
+}
