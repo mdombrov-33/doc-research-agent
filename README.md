@@ -193,7 +193,7 @@ All metrics are displayed in the UI.
 - Upload documents (PDF, DOCX, TXT)
 - Response: `{document_id, filename, chunks_created, file_size}`
 
-**GET /api/evaluation/stats**
+**GET /api/monitoring/stats**
 
 - Aggregated evaluation metrics
 

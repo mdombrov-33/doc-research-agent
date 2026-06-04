@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     APP_ENV: Literal["development", "production", "test"] = "development"
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "DEBUG"
 
-    OPENAI_API_KEY: str = ""  # used for embeddings only
+    OPENAI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     LLM_MODEL: str = "anthropic/claude-sonnet-4.6"
     LLM_MAX_RETRIES: int = 3

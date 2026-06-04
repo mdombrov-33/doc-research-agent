@@ -2,7 +2,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from src.core.nodes import (
-    _timed,
     generate_node,
     grade_documents_node,
     retrieve_node,
@@ -11,16 +10,17 @@ from src.core.nodes import (
 )
 from src.core.state import AgentState
 from src.utils.logger import logger
+from src.utils.node_timer import timed
 
 
 def build_graph():
     workflow = StateGraph(AgentState)
 
-    workflow.add_node("router", _timed("router", router_node))
-    workflow.add_node("retrieve", _timed("retrieve", retrieve_node))
-    workflow.add_node("websearch", _timed("websearch", web_search_node))
-    workflow.add_node("grade_documents", _timed("grade_documents", grade_documents_node))
-    workflow.add_node("generate", _timed("generate", generate_node))
+    workflow.add_node("router", timed("router", router_node))
+    workflow.add_node("retrieve", timed("retrieve", retrieve_node))
+    workflow.add_node("websearch", timed("websearch", web_search_node))
+    workflow.add_node("grade_documents", timed("grade_documents", grade_documents_node))
+    workflow.add_node("generate", timed("generate", generate_node))
 
     workflow.set_entry_point("router")
 

@@ -3,7 +3,7 @@ import asyncio
 from openai import AsyncOpenAI
 
 from src.config import get_settings
-from src.core.constants import CLASSIFIER_MODEL
+from src.constants import CLASSIFIER_MODEL
 from src.core.llm import get_llm
 from src.utils.logger import logger
 

@@ -1,10 +1,7 @@
-import time
-from collections.abc import Callable
 from typing import Any
 
 from qdrant_client import models
 
-from src.core import prompts
 from src.core.document_processing.text_processor import extract_entities
 from src.core.grading.graders import (
     grade_documents_batch,
@@ -13,19 +10,8 @@ from src.core.grading.graders import (
 from src.core.llm import get_llm
 from src.core.state import AgentState
 from src.core.tools import get_vector_store_tool, get_web_search_tool
+from src.prompts import GENERATION_SYSTEM_PROMPT, GENERATION_USER_PROMPT
 from src.utils.logger import logger
-
-
-def _timed(name: str, fn: Callable) -> Callable:
-    def wrapper(state: AgentState) -> dict[str, Any]:
-        start = time.monotonic()
-        result = fn(state)
-        logger.info(
-            "node_complete", node=name, duration_ms=round((time.monotonic() - start) * 1000, 1)
-        )
-        return result
-
-    return wrapper
 
 
 def router_node(state: AgentState) -> dict[str, Any]:
@@ -204,9 +190,9 @@ def generate_node(state: AgentState) -> dict[str, Any]:
     llm = get_llm(state.get("model"), temperature=0.7)
 
     messages = [
-        {"role": "system", "content": prompts.GENERATION_SYSTEM_PROMPT.format(context=context)},
+        {"role": "system", "content": GENERATION_SYSTEM_PROMPT.format(context=context)},
         *chat_history,
-        {"role": "user", "content": prompts.GENERATION_USER_PROMPT.format(question=question)},
+        {"role": "user", "content": GENERATION_USER_PROMPT.format(question=question)},
     ]
 
     response = llm.invoke(messages)

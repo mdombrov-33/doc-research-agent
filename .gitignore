@@ -16,7 +16,6 @@ wheels/
 uploads/
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo

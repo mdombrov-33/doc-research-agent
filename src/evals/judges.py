@@ -16,40 +16,9 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
-from src.core.constants import JUDGE_MODEL
+from src.constants import JUDGE_MODEL
 from src.core.llm import get_llm
-
-_FAITHFULNESS_PROMPT = """\
-You are grading whether an ANSWER is faithful to the provided CONTEXT.
-A faithful answer asserts only what the context supports. Penalize any claim that is not
-stated in, or cannot be directly inferred from, the context (a hallucination).
-
-Score 1-5:
-  5 = every claim is fully supported by the context
-  3 = mostly supported, with minor unsupported details
-  1 = largely unsupported or contradicts the context
-
-CONTEXT:
-{context}
-
-ANSWER:
-{answer}"""
-
-_ANSWER_RELEVANCE_PROMPT = """\
-You are grading whether an ANSWER addresses the QUESTION.
-Judge only relevance, not factual accuracy: does it stay on topic and respond to what was
-actually asked?
-
-Score 1-5:
-  5 = directly and completely answers the question
-  3 = partially answers, or is padded with irrelevant content
-  1 = off-topic or does not answer
-
-QUESTION:
-{question}
-
-ANSWER:
-{answer}"""
+from src.prompts import ANSWER_RELEVANCE_PROMPT, FAITHFULNESS_PROMPT
 
 
 class Judgment(BaseModel):
@@ -70,8 +39,8 @@ def _judge(prompt: str, model: str) -> Judgment:
 
 
 def judge_faithfulness(context: str, answer: str, model: str = JUDGE_MODEL) -> Judgment:
-    return _judge(_FAITHFULNESS_PROMPT.format(context=context, answer=answer), model)
+    return _judge(FAITHFULNESS_PROMPT.format(context=context, answer=answer), model)
 
 
 def judge_answer_relevance(question: str, answer: str, model: str = JUDGE_MODEL) -> Judgment:
-    return _judge(_ANSWER_RELEVANCE_PROMPT.format(question=question, answer=answer), model)
+    return _judge(ANSWER_RELEVANCE_PROMPT.format(question=question, answer=answer), model)

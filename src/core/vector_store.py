@@ -12,6 +12,7 @@ from qdrant_client.models import (
 )
 
 from src.config import get_settings
+from src.core.constants import SPARSE_VECTOR_NAME
 from src.core.exceptions import EmbeddingConfigError
 from src.utils.logger import logger
 
@@ -44,10 +45,6 @@ def get_embeddings() -> OpenAIEmbeddings:
         api_key=SecretStr(api_key),
         model=settings.EMBEDDING_MODEL,
     )
-
-
-# Must match the sparse vector name used by langchain_qdrant's QdrantVectorStore.
-SPARSE_VECTOR_NAME = "langchain-sparse"
 
 
 def ensure_collection_exists() -> None:

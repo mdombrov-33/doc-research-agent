@@ -32,6 +32,7 @@ import asyncio
 from evals import judges, ranking
 from evals.embeddings_check import check_separation
 from src.config import get_settings
+from src.constants import EMBEDDING_THRESHOLD, GENERATION_THRESHOLDS, RETRIEVAL_THRESHOLDS, TOP_K, K
 from src.core.document_processing.document_processor import DocumentProcessor
 from src.core.document_processing.text_processor import get_spacy_model
 from src.core.nodes import generate_node, retrieve_node
@@ -44,16 +45,6 @@ from src.core.vector_store import (
 
 CORPUS_DIR = Path(__file__).parent / "corpus"
 GOLDEN_PATH = Path(__file__).parent / "golden.jsonl"
-
-TOP_K = 10  # chunks pulled per query before de-duplicating to documents
-K = 5  # k for the @k metrics
-
-# Stable + cheap metrics — always gated, including in CI. precision@K is reported but NOT
-# gated: with single-relevant-doc questions it is capped at (relevant / K).
-RETRIEVAL_THRESHOLDS = {"recall@5": 0.8, "mrr": 0.7, "ndcg@5": 0.7, "map": 0.6}
-EMBEDDING_THRESHOLD = {"embedding_separation": 1.0}
-# Noisy LLM-judge metrics — only gated under --full (local), never in CI.
-GENERATION_THRESHOLDS = {"faithfulness": 0.75, "answer_relevance": 0.75}
 
 
 @dataclass
