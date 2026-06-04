@@ -201,3 +201,14 @@ def test_generate_node_builds_context_and_updates_history(monkeypatch):
         {"role": "user", "content": "what is X?"},
         {"role": "assistant", "content": "the answer"},
     ]
+
+
+def test_generate_node_retries_once_on_empty_generation(monkeypatch):
+    llm = MagicMock()
+    llm.invoke.side_effect = [SimpleNamespace(content="   "), SimpleNamespace(content="real")]
+    monkeypatch.setattr(nodes, "get_llm", lambda *a, **k: llm)
+
+    out = nodes.generate_node({"question": "q", "documents": [], "chat_history": []})
+
+    assert out["generation"] == "real"
+    assert llm.invoke.call_count == 2

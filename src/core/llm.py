@@ -17,4 +17,5 @@ def get_llm(model_override: str | None = None, temperature: float = 0) -> ChatOp
         base_url=_OPENROUTER_BASE_URL,
         model=model,
         temperature=temperature,
+        max_retries=settings.LLM_MAX_RETRIES,
     )

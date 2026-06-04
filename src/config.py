@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""  # used for embeddings only
     OPENROUTER_API_KEY: str = ""
     LLM_MODEL: str = "anthropic/claude-sonnet-4.6"
+    LLM_MAX_RETRIES: int = 3
 
     QDRANT_MODE: Literal["local", "cloud"] = "cloud"
     QDRANT_LOCAL_URL: str = "http://localhost:6333"

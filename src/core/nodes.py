@@ -212,6 +212,14 @@ def generate_node(state: AgentState) -> dict[str, Any]:
     response = llm.invoke(messages)
     generation = response.content if isinstance(response.content, str) else str(response.content)
 
+    # Empty generations are a probabilistic failure; one retry usually fixes it.
+    if not generation.strip():
+        logger.info("generation_empty_retry")
+        response = llm.invoke(messages)
+        generation = (
+            response.content if isinstance(response.content, str) else str(response.content)
+        )
+
     logger.info("answer_generated", chars=len(generation))
 
     updated_history = chat_history + [
