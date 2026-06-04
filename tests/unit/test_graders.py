@@ -4,10 +4,10 @@ from src.core.grading import graders
 from src.core.grading.graders import (
     GradeDocuments,
     RouteAndRewrite,
-    _with_retry,
     grade_documents_batch,
     route_and_rewrite,
 )
+from src.utils.retry import with_retry
 from tests.factories import make_structured_llm
 
 
@@ -20,7 +20,7 @@ def test_with_retry_recovers_after_one_failure():
             raise ValueError("malformed output")
         return "ok"
 
-    assert _with_retry(flaky) == "ok"
+    assert with_retry(flaky) == "ok"
     assert calls["n"] == 2
 
 
@@ -29,7 +29,7 @@ def test_with_retry_reraises_after_exhausting_attempts():
         raise ValueError("nope")
 
     with pytest.raises(ValueError):
-        _with_retry(always_fails, attempts=2)
+        with_retry(always_fails, attempts=2)
 
 
 def test_route_and_rewrite_returns_structured_result(monkeypatch):
