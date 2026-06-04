@@ -22,6 +22,14 @@ def get_spacy_model():
         raise ModelLoadError("spaCy model 'en_core_web_sm' not found") from exc
 
 
+def extract_entities(text: str) -> list[str]:
+    """Named entities in `text`, deduped. Same NER used at ingestion, so a
+    query's entities match the `entities` stored in each chunk's payload."""
+    nlp = get_spacy_model()
+    doc = nlp(text)
+    return list({ent.text for ent in doc.ents})
+
+
 class TextExtractor:
     @staticmethod
     async def extract_from_file(file_path: str, filename: str) -> str:

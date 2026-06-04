@@ -2,8 +2,11 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from qdrant_client import models
+
 from src.config import get_settings
 from src.core import prompts
+from src.core.document_processing.text_processor import extract_entities
 from src.core.grading.graders import (
     grade_documents_batch,
     route_and_rewrite,
@@ -51,12 +54,37 @@ def router_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+def _entity_filter(entities: list[str]) -> models.Filter | None:
+    """Filter to chunks whose stored entities overlap the query's entities."""
+    if not entities:
+        return None
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key="metadata.entities",
+                match=models.MatchAny(any=entities),
+            )
+        ]
+    )
+
+
 def retrieve_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
     top_k = state.get("top_k") or 5
     vector_store = get_vector_store_tool()
+
+    # Entity-aware retrieval: pull named entities from the query and use them to
+    # filter on the entities extracted at ingestion. Falls back to unfiltered
+    # hybrid search if the query has no entities or the filter matches nothing.
+    query_entities = extract_entities(question)
+    entity_filter = _entity_filter(query_entities)
+
     # Hybrid search: dense + BM25 sparse, fused server-side by Qdrant (RRF).
-    results = vector_store.similarity_search_with_score(question, k=top_k)
+    results = vector_store.similarity_search_with_score(question, k=top_k, filter=entity_filter)
+
+    entity_fallback = bool(entity_filter) and not results
+    if entity_fallback:
+        results = vector_store.similarity_search_with_score(question, k=top_k)
 
     doc_items = []
     scores = []
@@ -92,6 +120,9 @@ def retrieve_node(state: AgentState) -> dict[str, Any]:
         "docs_retrieved",
         count=docs_retrieved_total,
         empty_filtered=empty_filtered,
+        query_entities=query_entities or None,
+        entity_filtered=bool(entity_filter) and not entity_fallback,
+        entity_fallback=entity_fallback,
         **score_stats,
     )
 
