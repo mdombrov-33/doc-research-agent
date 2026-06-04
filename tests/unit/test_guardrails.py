@@ -38,9 +38,17 @@ async def test_check_input_allows_clean_question(guardrails):
 
 
 async def test_check_input_fails_open_on_moderation_error(guardrails):
-    # Moderation API down → must not block; falls through to (clean) injection check.
+    # Moderation API down → must not block; the (clean) injection check still decides.
     guardrails._moderation.moderations.create = AsyncMock(side_effect=RuntimeError("api down"))
     assert await guardrails.check_input("what is RAG?") is None
+
+
+async def test_check_input_runs_both_checks_concurrently(guardrails):
+    # Both independent checks must be invoked (they run via asyncio.gather), even on a
+    # clean question — neither short-circuits the other.
+    await guardrails.check_input("what is RAG?")
+    guardrails._moderation.moderations.create.assert_awaited_once()
+    guardrails._classifier.ainvoke.assert_awaited_once()
 
 
 async def test_check_output_blocks_flagged_response(guardrails):
