@@ -25,6 +25,11 @@ COPY . .
 
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Bake the reranker model into the image so the first request skips a ~9s download.
+# Not the fastembed default (/tmp): Cloud Run mounts a fresh tmpfs over /tmp at runtime.
+ENV FASTEMBED_CACHE_PATH=/app/.model_cache
+RUN python -c "from src.config import get_settings; from src.core.retrieval.reranker import _get_cross_encoder; _get_cross_encoder(get_settings().RERANK_MODEL)"
+
 ARG GIT_SHA=unknown
 ARG APP_VERSION=unknown
 ENV GIT_SHA=${GIT_SHA} \

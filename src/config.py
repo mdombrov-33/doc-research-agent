@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIMENSION: int = 1536
 
+    # Cross-encoder reranking. Hybrid search pulls a wide candidate pool, then a cross-encoder
+    # reorders it and we keep the user's top_k. Pool = top_k * MULTIPLIER, capped at FETCH_CAP.
+    # Disable to fall back to raw hybrid ordering (fetch exactly top_k, no rerank).
+    RERANK_ENABLED: bool = True
+    RERANK_MODEL: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    RERANK_MULTIPLIER: int = 4
+    RERANK_FETCH_CAP: int = 100
+
     METRICS_DB_PATH: str = "./data/metrics.db"
     UPLOAD_DIR: str = "./uploads"
 

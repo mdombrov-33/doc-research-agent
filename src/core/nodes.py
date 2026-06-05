@@ -2,12 +2,14 @@ from typing import Any
 
 from qdrant_client import models
 
+from src.config import Settings, get_settings
 from src.core.document_processing.text_processor import extract_entities
 from src.core.grading.graders import (
     grade_documents_batch,
     route_and_rewrite,
 )
 from src.core.llm import get_llm
+from src.core.retrieval.reranker import rerank
 from src.core.state import AgentState
 from src.core.tools import get_vector_store_tool, get_web_search_tool
 from src.prompts import GENERATION_SYSTEM_PROMPT, GENERATION_USER_PROMPT
@@ -51,10 +53,20 @@ def _entity_filter(entities: list[str]) -> models.Filter | None:
     )
 
 
+def _fetch_k(top_k: int, settings: Settings) -> int:
+    """Candidate pool size to retrieve before reranking: a multiple of the user's top_k,
+    capped. Reranking off → fetch exactly top_k (the original behaviour)."""
+    if not settings.RERANK_ENABLED:
+        return top_k
+    return max(top_k, min(top_k * settings.RERANK_MULTIPLIER, settings.RERANK_FETCH_CAP))
+
+
 def retrieve_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
     top_k = state.get("top_k") or 5
+    settings = get_settings()
     vector_store = get_vector_store_tool()
+    fetch_k = _fetch_k(top_k, settings)
 
     # Entity-aware retrieval: pull named entities from the query and use them to
     # filter on the entities extracted at ingestion. Falls back to unfiltered
@@ -62,12 +74,13 @@ def retrieve_node(state: AgentState) -> dict[str, Any]:
     query_entities = extract_entities(question)
     entity_filter = _entity_filter(query_entities)
 
-    # Hybrid search: dense + BM25 sparse, fused server-side by Qdrant (RRF).
-    results = vector_store.similarity_search_with_score(question, k=top_k, filter=entity_filter)
+    # Hybrid search: dense + BM25 sparse, fused server-side by Qdrant (RRF). Pull a wide
+    # candidate pool (fetch_k) so the cross-encoder reranker has room to promote buried hits.
+    results = vector_store.similarity_search_with_score(question, k=fetch_k, filter=entity_filter)
 
     entity_fallback = bool(entity_filter) and not results
     if entity_fallback:
-        results = vector_store.similarity_search_with_score(question, k=top_k)
+        results = vector_store.similarity_search_with_score(question, k=fetch_k)
 
     doc_items = []
     scores = []
@@ -102,6 +115,7 @@ def retrieve_node(state: AgentState) -> dict[str, Any]:
     logger.info(
         "docs_retrieved",
         count=docs_retrieved_total,
+        fetch_k=fetch_k,
         empty_filtered=empty_filtered,
         query_entities=query_entities or None,
         entity_filtered=bool(entity_filter) and not entity_fallback,
@@ -109,7 +123,14 @@ def retrieve_node(state: AgentState) -> dict[str, Any]:
         **score_stats,
     )
 
-    return {"raw_documents": doc_items, "docs_retrieved_total": docs_retrieved_total}
+    # Rerank the candidate pool with a cross-encoder and keep the user's top_k. Disabled →
+    # fetch_k already equals top_k, so the trim is a defensive no-op preserving the contract.
+    if settings.RERANK_ENABLED and doc_items:
+        doc_items = rerank(question, doc_items, top_k)
+    else:
+        doc_items = doc_items[:top_k]
+
+    return {"raw_documents": doc_items, "docs_retrieved_total": len(doc_items)}
 
 
 def web_search_node(state: AgentState) -> dict[str, Any]:
