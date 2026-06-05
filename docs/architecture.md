@@ -508,7 +508,8 @@ quality against known-correct answers.
 | `GET /health` | liveness | — | `{status, environment, llm_model}` |
 
 Schemas: `src/api/schemas.py`. Every request gets an `x-request-id` (header + bound into
-every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`).
+every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stream` and
+`/upload` are rate-limited per IP and may return **429** (§17).
 
 ---
 
@@ -523,6 +524,31 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`).
 | Guardrails outage | fail open → treat as not flagged | `guardrails_wrapper.py` |
 | Entity filter over-narrows | fall back to unfiltered hybrid search | `retrieve_node` |
 | Empty / unsupported upload | typed exceptions → 400/500, temp file always cleaned up | `handlers/upload.py` |
+| Request floods / runaway cost | per-IP rate limit (slowapi) → 429 + `Retry-After` | `api/rate_limit.py` |
+
+### Rate limiting
+
+The two endpoints that cost money or do real work — `/stream` (LLM + embeddings per call) and
+`/upload` (parsing + embedding) — are rate-limited with **slowapi** (`api/rate_limit.py`). The
+shared `Limiter` decorates those two routes (`@limiter.limit(...)`), so `/monitoring/stats` and
+`/health` stay unmetered.
+
+- **What it limits:** requests per client IP. The limit is the `RATE_LIMIT` string
+  (e.g. `30/minute`); exceeding it returns **HTTP 429** with a `Retry-After` header, via the
+  `_rate_limit_exceeded_handler` registered in `main.py`. A custom `key_func` reads the client
+  from the first `X-Forwarded-For` entry (the real caller behind Cloud Run / a proxy), falling
+  back to the socket address.
+- **Where it lives:** in the *application* layer, because only the app knows what to meter
+  (this endpoint vs that one). In a fuller deployment this is one of several layers — a
+  CDN/WAF and the load balancer would shed coarse IP floods *before* they reach the app, and
+  OpenRouter/OpenAI already rate-limit us upstream (their 429s are absorbed by `with_retry`).
+- **Single-instance vs scale:** the limiter's `RATE_LIMIT_STORAGE_URI` defaults to `memory://`
+  — correct on one instance, like the conversation memory (§12) and SQLite monitoring (§14).
+  Cloud Run autoscales, so in-memory counters aren't shared and a client spread across N
+  instances effectively gets N× the limit. The fix is **one config change**: point the URI at
+  `redis://…` and slowapi shares counters across instances. Keyed on IP rather than user
+  because the app has no auth. *(Chose the maintained library over a hand-rolled token bucket:
+  it's the standard FastAPI tool and gives the Redis backend for free.)*
 
 ---
 
@@ -530,7 +556,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`).
 
 ```
 src/
-  api/            delivery layer: routes, handlers (stream/upload), middleware, DI, schemas
+  api/            delivery layer: routes, handlers (stream/upload), middleware, DI, schemas, rate_limit
   core/
     agent.py      builds + compiles the LangGraph
     state.py      AgentState + the custom reducers

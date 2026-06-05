@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request, Response
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from src.api.middleware import RequestLoggingMiddleware
+from src.api.rate_limit import limiter
 from src.api.routes import router
 from src.api.schemas import HealthResponse
 from src.config import Settings, get_settings
@@ -41,6 +44,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+def _on_rate_limit(request: Request, exc: Exception) -> Response:
+    # slowapi types its handler's exc as RateLimitExceeded, narrower than the base Exception
+    # Starlette's add_exception_handler expects. Adapt the signature instead of suppressing it;
+    # Starlette only routes RateLimitExceeded here, so the assert always holds at runtime.
+    assert isinstance(exc, RateLimitExceeded)
+    return _rate_limit_exceeded_handler(request, exc)
+
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _on_rate_limit)
 app.add_middleware(RequestLoggingMiddleware)
 app.include_router(router, prefix="/api", tags=["documents"])
 

@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     METRICS_DB_PATH: str = "./data/metrics.db"
     UPLOAD_DIR: str = "./uploads"
 
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT: str = "30/minute"
+    RATE_LIMIT_STORAGE_URI: str = "memory://"
+
     API_URL: str = "http://localhost:8000"
 
     def get_llm_model(self) -> str:

@@ -10,6 +10,7 @@ from src.api.dependencies import (
     get_vector_store,
 )
 from src.api.handlers import upload as upload_module
+from src.api.rate_limit import limiter
 from src.config import Settings
 from src.core.monitoring.tracker import MetricsTracker
 from src.main import app
@@ -102,3 +103,27 @@ def test_stream_returns_guardrail_refusal(client):
     assert resp.status_code == 200
     assert refusal in resp.text
     fake_guardrails.check_input.assert_awaited_once()
+
+
+def test_stream_rate_limited_returns_429(client, monkeypatch):
+    # Drive the limit low and turn the limiter back on (the fixture disables it).
+    monkeypatch.setenv("RATE_LIMIT", "2/minute")
+    get_settings.cache_clear()
+    limiter.enabled = True
+
+    fake_guardrails = MagicMock()
+    fake_guardrails.check_input = AsyncMock(return_value="refused")
+    app.dependency_overrides[get_guardrails] = lambda: fake_guardrails
+    app.dependency_overrides[get_agent] = lambda: MagicMock()
+    app.dependency_overrides[get_metrics_tracker] = lambda: MagicMock()
+
+    # Unique forwarded IP → a fresh bucket isolated from other tests.
+    headers = {"X-Forwarded-For": "203.0.113.7"}
+    body = {"question": "hi"}
+
+    assert client.post("/api/stream", json=body, headers=headers).status_code == 200
+    assert client.post("/api/stream", json=body, headers=headers).status_code == 200
+    resp = client.post("/api/stream", json=body, headers=headers)  # 3rd exceeds 2/minute
+
+    assert resp.status_code == 429
+    get_settings.cache_clear()

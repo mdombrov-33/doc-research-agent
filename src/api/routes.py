@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from langchain_qdrant import QdrantVectorStore
 from spacy.language import Language
 
@@ -15,6 +15,7 @@ from src.api.dependencies import (
 )
 from src.api.handlers.stream import handle_stream
 from src.api.handlers.upload import handle_upload
+from src.api.rate_limit import limiter, rate_limit
 from src.api.schemas import QueryRequest, UploadResponse
 from src.core.monitoring.tracker import MetricsTracker
 from src.guardrails.guardrails_wrapper import GuardrailsWrapper
@@ -23,7 +24,9 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=UploadResponse)
+@limiter.limit(rate_limit)
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     settings: Settings = Depends(get_settings),
     vector_store: QdrantVectorStore = Depends(get_vector_store),
@@ -34,7 +37,9 @@ async def upload_document(
 
 
 @router.post("/stream")
+@limiter.limit(rate_limit)
 async def stream_query(
+    request: Request,
     payload: QueryRequest,
     guardrails: GuardrailsWrapper = Depends(get_guardrails),
     agent: Any = Depends(get_agent),

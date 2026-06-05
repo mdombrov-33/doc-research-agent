@@ -5,7 +5,7 @@ grounded in your files — with a live web search mixed in when the question nee
 
 Built on a **LangGraph** state machine with **hybrid retrieval** (dense + BM25), a
 **cross-encoder reranker**, LLM **document grading** with a **web-search fallback**, SSE token
-**streaming**, and LLM-based **guardrails**.
+**streaming**, LLM-based **guardrails**, and per-IP **rate limiting**.
 
 **Frontend:** Streamlit · **Backend:** FastAPI on GCP Cloud Run · **Vector DB:** Qdrant
 
@@ -92,5 +92,5 @@ push to main.
 ## Tech stack
 
 **LangGraph** · **LangChain** · **Qdrant** (hybrid dense + BM25) · **FastEmbed** (BM25 sparse +
-cross-encoder reranker) · **FastAPI** · **OpenAI** (embeddings + moderation) · **OpenRouter**
+cross-encoder reranker) · **FastAPI** · **slowapi** (rate limiting) · **OpenAI** (embeddings + moderation) · **OpenRouter**
 (LLMs) · **PyMuPDF** · **spaCy** · **Streamlit** · **Docker** · **Terraform**
