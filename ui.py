@@ -69,7 +69,7 @@ def stream_query(question: str, model: str | None, top_k: int):
 
 def fetch_eval_stats() -> dict | None:
     try:
-        r = requests.get(f"{settings.API_URL}/api/evaluation/stats", timeout=3)
+        r = requests.get(f"{settings.API_URL}/api/monitoring/stats", timeout=3)
         r.raise_for_status()
         return r.json()
     except requests.exceptions.RequestException:

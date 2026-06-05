@@ -170,7 +170,7 @@ QDRANT_MODE=cloud   # uses QDRANT_CLOUD_URL + QDRANT_API_KEY
 
 ### 7. Evaluation & Monitoring
 
-RAG metrics tracked per query and accessible via `/api/evaluation/stats`:
+RAG metrics tracked per query and accessible via `/api/monitoring/stats`:
 
 - **Retrieval Precision**: Ratio of relevant to total retrieved documents
 - **Latency**: End-to-end query processing time

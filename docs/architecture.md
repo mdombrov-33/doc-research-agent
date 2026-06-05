@@ -96,4 +96,4 @@ Guardrails wrap the entire agent — input is checked before the graph runs, out
 
 ## Eval tracking
 
-Every query logs: latency, docs retrieved, docs graded relevant, web search triggered, generation attempts, retrieval precision. Accessible at `GET /api/evaluation/stats`, all metrics visible in the UI.
+Every query logs: latency, docs retrieved, docs graded relevant, web search triggered, generation attempts, retrieval precision. Accessible at `GET /api/monitoring/stats`, all metrics visible in the UI.
