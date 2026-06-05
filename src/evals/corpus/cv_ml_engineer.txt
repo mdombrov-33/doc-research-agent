@@ -1,0 +1,51 @@
+Priya Raman
+Machine Learning Engineer
+London, United Kingdom | priya.raman@example.com | linkedin.com/in/priyaraman
+
+PROFILE
+Machine learning engineer focused on taking models from notebook to production and keeping
+them healthy once they are there. I have shipped models into regulated healthcare and retail
+settings, and I pay as much attention to monitoring, drift, and reproducibility as I do to
+model accuracy.
+
+CORE SKILLS
+Languages: Python, SQL
+Modelling: PyTorch, scikit-learn, XGBoost, time-series forecasting
+MLOps: MLflow, AWS SageMaker, Docker, Airflow, feature stores
+Practices: experiment tracking, offline and online evaluation, model monitoring, A/B testing.
+
+EXPERIENCE
+
+Verdant Health — Machine Learning Engineer
+April 2020 to present, London
+Verdant builds clinical decision-support tools for hospital networks.
+- Built a sepsis-risk early-warning model that scores inpatients hourly from vital signs and
+  lab results. It reached an AUROC of 0.91 on a held-out validation set and is now deployed
+  across 12 hospitals.
+- Set up the monitoring that watches for feature drift and silent label delay, with alerts
+  that page the on-call data scientist when input distributions shift.
+- Reduced model retraining time from two days to four hours by rebuilding the training
+  pipeline on SageMaker with parallelised feature generation.
+- Worked closely with clinicians to calibrate alert thresholds so the tool surfaced real risk
+  without overwhelming staff with false alarms.
+
+Northwind Retail — Data Scientist
+September 2017 to March 2020, Reading
+Northwind runs a chain of grocery and homeware stores.
+- Built demand-forecasting models for perishable inventory that cut overstock waste by 18
+  percent across the pilot regions in the first year.
+- Developed a markdown-optimisation model that recommended when to discount short-dated
+  stock, improving margin on those items by several points.
+- Presented results monthly to non-technical category managers and translated model output
+  into concrete ordering guidance.
+
+EDUCATION
+MSc Machine Learning, Imperial College London, 2017. Distinction.
+BSc Mathematics, University of Warwick, 2015.
+
+CERTIFICATIONS
+AWS Certified Machine Learning – Specialty, 2021.
+
+INTERESTS
+Competitive bridge, baking sourdough, and volunteering as a STEM mentor for sixth-form
+students considering maths and computing degrees.

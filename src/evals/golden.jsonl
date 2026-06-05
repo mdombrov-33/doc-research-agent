@@ -14,3 +14,18 @@
 {"question": "How do the transport protocols TCP and UDP differ in reliability and speed?", "relevant_filenames": ["tcp_handshake.txt", "udp_protocol.txt"], "expected_route": "vectorstore"}
 {"question": "How do roasting and extraction together shape the flavor of an espresso?", "relevant_filenames": ["coffee_roasting.txt", "espresso_extraction.txt"], "expected_route": "vectorstore"}
 {"question": "What makes the gas giants Jupiter and Saturn notable to observers?", "relevant_filenames": ["jupiter_moons.txt", "saturn_rings.txt"], "expected_route": "vectorstore"}
+{"question": "Which candidate led the migration of a settlement service to Kubernetes microservices at a payments company?", "relevant_filenames": ["cv_backend_engineer.txt"], "expected_route": "vectorstore"}
+{"question": "Which candidate built a real-time fleet-tracking API in Go that handled tens of thousands of requests per second?", "relevant_filenames": ["cv_backend_engineer.txt"], "expected_route": "vectorstore"}
+{"question": "Which candidate built a sepsis-risk early-warning model deployed across twelve hospitals?", "relevant_filenames": ["cv_ml_engineer.txt"], "expected_route": "vectorstore"}
+{"question": "Which candidate holds an AWS Certified Machine Learning Specialty certification?", "relevant_filenames": ["cv_ml_engineer.txt"], "expected_route": "vectorstore"}
+{"question": "Which candidate cut perishable inventory overstock by about 18 percent using demand forecasting?", "relevant_filenames": ["cv_ml_engineer.txt"], "expected_route": "vectorstore"}
+{"question": "Which candidates list Python as a core programming skill?", "relevant_filenames": ["cv_backend_engineer.txt", "cv_ml_engineer.txt"], "expected_route": "vectorstore"}
+{"question": "What chunk size and overlap does the article recommend when splitting documents for a RAG pipeline?", "relevant_filenames": ["article_rag_pipeline.txt"], "expected_route": "vectorstore"}
+{"question": "Why does adding a cross-encoder reranker improve the quality of a RAG pipeline?", "relevant_filenames": ["article_rag_pipeline.txt"], "expected_route": "vectorstore"}
+{"question": "How does an HNSW index use layered graphs to speed up nearest-neighbour search?", "relevant_filenames": ["article_vector_search.txt"], "expected_route": "vectorstore"}
+{"question": "What does product quantization trade off to reduce the memory footprint of vector search?", "relevant_filenames": ["article_vector_search.txt"], "expected_route": "vectorstore"}
+{"question": "Which London coffee house grew into a famous insurance market, and who founded it?", "relevant_filenames": ["book_chapter_coffee_history.txt"], "expected_route": "vectorstore"}
+{"question": "How did coffee plants reportedly reach Brazil in the 1720s?", "relevant_filenames": ["book_chapter_coffee_history.txt"], "expected_route": "vectorstore"}
+{"question": "Why were English coffee houses nicknamed penny universities?", "relevant_filenames": ["book_chapter_coffee_history.txt"], "expected_route": "vectorstore"}
+{"question": "What is the legend of Kaldi the goatherd and how does it relate to discovering coffee?", "relevant_filenames": ["book_chapter_coffee_history.txt"], "expected_route": "vectorstore"}
+{"question": "Who patented an early steam-pressure espresso machine in 1901?", "relevant_filenames": ["book_chapter_coffee_history.txt"], "expected_route": "vectorstore"}

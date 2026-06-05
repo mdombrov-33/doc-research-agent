@@ -1,0 +1,57 @@
+Daniel Okafor
+Senior Backend Engineer
+Manchester, United Kingdom | daniel.okafor@example.com | github.com/danokafor
+
+PROFILE
+Backend engineer with eight years of experience building high-throughput, fault-tolerant
+services. Comfortable owning a system end to end, from API design and data modelling to
+deployment, on-call, and capacity planning. I care about clear interfaces, observable
+systems, and keeping latency predictable under load.
+
+CORE SKILLS
+Languages: Python, Go, SQL
+Datastores: PostgreSQL, Redis, Kafka
+Infrastructure: Kubernetes, Docker, Terraform, AWS (EKS, RDS, S3)
+Practices: gRPC and REST API design, event-driven architecture, distributed tracing,
+load testing, trunk-based development.
+
+EXPERIENCE
+
+Lumen Payments — Staff Backend Engineer
+March 2021 to present, Manchester
+Lumen processes card settlement for mid-market merchants across Europe. I lead the team
+that owns the settlement service.
+- Led the migration of the settlement service from a Django monolith to Go microservices
+  running on Kubernetes. The cutover was incremental behind a routing layer and took nine
+  months with no customer-visible downtime.
+- Cut p99 settlement latency from roughly 800 milliseconds to 120 milliseconds by moving
+  reconciliation off the request path into a Kafka-backed worker pool.
+- Introduced distributed tracing with OpenTelemetry, which reduced mean time to diagnose
+  production incidents from hours to minutes.
+- Mentor two mid-level engineers and run the team's design-review process.
+
+Cartwheel Logistics — Backend Engineer
+June 2018 to February 2021, Leeds
+Cartwheel builds fleet-management software for regional couriers.
+- Designed and built a real-time fleet-tracking API in Go that ingested GPS pings from
+  delivery vehicles at a sustained 40,000 requests per second during peak hours.
+- Replaced a polling-based location feed with a WebSocket push model, cutting dispatcher
+  dashboard update lag from 30 seconds to under one second.
+- Owned the PostgreSQL schema and query tuning; partitioned the events table by day to keep
+  historical queries fast as data grew past two billion rows.
+
+Bright Apps Studio — Junior Developer
+August 2016 to May 2018, Manchester
+- Built REST endpoints for a fitness-tracking mobile app backend in Python and Flask.
+- Wrote the studio's first integration-test suite, raising backend coverage from near zero
+  to about 70 percent.
+
+EDUCATION
+BSc Computer Science, University of Manchester, 2016. First-class honours.
+
+CERTIFICATIONS
+Certified Kubernetes Administrator (CKA), 2020.
+
+INTERESTS
+Long-distance running, open-source contributions to Go observability libraries, and
+restoring a 1980s road bike that is still not quite finished.

@@ -1,0 +1,90 @@
+Building a Production RAG Pipeline: Lessons From the Trenches
+
+Retrieval-augmented generation has become the default way to ground a language model in your
+own data. The idea is simple to state: instead of relying only on what the model memorised
+during training, you retrieve relevant passages from a knowledge base at query time and put
+them in the prompt. The model then answers using that context. In practice, getting a RAG
+system to behave well in production is less about the model and more about everything around
+it. This article walks through the pipeline stage by stage and flags the mistakes that cost
+us the most time.
+
+Ingestion and chunking
+
+Everything starts with how you split your documents. A model can only use what you retrieve,
+and you retrieve chunks, not whole documents. Chunk too large and each chunk mixes several
+topics, so a query matches it for the wrong reason and the prompt fills with irrelevant text.
+Chunk too small and you sever the context a passage needs to make sense on its own.
+
+After a lot of experimentation we settled on chunks of roughly 500 to 800 tokens with an
+overlap of about 10 to 15 percent between neighbours. The overlap matters more than people
+expect: without it, a sentence that straddles a chunk boundary gets cut in half and neither
+chunk retrieves well for it. We also found that splitting on semantic boundaries such as
+headings and paragraphs beats splitting on a fixed character count, because it keeps related
+sentences together.
+
+One unglamorous lesson: store metadata with every chunk. The source filename, a section
+heading, and a position index are cheap to keep and invaluable later for filtering, for
+citations, and for debugging why a particular chunk surfaced.
+
+Embeddings
+
+Each chunk is converted into a dense vector by an embedding model, and the same model embeds
+the query at search time. The single most important rule here is consistency: you must embed
+your corpus and your queries with the exact same model. Swap the embedding model and forget
+to re-index, and retrieval quality collapses silently, because the query vectors now live in
+a different space from the stored ones. We learned to treat the embedding model as a versioned
+part of the index, not a configuration knob you can change casually.
+
+Retrieval
+
+Dense vector search finds chunks whose embeddings are close to the query embedding, usually by
+cosine similarity. It is excellent at matching meaning even when the words differ. Its weakness
+is exact terms: product codes, names, and rare jargon that the embedding model never learned to
+place precisely. Pure keyword search, such as BM25, has the opposite profile. It nails exact
+terms and fails on paraphrase.
+
+The fix that gave us the biggest jump in recall was hybrid search: run both dense and keyword
+retrieval, then merge the result lists. A query for an exact error code now finds the right
+chunk through the keyword leg even when the dense leg misses it. Combining the two recovered a
+class of failures that no amount of embedding tuning had fixed.
+
+Reranking
+
+Retrieval is tuned for recall: cast a wide net and pull, say, the top fifty candidate chunks.
+But you only have room for a handful in the prompt, and the order matters because models attend
+more to what comes first. This is where a reranker earns its place. A cross-encoder reranker
+reads the query and each candidate chunk together and scores their relevance directly, rather
+than comparing two independent vectors. It is far more accurate than the first-stage retriever
+but too slow to run over the whole corpus, so you apply it only to the shortlist.
+
+Adding a cross-encoder reranker over our top fifty candidates lifted nDCG at ten by roughly
+fifteen percent in our offline evaluation. The first-stage retriever still does the heavy
+lifting of narrowing millions of chunks down to fifty; the reranker just makes sure the best of
+those fifty rise to the top of the prompt.
+
+Generation
+
+With good context in the prompt, generation is the easy part, but two prompt details mattered.
+First, instruct the model to answer only from the provided context and to say it does not know
+when the context is silent. This single instruction cut hallucinations sharply. Second, ask the
+model to cite the chunk it used. Citations make the system auditable and, as a side effect,
+nudge the model to stay grounded.
+
+Evaluation
+
+You cannot improve what you do not measure, and RAG fails in more than one place, so measure
+each place separately. We score retrieval with recall and nDCG against a labelled set of
+questions whose correct documents we know in advance. We score generation with an LLM acting as
+a judge that rates two things: faithfulness, meaning whether the answer is supported by the
+retrieved context, and answer relevance, meaning whether it actually addresses the question.
+Keeping these scores in a regression gate stopped several quiet quality drops from reaching
+users after an innocent-looking change to chunking or the prompt.
+
+Common pitfalls
+
+The failures that hurt most were rarely exotic. The embedding model got swapped without a
+re-index. Chunks were too large and drowned the prompt in noise. There was no reranker, so a
+relevant chunk sat at rank thirty and never made it into the context. And there was no offline
+evaluation, so nobody noticed quality slipping until a user complained. None of these is hard to
+fix once you can see it. The whole point of building the pipeline deliberately, and measuring
+each stage, is to make these failures visible before your users find them for you.

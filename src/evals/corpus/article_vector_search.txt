@@ -1,0 +1,73 @@
+How Vector Search Works: From Embeddings to Approximate Nearest Neighbours
+
+Vector search is the engine underneath semantic search, recommendation, and retrieval-augmented
+generation. The premise is that meaning can be turned into geometry. Once text, images, or audio
+are represented as points in a high-dimensional space, "find me things similar to this" becomes
+"find the points nearest to this point." This article explains how that search actually works,
+from the vectors themselves to the index structures that make search fast at scale.
+
+Embeddings as coordinates
+
+An embedding model maps an input to a vector of a few hundred to a few thousand numbers. The
+model is trained so that inputs with similar meaning land close together and dissimilar inputs
+land far apart. The individual dimensions rarely have a tidy human interpretation; what matters
+is relative position. Two sentences that paraphrase each other end up as neighbours even when
+they share no words, which is exactly the property keyword search lacks.
+
+Measuring distance
+
+To find neighbours you need a notion of distance. Three measures dominate. Euclidean distance is
+the straight-line gap between two points. Dot product multiplies the vectors component-wise and
+sums the result, rewarding vectors that are both aligned and large in magnitude. Cosine
+similarity measures only the angle between two vectors, ignoring their length, which is why it is
+the usual choice for text: it asks whether two things point in the same direction regardless of
+how long the document is. In fact, if you normalise every vector to unit length first, cosine
+similarity and dot product rank neighbours identically, which many systems exploit for speed.
+
+The cost of being exact
+
+The obvious way to find the nearest neighbours is brute force: compute the distance from the
+query to every stored vector and keep the closest. This is exact and perfectly fine for a few
+thousand vectors. It falls apart at scale. Comparing one query against a hundred million vectors,
+each with a thousand dimensions, for every search, is far too slow for an interactive system.
+This is why production systems trade a little accuracy for a lot of speed and use approximate
+nearest neighbour, or ANN, indexes.
+
+HNSW
+
+The most popular ANN index today is the Hierarchical Navigable Small World graph, or HNSW. It
+organises vectors into a layered graph. The bottom layer connects every point to its near
+neighbours. Each layer above it is a sparser sample of the points below, acting like an express
+lane. A search starts at the top, sparse layer and greedily hops toward the query, then drops
+down a layer and repeats, refining the neighbourhood at each level until it reaches the bottom.
+Because the upper layers let the search cover huge distances in a few hops, it finds good
+neighbours after visiting only a tiny fraction of the points. Two parameters govern the trade-off:
+ef_construction controls how thoroughly the graph is built, and ef_search controls how widely the
+query explores at query time. Larger values mean better recall and slower search.
+
+IVF
+
+An alternative family is the inverted file index, or IVF. It first clusters all the vectors into
+groups using something like k-means, picking a representative centroid for each group. At search
+time, instead of scanning everything, you find the few centroids nearest the query and search only
+the vectors in those clusters. You tune how many clusters to probe: probe more and you raise recall
+at the cost of speed. IVF shines when you have a very large, fairly static dataset.
+
+Product quantization
+
+Memory is the other constraint, and this is where product quantization comes in. Storing a hundred
+million full-precision vectors can demand hundreds of gigabytes of RAM. Product quantization splits
+each vector into several short sub-vectors and replaces each sub-vector with the id of the nearest
+entry in a small learned codebook. A vector that once took thousands of bytes now takes a few dozen.
+The trade-off is precision: the compressed vector is an approximation, so distances computed from it
+are slightly off. In exchange you fit far more vectors in memory, and quantization is often layered
+on top of an IVF or HNSW index to get both speed and a small footprint at once.
+
+Choosing an index
+
+There is no universally best index, only the right trade-off for your constraints. If your dataset
+is small, brute force is simplest and exact. If you need high recall and your data fits in memory,
+HNSW is the usual default. If memory is tight, add product quantization and accept a little accuracy
+loss. If your data is enormous and changes rarely, IVF with quantization scales gracefully. The
+common thread is that vector search at scale is the art of giving up a sliver of accuracy you will
+never notice in exchange for speed and memory you definitely will.
