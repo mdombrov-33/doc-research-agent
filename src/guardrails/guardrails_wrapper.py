@@ -3,7 +3,6 @@ import asyncio
 from openai import AsyncOpenAI
 
 from src.config import get_settings
-from src.constants import CLASSIFIER_MODEL
 from src.core.llm import get_llm
 from src.utils.logger import logger
 
@@ -23,7 +22,7 @@ class GuardrailsWrapper:
     def __init__(self) -> None:
         settings = get_settings()
         self._moderation = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self._classifier = get_llm(CLASSIFIER_MODEL)
+        self._classifier = get_llm(settings.CLASSIFIER_MODEL)
         logger.info("guardrails_initialized")
 
     async def _moderation_flagged(self, text: str, *, stage: str) -> bool:

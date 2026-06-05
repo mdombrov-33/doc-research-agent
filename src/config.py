@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     LLM_MODEL: str = "anthropic/claude-sonnet-4.6"
+    CLASSIFIER_MODEL: str = "openai/gpt-5.4-mini"
     LLM_MAX_RETRIES: int = 3
 
     QDRANT_MODE: Literal["local", "cloud"] = "cloud"

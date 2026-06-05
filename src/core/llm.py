@@ -2,8 +2,9 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from src.config import get_settings
-from src.constants import OPENROUTER_BASE_URL
 from src.utils.logger import logger
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 def get_llm(model_override: str | None = None, temperature: float = 0) -> ChatOpenAI:

@@ -1,6 +1,6 @@
 import pytest
 
-from src.evals.embeddings_check import check_separation, cosine
+from evals.embeddings_check import check_separation, cosine
 
 
 def test_cosine_identical_orthogonal_and_zero():

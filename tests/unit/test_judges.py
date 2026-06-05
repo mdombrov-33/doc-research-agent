@@ -1,5 +1,5 @@
-from src.evals import judges
-from src.evals.judges import Judgment
+from evals import judges
+from evals.judges import Judgment
 from tests.factories import make_structured_llm
 
 

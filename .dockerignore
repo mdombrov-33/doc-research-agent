@@ -41,6 +41,11 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Dev-only, not needed at runtime
+tests/
+evals/
+terraform/
+
 # Docs
 *.md
 !README.md

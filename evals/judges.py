@@ -16,9 +16,41 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
-from src.constants import JUDGE_MODEL
 from src.core.llm import get_llm
-from src.prompts import ANSWER_RELEVANCE_PROMPT, FAITHFULNESS_PROMPT
+
+JUDGE_MODEL = "openai/gpt-5.4-mini"
+
+FAITHFULNESS_PROMPT = """
+You are grading whether an ANSWER is faithful to the provided CONTEXT.
+A faithful answer asserts only what the context supports. Penalize any claim that is not
+stated in, or cannot be directly inferred from, the context (a hallucination).
+
+Score 1-5:
+  5 = every claim is fully supported by the context
+  3 = mostly supported, with minor unsupported details
+  1 = largely unsupported or contradicts the context
+
+CONTEXT:
+{context}
+
+ANSWER:
+{answer}"""
+
+ANSWER_RELEVANCE_PROMPT = """
+You are grading whether an ANSWER addresses the QUESTION.
+Judge only relevance, not factual accuracy: does it stay on topic and respond to what was
+actually asked?
+
+Score 1-5:
+  5 = directly and completely answers the question
+  3 = partially answers, or is padded with irrelevant content
+  1 = off-topic or does not answer
+
+QUESTION:
+{question}
+
+ANSWER:
+{answer}"""
 
 
 class Judgment(BaseModel):

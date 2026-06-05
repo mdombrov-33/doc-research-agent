@@ -3,7 +3,7 @@ from typing import Any, Literal, cast
 from langchain_core.language_models import LanguageModelInput
 from pydantic import BaseModel, Field
 
-from src.constants import CLASSIFIER_MODEL
+from src.config import get_settings
 from src.core.llm import get_llm
 from src.prompts import (
     DOCUMENT_GRADER_SYSTEM_PROMPT,
@@ -29,7 +29,7 @@ class GradeDocuments(BaseModel):
 
 
 def route_and_rewrite(question: str) -> RouteAndRewrite:
-    llm = get_llm(CLASSIFIER_MODEL)
+    llm = get_llm(get_settings().CLASSIFIER_MODEL)
     structured_llm = llm.with_structured_output(RouteAndRewrite)  # type: ignore[misc]
 
     messages = [
@@ -53,7 +53,7 @@ def grade_documents_batch(question: str, documents: list[str]) -> list[Literal["
     if not documents:
         return []
 
-    llm = get_llm(CLASSIFIER_MODEL)
+    llm = get_llm(get_settings().CLASSIFIER_MODEL)
     structured_llm = llm.with_structured_output(GradeDocuments)
 
     batch_messages: list[LanguageModelInput] = []

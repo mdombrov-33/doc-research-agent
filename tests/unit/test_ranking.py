@@ -1,6 +1,6 @@
 import pytest
 
-from src.evals import ranking
+from evals import ranking
 
 # Reference case: relevances [0, 1, 0, 1] with 3 relevant docs in the corpus.
 #   recall@4    = 2 / 3
