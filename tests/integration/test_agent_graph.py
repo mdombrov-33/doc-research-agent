@@ -29,7 +29,7 @@ def test_web_fallback_loop_merges_vectorstore_and_web(graph, monkeypatch):
     monkeypatch.setattr(
         nodes,
         "route_and_rewrite",
-        lambda q: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
+        lambda q, h=None: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
     )
     monkeypatch.setattr(nodes, "extract_entities", lambda q: [])
 
@@ -63,7 +63,7 @@ def test_no_fallback_when_enough_relevant_docs(graph, monkeypatch):
     monkeypatch.setattr(
         nodes,
         "route_and_rewrite",
-        lambda q: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
+        lambda q, h=None: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
     )
     monkeypatch.setattr(nodes, "extract_entities", lambda q: [])
 

@@ -236,7 +236,7 @@ safe — see the trace in §8.
 | `web_search_done` | — | guard: web search has already run (prevents infinite loop) |
 | `web_fallback_needed` | — | grader signal: too few relevant docs, trigger fallback |
 | `generation` | — | the answer text |
-| `chat_history` | — | full turn history, injected into the generate prompt |
+| `chat_history` | — | full turn history; injected into the generate prompt and the router's history-aware rewrite |
 | `model` | — | per-query LLM override from the UI |
 | `top_k` | — | per-query retrieval depth from the UI |
 
@@ -253,6 +253,26 @@ One **structured-output** LLM call (model = `CLASSIFIER_MODEL`, temp 0) does two
 The document store **always runs** — web search is *additive*, never a replacement. The call
 is wrapped in `with_retry` (§17) to survive a malformed structured response. The node also
 resets `raw_documents`/`docs_retrieved_total` so the new query starts clean.
+
+**History-aware rewrite.** Memory (§12) and *retrieval* are two different problems. The
+checkpointer gives the *generator* the conversation, but a follow-up like *"expand on that"*
+or *"the third one"* carries **no search terms** on its own — so retrieval, which only sees
+the query string, would fail. The fix lives entirely in this one step: `router_node` reads
+`chat_history` (already in state) and passes the **last two turns** to `route_and_rewrite`,
+which adds them to the prompt and instructs the model to resolve the reference into a
+**standalone** query *before anything retrieves*. Key design choices:
+
+- **Contextualize once, at the rewrite boundary.** Retrieval stays a pure function of a query
+  string; history never leaks into retrieve/grade. One place to reason about, easy to test.
+- **Bounded** to the last two turns (`_format_history`) — older turns add tokens and pull the
+  rewrite off-topic.
+- **Conditional**: a question that already stands alone passes through unchanged; the
+  history block and the rewrite instruction are only added when `chat_history` is non-empty.
+- **Free**: this enriches the router call we already make every turn — no extra round-trip.
+
+The before/after query is visible in the `route_decision` log (`query=`). The current eval
+can't catch regressions here (golden questions are all standalone) — validating it properly
+would mean adding **multi-turn golden cases**.
 
 ### Retrieve — `retrieve_node` (`nodes.py`)
 1. **Extract query entities** with spaCy and build an **entity filter** (`_entity_filter`):
@@ -385,6 +405,13 @@ The graph is compiled with a `MemorySaver` checkpointer (`agent.py`). State is k
 (`config={"configurable": {"thread_id": session_id}}`). Across turns with the same
 `session_id`, `chat_history` accumulates and is injected into the generate prompt. The router
 resets the per-query scratch channels each turn so only `chat_history` carries over.
+
+That history feeds **two** consumers, and it's worth keeping them distinct:
+- **Conversational memory** — the *generator* sees the full `chat_history`, so it can answer
+  *"expand on that"* coherently.
+- **Conversational retrieval** — the *router* sees the last two turns and rewrites a
+  context-dependent follow-up into a standalone search query, so retrieval finds the right
+  documents even when the question names nothing on its own (the history-aware rewrite, §7).
 
 > `MemorySaver` is **in-process**: history lives in memory and is lost on restart, and isn't
 > shared across instances. Fine for a single-instance app; swap for a persistent checkpointer

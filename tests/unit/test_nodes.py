@@ -21,7 +21,7 @@ def test_router_node_routes_to_websearch_and_rewrites(monkeypatch):
     monkeypatch.setattr(
         nodes,
         "route_and_rewrite",
-        lambda q: RouteAndRewrite(datasource="websearch", rewritten_query="rewritten"),
+        lambda q, h=None: RouteAndRewrite(datasource="websearch", rewritten_query="rewritten"),
     )
     out = nodes.router_node({"question": "raw question"})
     assert out["web_search"] is True
@@ -37,7 +37,7 @@ def test_router_node_routes_to_vectorstore(monkeypatch):
     monkeypatch.setattr(
         nodes,
         "route_and_rewrite",
-        lambda q: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
+        lambda q, h=None: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
     )
     assert nodes.router_node({"question": "q"})["web_search"] is False
 

@@ -28,20 +28,41 @@ class GradeDocuments(BaseModel):
     binary_score: Literal["yes", "no"] = Field(description="Relevance score 'yes' or 'no'")
 
 
-def route_and_rewrite(question: str) -> RouteAndRewrite:
+def _format_history(chat_history: list[dict[str, str]], max_turns: int = 2) -> str:
+    """Render the last `max_turns` exchanges as a compact transcript for query rewriting.
+    Bounded on purpose: older turns add tokens and pull the rewrite off-topic."""
+    recent = chat_history[-max_turns * 2 :]
+    return "\n".join(f"{m['role']}: {m['content']}" for m in recent)
+
+
+def route_and_rewrite(
+    question: str, chat_history: list[dict[str, str]] | None = None
+) -> RouteAndRewrite:
     llm = get_llm(get_settings().CLASSIFIER_MODEL)
     structured_llm = llm.with_structured_output(RouteAndRewrite)  # type: ignore[misc]
 
+    system_content = (
+        f"{ROUTER_SYSTEM_PROMPT}\n\n"
+        "Also rewrite the question into an optimized search query "
+        "(remove filler words, expand abbreviations, use precise terminology)."
+    )
+    user_content = ROUTER_USER_PROMPT.format(question=question)
+
+    # History-aware rewrite: a follow-up like "expand on that" carries no search terms
+    # on its own. Give the router the recent transcript so it can resolve the reference
+    # into a standalone query before anything retrieves. Standalone questions pass through.
+    if chat_history:
+        system_content += (
+            "\n\nThe question may be a follow-up that refers to earlier conversation "
+            "(e.g. 'expand on that', 'the third one'). If so, rewrite it into a standalone "
+            "query that names the referenced subject explicitly. If the question already "
+            "stands on its own, leave its meaning unchanged."
+        )
+        user_content = f"Conversation so far:\n{_format_history(chat_history)}\n\n{user_content}"
+
     messages = [
-        {
-            "role": "system",
-            "content": (
-                f"{ROUTER_SYSTEM_PROMPT}\n\n"
-                "Also rewrite the question into an optimized search query "
-                "(remove filler words, expand abbreviations, use precise terminology)."
-            ),
-        },
-        {"role": "user", "content": ROUTER_USER_PROMPT.format(question=question)},
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_content},
     ]
 
     result: RouteAndRewrite = with_retry(lambda: structured_llm.invoke(messages))  # type: ignore[assignment]

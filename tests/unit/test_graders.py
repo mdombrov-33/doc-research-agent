@@ -42,6 +42,36 @@ def test_route_and_rewrite_returns_structured_result(monkeypatch):
     assert result.rewritten_query == "latest python release"
 
 
+def test_route_and_rewrite_injects_recent_history(monkeypatch):
+    expected = RouteAndRewrite(datasource="vectorstore", rewritten_query="standalone")
+    llm = make_structured_llm(expected)
+    monkeypatch.setattr(graders, "get_llm", lambda *_a, **_k: llm)
+
+    history = [
+        {"role": "user", "content": "what are agentic patterns?"},
+        {"role": "assistant", "content": "Prompt chaining, tool use, ..."},
+    ]
+    route_and_rewrite("can we expand that?", history)
+
+    messages = llm.with_structured_output.return_value.invoke.call_args.args[0]
+    system, user = messages[0]["content"], messages[1]["content"]
+    assert "follow-up" in system  # standalone-rewrite instruction added
+    assert "Conversation so far" in user
+    assert "what are agentic patterns?" in user  # the referenced subject is available
+
+
+def test_route_and_rewrite_omits_history_when_none(monkeypatch):
+    expected = RouteAndRewrite(datasource="vectorstore", rewritten_query="q")
+    llm = make_structured_llm(expected)
+    monkeypatch.setattr(graders, "get_llm", lambda *_a, **_k: llm)
+
+    route_and_rewrite("a standalone question")
+
+    messages = llm.with_structured_output.return_value.invoke.call_args.args[0]
+    assert "Conversation so far" not in messages[1]["content"]
+    assert "follow-up" not in messages[0]["content"]
+
+
 def test_grade_documents_batch_short_circuits_on_empty(monkeypatch):
     # No LLM call should happen for an empty document list.
     def _boom(*_a, **_k):

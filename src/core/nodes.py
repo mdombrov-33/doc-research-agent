@@ -18,7 +18,8 @@ from src.utils.logger import logger
 
 def router_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
-    result = route_and_rewrite(question)
+    chat_history = state.get("chat_history", [])
+    result = route_and_rewrite(question, chat_history)
 
     web_search = result.datasource == "websearch"
 
