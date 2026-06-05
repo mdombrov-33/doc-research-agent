@@ -67,7 +67,7 @@ def stream_query(question: str, model: str | None, top_k: int):
                 return
 
 
-def fetch_eval_stats() -> dict | None:
+def fetch_monitoring_stats() -> dict | None:
     try:
         r = requests.get(f"{settings.API_URL}/api/monitoring/stats", timeout=3)
         r.raise_for_status()
@@ -76,8 +76,8 @@ def fetch_eval_stats() -> dict | None:
         return None
 
 
-def render_eval_stats():
-    stats = fetch_eval_stats()
+def render_monitoring_stats():
+    stats = fetch_monitoring_stats()
     if not stats or stats.get("total_queries", 0) == 0:
         return
     c1, c2, c3, c4, c5, c6 = st.columns(6)
@@ -96,7 +96,7 @@ def main():
     init_session_state()
 
     st.title("Document Research Agent")
-    render_eval_stats()
+    render_monitoring_stats()
     st.markdown(
         "Upload documents and ask questions. The agent always searches your documents — "
         "for queries needing current information, it also runs a live web search in parallel."
