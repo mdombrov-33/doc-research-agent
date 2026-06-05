@@ -21,14 +21,18 @@ RUN uv sync --frozen --no-install-project
 FROM base AS runtime
 
 COPY --from=builder /app/.venv /app/.venv
-COPY . .
 
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Bake the reranker model into the image so the first request skips a ~9s download.
 # Not the fastembed default (/tmp): Cloud Run mounts a fresh tmpfs over /tmp at runtime.
+# Done before `COPY . .` and with the model name inline (not imported from src) so this
+# layer — and the HuggingFace download — stays cached across code changes. It only re-runs
+# when the venv or this model name changes. Keep in sync with config.RERANK_MODEL.
 ENV FASTEMBED_CACHE_PATH=/app/.model_cache
-RUN python -c "from src.config import get_settings; from src.core.retrieval.reranker import _get_cross_encoder; _get_cross_encoder(get_settings().RERANK_MODEL)"
+RUN python -c "from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder(model_name='Xenova/ms-marco-MiniLM-L-6-v2')"
+
+COPY . .
 
 ARG GIT_SHA=unknown
 ARG APP_VERSION=unknown
