@@ -7,12 +7,11 @@ One check, before the agent runs. There is **no output guardrail** (see below).
 ## Input check
 
 `check_input` runs before LangGraph. It screens the question with **llm-guard**'s
-`scan_prompt` using two **local** HuggingFace scanners:
+`scan_prompt` using one **local** HuggingFace scanner:
 
 1. **`Toxicity`** — harmful, abusive, or explicit content.
-2. **`PromptInjection`** — prompt injection, jailbreaks, system probing.
 
-If **either** scanner flags the text, a fixed refusal string is returned and LangGraph never
+If the scanner flags the text, a fixed refusal string is returned and LangGraph never
 runs. The scan is CPU-bound, so it runs in a thread executor (`run_in_executor`) to avoid
 blocking the event loop.
 
@@ -31,7 +30,7 @@ enforced here.
 
 ## Failure behaviour
 
-The scanners are **not** wrapped in a try/except, so an internal scanner error propagates
-rather than failing open. If you want fail-open behaviour (degrade safety but never block the
-agent on a guardrails outage), wrap the scan in `check_input` and return "not flagged" on
-error.
+The scan is wrapped in a `try/except` inside `check_input`. If the scanner throws, the error
+is logged and the request is **blocked** (fail-closed) — the exception can't propagate after
+`200 OK` + `text/event-stream` headers are already sent, which would silently corrupt the SSE
+stream.

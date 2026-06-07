@@ -2,7 +2,7 @@ import asyncio
 from functools import lru_cache
 
 from llm_guard import scan_prompt  # type: ignore[import-untyped]
-from llm_guard.input_scanners import PromptInjection, Toxicity  # type: ignore[import-untyped]
+from llm_guard.input_scanners import Toxicity  # type: ignore[import-untyped]
 
 from src.utils.logger import logger
 
@@ -13,7 +13,7 @@ _BLOCK_INPUT = "I cannot process that request. Please ask a question about your 
 def _get_scanners() -> list:
     # Loads HuggingFace models once. warmup() primes this at startup so the first real
     # request doesn't pay the cold-start.
-    scanners = [Toxicity(), PromptInjection()]
+    scanners = [Toxicity()]
     logger.info("guardrails_initialized")
     return scanners
 
