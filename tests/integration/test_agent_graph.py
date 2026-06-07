@@ -3,9 +3,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.core import nodes
-from src.core.agent import build_graph
-from src.core.grading.graders import RouteAndRewrite
+from src.core.agent import nodes
+from src.core.agent.grading import RouteAndRewrite
+from src.core.agent.graph import build_graph
+from src.core.retrieval import search
 
 
 class _Doc:
@@ -31,17 +32,17 @@ def test_web_fallback_loop_merges_vectorstore_and_web(graph, monkeypatch):
         "route_and_rewrite",
         lambda q, h=None: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
     )
-    monkeypatch.setattr(nodes, "extract_entities", lambda q: [])
+    monkeypatch.setattr(search, "extract_entities", lambda q: [])
 
     store = MagicMock()
     store.similarity_search_with_score.return_value = [
         (_Doc("vector doc", {"filename": "a.pdf"}), 0.9)
     ]
-    monkeypatch.setattr(nodes, "get_vector_store_tool", lambda: store)
+    monkeypatch.setattr(search, "get_vector_store", lambda: store)
 
     web_tool = MagicMock()
     web_tool.invoke.return_value = "web result"
-    monkeypatch.setattr(nodes, "get_web_search_tool", lambda: web_tool)
+    monkeypatch.setattr(nodes, "DuckDuckGoSearchRun", lambda: web_tool)
 
     # Everything graded relevant; the single vector doc (<2) forces a web fallback.
     monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes"] * len(c))
@@ -65,17 +66,17 @@ def test_no_fallback_when_enough_relevant_docs(graph, monkeypatch):
         "route_and_rewrite",
         lambda q, h=None: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
     )
-    monkeypatch.setattr(nodes, "extract_entities", lambda q: [])
+    monkeypatch.setattr(search, "extract_entities", lambda q: [])
 
     store = MagicMock()
     store.similarity_search_with_score.return_value = [
         (_Doc("doc one", {"filename": "a.pdf"}), 0.9),
         (_Doc("doc two", {"filename": "b.pdf"}), 0.8),
     ]
-    monkeypatch.setattr(nodes, "get_vector_store_tool", lambda: store)
+    monkeypatch.setattr(search, "get_vector_store", lambda: store)
 
     web_tool = MagicMock()
-    monkeypatch.setattr(nodes, "get_web_search_tool", lambda: web_tool)
+    monkeypatch.setattr(nodes, "DuckDuckGoSearchRun", lambda: web_tool)
     monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes"] * len(c))
 
     llm = MagicMock()

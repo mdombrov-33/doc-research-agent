@@ -6,7 +6,6 @@ from spacy.language import Language
 
 from src.config import Settings, get_settings
 from src.core.monitoring.tracker import MetricsTracker
-from src.guardrails.guardrails_wrapper import GuardrailsWrapper
 
 __all__ = [
     "Settings",
@@ -14,7 +13,6 @@ __all__ = [
     "get_vector_store",
     "get_nlp",
     "get_agent",
-    "get_guardrails",
     "get_metrics_tracker",
 ]
 
@@ -29,10 +27,6 @@ def get_nlp(request: Request) -> Language:
 
 def get_agent(request: Request) -> Any:
     return request.app.state.agent
-
-
-def get_guardrails(request: Request) -> GuardrailsWrapper:
-    return request.app.state.guardrails
 
 
 def get_metrics_tracker(request: Request) -> MetricsTracker:

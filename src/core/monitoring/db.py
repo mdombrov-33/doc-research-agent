@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 _CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS eval_stats (
+CREATE TABLE IF NOT EXISTS monitoring_stats (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     total_queries INTEGER DEFAULT 0,
     web_search_triggered INTEGER DEFAULT 0,
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS eval_stats (
 """
 
 _UPSERT = """
-INSERT INTO eval_stats (
+INSERT INTO monitoring_stats (
     id, total_queries, web_search_triggered,
     total_docs_retrieved, total_docs_relevant, total_latency_ms
 ) VALUES (1, ?, ?, ?, ?, ?)
@@ -28,14 +28,8 @@ ON CONFLICT(id) DO UPDATE SET
 _SELECT = """
 SELECT total_queries, web_search_triggered, total_docs_retrieved,
        total_docs_relevant, total_latency_ms
-FROM eval_stats WHERE id = 1
+FROM monitoring_stats WHERE id = 1
 """
-
-_MIGRATE = [
-    "ALTER TABLE eval_stats DROP COLUMN hallucination_passed",
-    "ALTER TABLE eval_stats DROP COLUMN quality_passed",
-    "ALTER TABLE eval_stats DROP COLUMN total_generation_attempts",
-]
 
 
 class MetricsDB:
@@ -44,11 +38,6 @@ class MetricsDB:
         self._db_path = db_path
         with self._connect() as conn:
             conn.execute(_CREATE_TABLE)
-            for stmt in _MIGRATE:
-                try:
-                    conn.execute(stmt)
-                except Exception:
-                    pass  # column already gone or never existed
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._db_path, check_same_thread=False)

@@ -1,15 +1,4 @@
-from types import SimpleNamespace
 from unittest.mock import MagicMock
-
-
-def make_moderation(flagged: bool) -> SimpleNamespace:
-    """Shape returned by AsyncOpenAI().moderations.create()."""
-    return SimpleNamespace(results=[SimpleNamespace(flagged=flagged)])
-
-
-def make_llm_message(content: str) -> SimpleNamespace:
-    """Shape returned by a chat model's .ainvoke() — only .content is read."""
-    return SimpleNamespace(content=content)
 
 
 def make_structured_llm(return_value=None, batch_return=None) -> MagicMock:

@@ -1,0 +1,52 @@
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from src.core.exceptions import EmptyDocumentError
+from src.core.ingestion import pipeline
+
+
+class _FakeDoc:
+    """Minimal spaCy Doc stand-in: no entities, no tokens."""
+
+    ents: list = []
+
+    def __iter__(self):
+        return iter([])
+
+
+@pytest.fixture
+def vector_store():
+    return MagicMock()
+
+
+@pytest.fixture
+def nlp():
+    """spaCy stand-in: callable returning an empty Doc."""
+    return MagicMock(return_value=_FakeDoc())
+
+
+async def test_process_and_store_rejects_empty_document(vector_store, nlp, tmp_path, monkeypatch):
+    path = tmp_path / "empty.txt"
+    path.write_text("   \n\t ", encoding="utf-8")
+    monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value="   \n\t "))
+    with pytest.raises(EmptyDocumentError):
+        await pipeline.process_and_store(str(path), "empty.txt", vector_store, nlp)
+    vector_store.add_documents.assert_not_called()
+
+
+async def test_process_and_store_returns_metadata_and_stores(
+    vector_store, nlp, tmp_path, monkeypatch
+):
+    path = tmp_path / "doc.txt"
+    body = "Lorem ipsum dolor sit amet. " * 200
+    path.write_text(body, encoding="utf-8")
+    monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value=body))
+
+    result = await pipeline.process_and_store(str(path), "doc.txt", vector_store, nlp)
+
+    assert result["filename"] == "doc.txt"
+    assert result["chunks_created"] > 0
+    assert result["file_size"] == path.stat().st_size
+    assert "document_id" in result
+    vector_store.add_documents.assert_called_once()

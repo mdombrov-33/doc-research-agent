@@ -32,14 +32,14 @@ import asyncio
 from evals import judges, ranking
 from evals.embeddings_check import check_separation
 from src.config import get_settings
-from src.core.document_processing.document_processor import DocumentProcessor
-from src.core.document_processing.text_processor import get_spacy_model
-from src.core.nodes import generate_node, retrieve_node
-from src.core.retrieval.search import get_vector_store
-from src.core.vector_store import (
+from src.core.agent.nodes import generate_node, retrieve_node
+from src.core.ingestion.pipeline import process_and_store
+from src.core.nlp import get_spacy_model
+from src.core.vectorstore import (
     ensure_collection_exists,
     get_embeddings,
     get_qdrant_client,
+    get_vector_store,
 )
 
 CORPUS_DIR = Path(__file__).parent / "corpus"
@@ -94,9 +94,10 @@ def _reset_collection() -> None:
 
 
 async def _ingest_corpus() -> None:
-    processor = DocumentProcessor(get_vector_store(), get_spacy_model())
+    vector_store = get_vector_store()
+    nlp = get_spacy_model()
     for path in sorted(CORPUS_DIR.glob("*.txt")):
-        await processor.process_and_store(str(path), path.name)
+        await process_and_store(str(path), path.name, vector_store, nlp)
 
 
 def _dedup(filenames: list[str]) -> list[str]:

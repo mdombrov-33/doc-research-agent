@@ -16,6 +16,8 @@ dependencies = [
     "langchain-qdrant>=1.1.0",
     "langchain-text-splitters>=0.3.4",
     "langgraph>=1.0.5",
+    "llm-guard>=0.3.16",
+    "torch",
     "numpy>=2.4.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
@@ -64,3 +66,12 @@ indent-style = "space"
 
 [tool.uv.sources]
 en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+# llm-guard pulls torch (via transformers). Default resolves to the CUDA build, dragging in
+# ~GBs of nvidia-* wheels we never use — the app is CPU-only on Cloud Run. Force the CPU wheel
+# on Linux (the Docker/Cloud Run target); macOS dev keeps PyPI, which is already CPU-only.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

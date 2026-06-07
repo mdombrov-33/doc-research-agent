@@ -1,18 +1,15 @@
 from typing import Any
 
-from qdrant_client import models
+from langchain_community.tools import DuckDuckGoSearchRun
 
-from src.config import Settings, get_settings
-from src.core.document_processing.text_processor import extract_entities
-from src.core.grading.graders import (
+from src.core.agent.grading import (
     grade_documents_batch,
     route_and_rewrite,
 )
+from src.core.agent.prompts import GENERATION_SYSTEM_PROMPT, GENERATION_USER_PROMPT
+from src.core.agent.state import AgentState
 from src.core.llm import get_llm
-from src.core.retrieval.reranker import rerank
-from src.core.state import AgentState
-from src.core.tools import get_vector_store_tool, get_web_search_tool
-from src.prompts import GENERATION_SYSTEM_PROMPT, GENERATION_USER_PROMPT
+from src.core.retrieval.search import hybrid_search
 from src.utils.logger import logger
 
 
@@ -40,103 +37,15 @@ def router_node(state: AgentState) -> dict[str, Any]:
     }
 
 
-def _entity_filter(entities: list[str]) -> models.Filter | None:
-    """Filter to chunks whose stored entities overlap the query's entities."""
-    if not entities:
-        return None
-    return models.Filter(
-        must=[
-            models.FieldCondition(
-                key="metadata.entities",
-                match=models.MatchAny(any=entities),
-            )
-        ]
-    )
-
-
-def _fetch_k(top_k: int, settings: Settings) -> int:
-    """Candidate pool size to retrieve before reranking: a multiple of the user's top_k,
-    capped. Reranking off → fetch exactly top_k (the original behaviour)."""
-    if not settings.RERANK_ENABLED:
-        return top_k
-    return max(top_k, min(top_k * settings.RERANK_MULTIPLIER, settings.RERANK_FETCH_CAP))
-
-
 def retrieve_node(state: AgentState) -> dict[str, Any]:
-    question = state.get("question", "")
     top_k = state.get("top_k") or 5
-    settings = get_settings()
-    vector_store = get_vector_store_tool()
-    fetch_k = _fetch_k(top_k, settings)
-
-    # Entity-aware retrieval: pull named entities from the query and use them to
-    # filter on the entities extracted at ingestion. Falls back to unfiltered
-    # hybrid search if the query has no entities or the filter matches nothing.
-    query_entities = extract_entities(question)
-    entity_filter = _entity_filter(query_entities)
-
-    # Hybrid search: dense + BM25 sparse, fused server-side by Qdrant (RRF). Pull a wide
-    # candidate pool (fetch_k) so the cross-encoder reranker has room to promote buried hits.
-    results = vector_store.similarity_search_with_score(question, k=fetch_k, filter=entity_filter)
-
-    entity_fallback = bool(entity_filter) and not results
-    if entity_fallback:
-        results = vector_store.similarity_search_with_score(question, k=fetch_k)
-
-    doc_items = []
-    scores = []
-
-    for doc, score in results:
-        content = doc.page_content if hasattr(doc, "page_content") else str(doc)
-        if not content.strip():
-            continue
-        metadata = doc.metadata if hasattr(doc, "metadata") else {}
-        doc_items.append(
-            {
-                "content": content,
-                "filename": metadata.get("filename", "unknown"),
-                "chunk_index": metadata.get("chunk_index", 0),
-                "chunk_length": metadata.get("chunk_length", len(content)),
-                "source": "vectorstore",
-            }
-        )
-        scores.append(float(score))
-
-    empty_filtered = len(results) - len(doc_items)
-    docs_retrieved_total = len(doc_items)
-
-    score_stats = {}
-    if scores:
-        score_stats = {
-            "score_min": round(min(scores), 4),
-            "score_max": round(max(scores), 4),
-            "score_mean": round(sum(scores) / len(scores), 4),
-        }
-
-    logger.info(
-        "docs_retrieved",
-        count=docs_retrieved_total,
-        fetch_k=fetch_k,
-        empty_filtered=empty_filtered,
-        query_entities=query_entities or None,
-        entity_filtered=bool(entity_filter) and not entity_fallback,
-        entity_fallback=entity_fallback,
-        **score_stats,
-    )
-
-    # Rerank the candidate pool with a cross-encoder and keep the user's top_k. Disabled →
-    # fetch_k already equals top_k, so the trim is a defensive no-op preserving the contract.
-    if settings.RERANK_ENABLED and doc_items:
-        doc_items = rerank(question, doc_items, top_k)
-    else:
-        doc_items = doc_items[:top_k]
-
-    return {"raw_documents": doc_items, "docs_retrieved_total": len(doc_items)}
+    docs = hybrid_search(state.get("question", ""), top_k)
+    return {"raw_documents": docs, "docs_retrieved_total": len(docs)}
 
 
 def web_search_node(state: AgentState) -> dict[str, Any]:
     question = state.get("question", "")
-    web_search = get_web_search_tool()
+    web_search = DuckDuckGoSearchRun()
 
     web_docs: list[dict] = []
     try:

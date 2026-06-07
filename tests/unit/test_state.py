@@ -1,4 +1,4 @@
-from src.core.state import _add_or_reset_int, _add_or_reset_list
+from src.core.agent.state import _add_or_reset_int, _add_or_reset_list
 
 
 def test_add_or_reset_list_appends():

@@ -1,6 +1,6 @@
 import pytest
 
-from src.core.retrieval import reranker
+from src.core.retrieval import rerank as reranker
 
 
 class _FakeEncoder:

@@ -4,13 +4,13 @@ from langchain_core.language_models import LanguageModelInput
 from pydantic import BaseModel, Field
 
 from src.config import get_settings
-from src.core.llm import get_llm
-from src.prompts import (
+from src.core.agent.prompts import (
     DOCUMENT_GRADER_SYSTEM_PROMPT,
     DOCUMENT_GRADER_USER_PROMPT,
     ROUTER_SYSTEM_PROMPT,
     ROUTER_USER_PROMPT,
 )
+from src.core.llm import get_llm
 from src.utils.logger import logger
 from src.utils.retry import with_retry
 

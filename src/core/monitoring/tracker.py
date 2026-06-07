@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
+from src.core.monitoring.db import MetricsDB
+
 
 @dataclass
 class QueryMetrics:
@@ -30,8 +32,6 @@ class MetricsTracker:
         self._db: Any = None
 
         if db_path:
-            from src.core.monitoring.db import MetricsDB
-
             self._db = MetricsDB(db_path)
             saved = self._db.load()
             if saved:

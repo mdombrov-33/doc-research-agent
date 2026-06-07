@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from src.api.dependencies import (
     get_agent,
-    get_guardrails,
     get_metrics_tracker,
     get_nlp,
     get_settings,
@@ -12,6 +11,7 @@ from src.api.dependencies import (
 from src.api.handlers import upload as upload_module
 from src.api.rate_limit import limiter
 from src.config import Settings
+from src.core import guardrails
 from src.core.monitoring.tracker import MetricsTracker
 from src.main import app
 
@@ -35,16 +35,15 @@ def test_upload_rejects_unsupported_extension(client):
     assert "Unsupported file type" in resp.json()["detail"]
 
 
-def _override_upload_deps(tmp_path, fake_processor, monkeypatch):
+def _override_upload_deps(tmp_path, process_mock, monkeypatch):
     app.dependency_overrides[get_settings] = lambda: Settings(UPLOAD_DIR=str(tmp_path))
     app.dependency_overrides[get_vector_store] = lambda: MagicMock()
     app.dependency_overrides[get_nlp] = lambda: MagicMock()
-    monkeypatch.setattr(upload_module, "DocumentProcessor", lambda vs, nlp: fake_processor)
+    monkeypatch.setattr(upload_module, "process_and_store", process_mock)
 
 
 def test_upload_happy_path(client, monkeypatch, tmp_path):
-    fake_processor = MagicMock()
-    fake_processor.process_and_store = AsyncMock(
+    process_mock = AsyncMock(
         return_value={
             "document_id": "doc-1",
             "filename": "note.txt",
@@ -52,7 +51,7 @@ def test_upload_happy_path(client, monkeypatch, tmp_path):
             "file_size": 11,
         }
     )
-    _override_upload_deps(tmp_path, fake_processor, monkeypatch)
+    _override_upload_deps(tmp_path, process_mock, monkeypatch)
 
     resp = client.post("/api/upload", files={"file": ("note.txt", b"hello world", "text/plain")})
 
@@ -62,8 +61,7 @@ def test_upload_happy_path(client, monkeypatch, tmp_path):
 
 
 def test_upload_cleans_up_temp_file(client, monkeypatch, tmp_path):
-    fake_processor = MagicMock()
-    fake_processor.process_and_store = AsyncMock(
+    process_mock = AsyncMock(
         return_value={
             "document_id": "doc-1",
             "filename": "note.txt",
@@ -71,7 +69,7 @@ def test_upload_cleans_up_temp_file(client, monkeypatch, tmp_path):
             "file_size": 11,
         }
     )
-    _override_upload_deps(tmp_path, fake_processor, monkeypatch)
+    _override_upload_deps(tmp_path, process_mock, monkeypatch)
 
     client.post("/api/upload", files={"file": ("note.txt", b"hello world", "text/plain")})
 
@@ -88,12 +86,10 @@ def test_monitoring_stats_empty(client):
     assert stats["avg_retrieval_precision"] == 0.0
 
 
-def test_stream_returns_guardrail_refusal(client):
+def test_stream_returns_guardrail_refusal(client, monkeypatch):
     refusal = "I cannot process that request."
-    fake_guardrails = MagicMock()
-    fake_guardrails.check_input = AsyncMock(return_value=refusal)
-
-    app.dependency_overrides[get_guardrails] = lambda: fake_guardrails
+    check_input = AsyncMock(return_value=refusal)
+    monkeypatch.setattr(guardrails, "check_input", check_input)
     # Agent/tracker are resolved as dependencies but unused once input is refused.
     app.dependency_overrides[get_agent] = lambda: MagicMock()
     app.dependency_overrides[get_metrics_tracker] = lambda: MagicMock()
@@ -102,7 +98,7 @@ def test_stream_returns_guardrail_refusal(client):
 
     assert resp.status_code == 200
     assert refusal in resp.text
-    fake_guardrails.check_input.assert_awaited_once()
+    check_input.assert_awaited_once()
 
 
 def test_stream_rate_limited_returns_429(client, monkeypatch):
@@ -111,9 +107,7 @@ def test_stream_rate_limited_returns_429(client, monkeypatch):
     get_settings.cache_clear()
     limiter.enabled = True
 
-    fake_guardrails = MagicMock()
-    fake_guardrails.check_input = AsyncMock(return_value="refused")
-    app.dependency_overrides[get_guardrails] = lambda: fake_guardrails
+    monkeypatch.setattr(guardrails, "check_input", AsyncMock(return_value="refused"))
     app.dependency_overrides[get_agent] = lambda: MagicMock()
     app.dependency_overrides[get_metrics_tracker] = lambda: MagicMock()
 

@@ -1,14 +1,14 @@
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from src.core.nodes import (
+from src.core.agent.nodes import (
     generate_node,
     grade_documents_node,
     retrieve_node,
     router_node,
     web_search_node,
 )
-from src.core.state import AgentState
+from src.core.agent.state import AgentState
 from src.utils.logger import logger
 from src.utils.node_timer import timed
 

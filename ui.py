@@ -117,7 +117,7 @@ def main():
 
         st.subheader("Configuration")
 
-        default_model = settings.get_llm_model()
+        default_model = settings.LLM_MODEL
         model_keys = list(MODELS.keys())
         default_index = model_keys.index(default_model) if default_model in model_keys else 0
         selected_model = st.selectbox(

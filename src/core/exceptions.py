@@ -6,11 +6,7 @@ class DocumentProcessingError(DocResearchError):
     pass
 
 
-class TextExtractionError(DocumentProcessingError):
-    pass
-
-
-class UnsupportedFileTypeError(TextExtractionError):
+class UnsupportedFileTypeError(DocumentProcessingError):
     pass
 
 
@@ -22,13 +18,5 @@ class ModelLoadError(DocResearchError):
     pass
 
 
-class VectorStoreError(DocResearchError):
-    pass
-
-
-class EmbeddingConfigError(VectorStoreError):
-    pass
-
-
-class RetrievalError(DocResearchError):
+class EmbeddingConfigError(DocResearchError):
     pass

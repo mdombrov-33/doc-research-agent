@@ -2,7 +2,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from src.core.state import AgentState
+from src.core.agent.state import AgentState
 from src.utils.logger import logger
 
 

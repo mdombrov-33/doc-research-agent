@@ -2,17 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from qdrant_client import models
 
-from src.core import nodes
-from src.core.grading.graders import RouteAndRewrite
-
-
-class _Doc:
-    def __init__(self, content, metadata=None):
-        self.page_content = content
-        self.metadata = metadata or {}
-
+from src.core.agent import nodes
+from src.core.agent.grading import RouteAndRewrite
 
 # --------------------------- router_node ---------------------------
 
@@ -42,104 +34,18 @@ def test_router_node_routes_to_vectorstore(monkeypatch):
     assert nodes.router_node({"question": "q"})["web_search"] is False
 
 
-# --------------------------- _entity_filter ---------------------------
-
-
-def test_entity_filter_none_for_empty():
-    assert nodes._entity_filter([]) is None
-
-
-def test_entity_filter_builds_match_any():
-    flt = nodes._entity_filter(["Acme", "Bob"])
-    expected = models.Filter(
-        must=[
-            models.FieldCondition(
-                key="metadata.entities",
-                match=models.MatchAny(any=["Acme", "Bob"]),
-            )
-        ]
-    )
-    assert flt == expected
-
-
 # --------------------------- retrieve_node ---------------------------
 
 
-def test_retrieve_node_maps_results_and_skips_blank(monkeypatch):
-    store = MagicMock()
-    store.similarity_search_with_score.return_value = [
-        (_Doc("real content", {"filename": "a.pdf", "chunk_index": 2, "chunk_length": 12}), 0.9),
-        (_Doc("   ", {"filename": "blank.pdf"}), 0.5),  # blank → skipped
-    ]
-    monkeypatch.setattr(nodes, "get_vector_store_tool", lambda: store)
-    monkeypatch.setattr(nodes, "extract_entities", lambda q: [])
-    monkeypatch.setattr(nodes, "rerank", lambda q, docs, k: docs[:k])
+def test_retrieve_node_delegates_to_hybrid_search(monkeypatch):
+    # The node is a thin adapter: it calls hybrid_search and maps the result into state.
+    docs = [{"content": "x", "filename": "a.pdf", "source": "vectorstore"}]
+    monkeypatch.setattr(nodes, "hybrid_search", lambda question, top_k: docs)
 
     out = nodes.retrieve_node({"question": "q", "top_k": 5})
 
+    assert out["raw_documents"] == docs
     assert out["docs_retrieved_total"] == 1
-    assert out["raw_documents"][0]["filename"] == "a.pdf"
-    assert out["raw_documents"][0]["source"] == "vectorstore"
-
-
-def test_retrieve_node_falls_back_to_unfiltered_when_filter_empty(monkeypatch):
-    store = MagicMock()
-    # First (filtered) call returns nothing, second (unfiltered) returns a hit.
-    store.similarity_search_with_score.side_effect = [
-        [],
-        [(_Doc("fallback hit", {"filename": "b.txt"}), 0.8)],
-    ]
-    monkeypatch.setattr(nodes, "get_vector_store_tool", lambda: store)
-    monkeypatch.setattr(nodes, "extract_entities", lambda q: ["Acme"])
-    monkeypatch.setattr(nodes, "rerank", lambda q, docs, k: docs[:k])
-
-    out = nodes.retrieve_node({"question": "q", "top_k": 5})
-
-    assert store.similarity_search_with_score.call_count == 2
-    assert out["docs_retrieved_total"] == 1
-    # The fallback re-query drops the filter.
-    assert store.similarity_search_with_score.call_args.kwargs.get("filter") is None
-
-
-def test_retrieve_node_overfetches_pool_and_truncates_to_top_k(monkeypatch):
-    store = MagicMock()
-    # Eight candidate chunks come back from hybrid search, in retrieval order.
-    store.similarity_search_with_score.return_value = [
-        (_Doc(f"doc {i}", {"filename": f"{i}.txt"}), 1.0 - i * 0.1) for i in range(8)
-    ]
-    monkeypatch.setattr(nodes, "get_vector_store_tool", lambda: store)
-    monkeypatch.setattr(nodes, "extract_entities", lambda q: [])
-
-    captured = {}
-
-    def fake_rerank(question, docs, top_k):
-        captured["candidates"] = len(docs)
-        captured["top_k"] = top_k
-        return docs[:top_k]
-
-    monkeypatch.setattr(nodes, "rerank", fake_rerank)
-
-    out = nodes.retrieve_node({"question": "q", "top_k": 3})
-
-    # The pool requested from the store scales with top_k (3 * default multiplier 4 = 12).
-    assert store.similarity_search_with_score.call_args.kwargs["k"] == 12
-    # The reranker saw every returned candidate and was asked for the user's top_k.
-    assert captured["candidates"] == 8
-    assert captured["top_k"] == 3
-    # The final result is truncated to the user's top_k.
-    assert out["docs_retrieved_total"] == 3
-    assert len(out["raw_documents"]) == 3
-
-
-def test_fetch_k_scales_with_top_k_and_is_capped():
-    s = SimpleNamespace(RERANK_ENABLED=True, RERANK_MULTIPLIER=4, RERANK_FETCH_CAP=100)
-    assert nodes._fetch_k(5, s) == 20
-    assert nodes._fetch_k(40, s) == 100  # 40 * 4 = 160, capped to 100
-
-
-def test_fetch_k_returns_top_k_when_reranking_disabled():
-    s = SimpleNamespace(RERANK_ENABLED=False, RERANK_MULTIPLIER=4, RERANK_FETCH_CAP=100)
-    assert nodes._fetch_k(5, s) == 5
 
 
 # --------------------------- web_search_node ---------------------------
@@ -148,7 +54,7 @@ def test_fetch_k_returns_top_k_when_reranking_disabled():
 def test_web_search_node_wraps_result(monkeypatch):
     tool = MagicMock()
     tool.invoke.return_value = "web answer"
-    monkeypatch.setattr(nodes, "get_web_search_tool", lambda: tool)
+    monkeypatch.setattr(nodes, "DuckDuckGoSearchRun", lambda: tool)
 
     out = nodes.web_search_node({"question": "q"})
 
@@ -160,7 +66,7 @@ def test_web_search_node_wraps_result(monkeypatch):
 def test_web_search_node_swallows_errors(monkeypatch):
     tool = MagicMock()
     tool.invoke.side_effect = RuntimeError("ddg down")
-    monkeypatch.setattr(nodes, "get_web_search_tool", lambda: tool)
+    monkeypatch.setattr(nodes, "DuckDuckGoSearchRun", lambda: tool)
 
     out = nodes.web_search_node({"question": "q"})
 

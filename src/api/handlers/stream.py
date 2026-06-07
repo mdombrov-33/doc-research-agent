@@ -7,14 +7,13 @@ from fastapi.responses import StreamingResponse
 from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
+from src.core import guardrails
 from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
-from src.guardrails.guardrails_wrapper import GuardrailsWrapper
 from src.utils.logger import logger
 
 
 async def _token_generator(
     request: QueryRequest,
-    guardrails: GuardrailsWrapper,
     agent: Any,
     tracker: MetricsTracker,
 ) -> AsyncGenerator[str, None]:
@@ -82,15 +81,6 @@ async def _token_generator(
         yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
         return
 
-    full_response = "".join(accumulated)
-    _t = time.monotonic()
-    correction = await guardrails.check_output(full_response)
-    logger.info(
-        "node_complete",
-        node="guardrails_output",
-        duration_ms=round((time.monotonic() - _t) * 1000, 1),
-    )
-
     latency_ms = time.monotonic() * 1000 - start_ms
     tracker.record(
         QueryMetrics(
@@ -105,20 +95,16 @@ async def _token_generator(
         )
     )
 
-    if correction:
-        yield f"data: {json.dumps({'token': correction, 'done': True, 'correction': True})}\n\n"
-    else:
-        yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'sources': sources_meta, 'session_id': request.session_id})}\n\n"  # noqa: E501
+    yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'sources': sources_meta, 'session_id': request.session_id})}\n\n"  # noqa: E501
 
 
 async def handle_stream(
     request: QueryRequest,
-    guardrails: GuardrailsWrapper,
     agent: Any,
     tracker: MetricsTracker,
 ) -> StreamingResponse:
     return StreamingResponse(
-        _token_generator(request, guardrails, agent, tracker),
+        _token_generator(request, agent, tracker),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

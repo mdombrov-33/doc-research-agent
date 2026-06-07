@@ -7,7 +7,6 @@ from spacy.language import Language
 from src.api.dependencies import (
     Settings,
     get_agent,
-    get_guardrails,
     get_metrics_tracker,
     get_nlp,
     get_settings,
@@ -18,7 +17,6 @@ from src.api.handlers.upload import handle_upload
 from src.api.rate_limit import limiter, rate_limit
 from src.api.schemas import QueryRequest, UploadResponse
 from src.core.monitoring.tracker import MetricsTracker
-from src.guardrails.guardrails_wrapper import GuardrailsWrapper
 
 router = APIRouter()
 
@@ -41,11 +39,10 @@ async def upload_document(
 async def stream_query(
     request: Request,
     payload: QueryRequest,
-    guardrails: GuardrailsWrapper = Depends(get_guardrails),
     agent: Any = Depends(get_agent),
     tracker: MetricsTracker = Depends(get_metrics_tracker),
 ):
-    return await handle_stream(payload, guardrails, agent, tracker)
+    return await handle_stream(payload, agent, tracker)
 
 
 @router.get("/monitoring/stats")

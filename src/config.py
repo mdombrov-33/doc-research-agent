@@ -51,9 +51,6 @@ class Settings(BaseSettings):
 
     API_URL: str = "http://localhost:8000"
 
-    def get_llm_model(self) -> str:
-        return self.LLM_MODEL
-
 
 @lru_cache
 def get_settings() -> Settings:

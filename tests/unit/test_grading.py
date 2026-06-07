@@ -1,7 +1,7 @@
 import pytest
 
-from src.core.grading import graders
-from src.core.grading.graders import (
+from src.core.agent import grading as graders
+from src.core.agent.grading import (
     GradeDocuments,
     RouteAndRewrite,
     grade_documents_batch,

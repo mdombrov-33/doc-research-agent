@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from langchain_openai import OpenAIEmbeddings
+from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
 from pydantic import SecretStr
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -12,9 +13,10 @@ from qdrant_client.models import (
 )
 
 from src.config import get_settings
-from src.constants import SPARSE_VECTOR_NAME
 from src.core.exceptions import EmbeddingConfigError
 from src.utils.logger import logger
+
+SPARSE_VECTOR_NAME = "langchain-sparse"
 
 
 @lru_cache
@@ -74,3 +76,23 @@ def ensure_collection_exists() -> None:
         field_schema=PayloadSchemaType.KEYWORD,
     )
     logger.info("qdrant_collection_created", collection=settings.QDRANT_COLLECTION_NAME)
+
+
+@lru_cache(maxsize=1)
+def get_vector_store() -> QdrantVectorStore:
+    """The configured hybrid store, shared by ingestion (add_documents) and retrieval (search).
+
+    HYBRID = dense OpenAI embeddings + sparse BM25, fused server-side by Qdrant (RRF). The
+    sparse vectors this relies on are declared in ensure_collection_exists above.
+    """
+    settings = get_settings()
+    logger.info("vector_store_initialized", collection=settings.QDRANT_COLLECTION_NAME)
+
+    return QdrantVectorStore(
+        client=get_qdrant_client(),
+        collection_name=settings.QDRANT_COLLECTION_NAME,
+        embedding=get_embeddings(),
+        retrieval_mode=RetrievalMode.HYBRID,
+        sparse_embedding=FastEmbedSparse(model_name="Qdrant/bm25"),
+        sparse_vector_name=SPARSE_VECTOR_NAME,
+    )

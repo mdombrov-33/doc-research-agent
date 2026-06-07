@@ -8,8 +8,8 @@ from langchain_qdrant import QdrantVectorStore
 from spacy.language import Language
 
 from src.config import Settings
-from src.core.document_processing.document_processor import DocumentProcessor
 from src.core.exceptions import DocumentProcessingError, EmptyDocumentError
+from src.core.ingestion.pipeline import process_and_store
 from src.utils.logger import logger
 
 
@@ -42,8 +42,7 @@ async def handle_upload(
         with open(file_path, "wb") as f:
             f.write(content)
 
-        processor = DocumentProcessor(vector_store, nlp)
-        result = await processor.process_and_store(str(file_path), file.filename)
+        result = await process_and_store(str(file_path), file.filename, vector_store, nlp)
         logger.info("upload_complete", **result)
         return result
 
