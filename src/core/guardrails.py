@@ -29,7 +29,13 @@ def _is_flagged(text: str) -> bool:
 
 async def check_input(question: str) -> str | None:
     loop = asyncio.get_running_loop()
-    flagged = await loop.run_in_executor(None, _is_flagged, question)
+    try:
+        flagged = await loop.run_in_executor(None, _is_flagged, question)
+    except Exception as e:
+        # Local scanners rarely throw, but if they do, fail closed (block) rather than let the
+        # exception break the SSE stream — check_input runs before the handler's try/except.
+        logger.error("guardrails_input_error", error=str(e))
+        return _BLOCK_INPUT
     if flagged:
         logger.info("guardrails_input_blocked", preview=question[:100])
         return _BLOCK_INPUT

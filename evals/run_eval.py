@@ -131,7 +131,7 @@ def _evaluate_query(row: dict, full: bool) -> QueryResult:
             {"role": "system", "content": GENERATION_SYSTEM_PROMPT.format(context=context)},
             {"role": "user", "content": GENERATION_USER_PROMPT.format(question=row["question"])},
         ]
-        response = get_llm(temperature=0.7).invoke(messages)
+        response = get_llm().invoke(messages)  # temp 0, matching the serving agent
         answer = response.content if isinstance(response.content, str) else str(response.content)
         result.faithfulness = judges.normalize(judges.judge_faithfulness(context, answer).score)
         result.answer_relevance = judges.normalize(
