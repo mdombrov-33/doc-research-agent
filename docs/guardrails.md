@@ -1,33 +1,37 @@
 # Guardrails
 
-Two checks wrap the agent — one before, one after.
+One check, before the agent runs. There is **no output guardrail** (see below).
+
+`src/core/guardrails.py`.
 
 ## Input check
 
-Runs before LangGraph. Two independent stages run **concurrently** (`asyncio.gather`)
-to keep latency low:
+`check_input` runs before LangGraph. It screens the question with **llm-guard**'s
+`scan_prompt` using two **local** HuggingFace scanners:
 
-1. **OpenAI Moderation API** — catches harmful, violent, or explicit content. Free, ~100ms.
-2. **`gpt-5.4-mini` injection classifier** — catches prompt injection, jailbreaks, system probing.
+1. **`Toxicity`** — harmful, abusive, or explicit content.
+2. **`PromptInjection`** — prompt injection, jailbreaks, system probing.
 
-If either fires, the refusal message is returned and LangGraph never runs.
+If **either** scanner flags the text, a fixed refusal string is returned and LangGraph never
+runs. The scan is CPU-bound, so it runs in a thread executor (`run_in_executor`) to avoid
+blocking the event loop.
 
-> **Provider split:** the moderation call goes directly to OpenAI (`OPENAI_API_KEY`),
-> while the injection classifier goes through OpenRouter (`OPENROUTER_API_KEY`) via
-> `get_llm`. An input check therefore touches both providers.
+> **No external provider.** Unlike the rest of the app, guardrails call neither OpenAI nor
+> OpenRouter — the models run in-process. They're loaded once (`@lru_cache` on
+> `_get_scanners`) and primed at startup by `guardrails.warmup()`, so the first real request
+> doesn't pay the cold start. The models are **baked into the Docker image** (`HF_HOME=
+> /app/.hf_cache`) so the image build, not the first request, absorbs the ~64s download.
 
-## Output check
+## No output check
 
-Runs after all tokens have been streamed and accumulated. OpenAI Moderation API only.
+The agent streams its answer token by token, so there is no point at which a complete response
+exists to screen before the user has already seen it. Hard-blocking would mean buffering the
+whole answer first and giving up streaming — which we don't. So output safety is simply not
+enforced here.
 
-**Best-effort, not a hard block.** Because the response is streamed token-by-token, the
-content has already reached the user by the time this check runs. So it serves two
-purposes — a monitoring signal (logged as `guardrails_output_flagged`) and a client-side
-correction flag — but it cannot guarantee unsafe content is never shown. Hard-blocking
-would require buffering the full response before sending (giving up streaming), which we
-deliberately don't do.
+## Failure behaviour
 
-## Fail open
-
-Both checks catch all exceptions and return safe (not flagged) on error. A guardrails
-outage never blocks the agent.
+The scanners are **not** wrapped in a try/except, so an internal scanner error propagates
+rather than failing open. If you want fail-open behaviour (degrade safety but never block the
+agent on a guardrails outage), wrap the scan in `check_input` and return "not flagged" on
+error.

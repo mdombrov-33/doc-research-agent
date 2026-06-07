@@ -31,11 +31,15 @@ embedding guard (3) catches a silent embedding-model swap that would quietly sin
 
 For each line in `golden.jsonl`:
 
-1. **Retrieve** with the real `retrieve_node` → rank the returned filenames against the
-   labelled `relevant_filenames` → recall/precision/MRR/NDCG/MAP.
-2. **Generate** with the real `generate_node` over the retrieved context → an LLM judge
-   scores the answer's **faithfulness** (no hallucination vs. context) and **relevance**
-   (does it answer the question), each 1–5, normalised to 0–1.
+1. **Retrieve** with the real `hybrid_search` (the same retrieval the agent's
+   `retrieve_documents` tool calls) → rank the returned filenames against the labelled
+   `relevant_filenames` → recall/precision/MRR/NDCG/MAP. The eval scores retrieval **directly**,
+   not through the agent's tool loop, so the numbers reflect retrieval quality rather than the
+   LLM's tool-choice behaviour.
+2. **Generate** an answer over the retrieved context using the eval's own `GENERATION_*` prompts
+   (`src/core/agent/prompts.py`), decoupled from the serving agent loop → an LLM judge scores
+   the answer's **faithfulness** (no hallucination vs. context) and **relevance** (does it
+   answer the question), each 1–5, normalised to 0–1.
 3. Separately, the **embedding guard** checks that each question embeds closer to its
    relevant document than to an irrelevant one.
 
@@ -48,7 +52,7 @@ it's capped at 1/k, so it reflects the question mix, not a regression).
 | File | Role |
 |------|------|
 | `corpus/*.txt` | The fixed document set that gets ingested |
-| `golden.jsonl` | Labelled questions: `question`, `relevant_filenames`, `expected_route` |
+| `golden.jsonl` | Labelled questions: `question`, `relevant_filenames` |
 | `ranking.py` | Pure retrieval metrics (recall@k, precision@k, MRR, MAP, NDCG) |
 | `judges.py` | LLM-as-judge faithfulness + answer-relevance scorers |
 | `embeddings_check.py` | Cosine separation guard for the embedding model |
@@ -88,7 +92,7 @@ CI's `rag eval gate` job runs `make eval-retrieval`'s command on every push to m
 Append a line to `golden.jsonl`:
 
 ```json
-{"question": "…", "relevant_filenames": ["some_doc.txt"], "expected_route": "vectorstore"}
+{"question": "…", "relevant_filenames": ["some_doc.txt"]}
 ```
 
 Use two or more `relevant_filenames` for questions answerable by multiple documents — those

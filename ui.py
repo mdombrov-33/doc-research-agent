@@ -98,8 +98,8 @@ def main():
     st.title("Document Research Agent")
     render_monitoring_stats()
     st.markdown(
-        "Upload documents and ask questions. The agent always searches your documents — "
-        "for queries needing current information, it also runs a live web search in parallel."
+        "Upload documents and ask questions. The agent searches your documents first, and "
+        "falls back to a live web search on its own when they don't cover the question."
     )
     st.divider()
 

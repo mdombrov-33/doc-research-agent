@@ -6,94 +6,121 @@ How the agent remembers what was said earlier in a conversation.
 
 ## The short version
 
-Each browser session gets a unique `session_id`. That ID is passed to LangGraph as a `thread_id`, which tells it to load and save state for that specific thread. The conversation history lives inside the agent state as `chat_history` and gets appended to after every response.
+Each browser session gets a unique `session_id`. That ID is passed to LangGraph as a
+`thread_id`, which tells it which thread's state to load and save. The conversation lives in
+the agent state's `messages` list, and LangGraph's checkpointer persists that list per thread.
+There is no separate "chat history" field — `messages` *is* the history.
 
 ---
 
-## Two layers working together
+## `messages` is the memory
 
-There are actually two things doing memory here, and it's worth knowing what each one does:
-
-**1. MemorySaver (LangGraph)**
-
-When we compile the graph we pass it a checkpointer:
+The agent state has one channel that carries the conversation (`src/core/agent/state.py`):
 
 ```python
-app = workflow.compile(checkpointer=MemorySaver())
+class AgentState(TypedDict, total=False):
+    messages: Required[Annotated[list[AnyMessage], add_messages]]
+    ...
 ```
 
-`MemorySaver` stores the entire agent state in memory, keyed by `thread_id`. So between requests, LangGraph can reload the state from the previous turn — including `chat_history`, the last question, retrieved documents, etc. This is what makes it multi-turn.
+The `add_messages` reducer appends to this list every turn — the human question, the agent's
+tool calls, the tool results, the agent's answer. Because the checkpointer persists the whole
+list per `thread_id`, the next turn reloads everything that came before. The agent sees the
+**entire conversation** on each turn, so it can answer a follow-up like *"expand on that"*
+coherently.
 
-**2. chat_history (inside the state)**
-
-`chat_history` is a plain list of messages in the agent state:
+Each new turn the stream handler appends **only** the new question; the rest is reloaded from
+the checkpoint (`src/api/handlers/stream.py`):
 
 ```python
-chat_history: list[dict[str, str]]
+inputs = {
+    "messages": [HumanMessage(content=request.question)],
+    "documents": None,            # reset per-query accumulators (see reducers)
+    "docs_retrieved_total": None,
+    "web_search_used": False,
+}
 ```
 
-Each entry is `{"role": "user" | "assistant", "content": "..."}`. The `generate_node` reads this and injects it into the LLM prompt so the model actually sees the prior conversation:
+> Note `documents` / `docs_retrieved_total` are set to `None` here — their reducers read that
+> as "reset to empty" so last turn's retrieved docs don't bleed into this one. `messages` is
+> deliberately *not* reset; that's the part that carries over.
+
+---
+
+## The checkpointer
+
+When the graph is compiled it's given a checkpointer (`src/core/agent/graph.py`):
 
 ```python
-messages = [
-    {"role": "system", "content": ...},  # system prompt with doc context
-    *chat_history,                        # all previous turns
-    {"role": "user", "content": question} # current question
-]
+checkpointer = AsyncSqliteSaver(aiosqlite.connect(settings.checkpoints_db_path))
+app = workflow.compile(checkpointer=checkpointer)
 ```
 
-After generating a response, it appends the new turn and saves it back:
+`AsyncSqliteSaver` (from `langgraph-checkpoint-sqlite`) stores each thread's state in a SQLite
+file under `DATA_DIR`. Two details matter:
+
+- **It must be async.** The serving path streams with `astream_events`, which uses the async
+  checkpointer API. A sync `SqliteSaver` raises *"does not support async methods"* there.
+- **It must be built inside the running event loop.** `AsyncSqliteSaver` grabs the loop at
+  construction, so the graph is built in the FastAPI **lifespan** (`src/main.py`), not at
+  import time.
+
+Tests don't want a real database, so `build_graph` takes an **injectable** checkpointer and
+the tests pass a sync `MemorySaver` (they drive the graph with `.invoke`, the sync API):
 
 ```python
-updated_history = chat_history + [
-    {"role": "user", "content": question},
-    {"role": "assistant", "content": generation},
-]
+return build_graph(checkpointer=MemorySaver())
 ```
 
 ---
 
 ## How sessions are isolated
 
-Every request includes a `session_id`:
+Every request carries a `session_id` (`src/api/schemas.py`):
 
 ```python
 class QueryRequest(BaseModel):
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    ...
 ```
 
-If the frontend doesn't send one, a new UUID is generated — meaning it's a fresh session with no history. If it sends the same `session_id` across requests, LangGraph loads the matching thread and continues from where it left off.
-
-In `stream.py` this is wired as:
+If the frontend doesn't send one, a fresh UUID is generated — a new session with no history.
+Send the same `session_id` across requests and LangGraph loads the matching thread and
+continues. The stream handler wires it as the `thread_id`:
 
 ```python
-config = {"configurable": {"thread_id": request.session_id}}
+config = {"configurable": {"thread_id": request.session_id, "model": ..., "top_k": ...}}
 async for event in agent.astream_events(inputs, config=config, version="v2"):
     ...
 ```
 
-That `config` is what tells LangGraph which thread's state to load.
+That `config` is what tells LangGraph which thread's state to load. (The same `configurable`
+dict also carries the per-request `model` and `top_k` knobs — those are *not* in the persisted
+state.)
 
 ---
 
-## What gets reset each turn
+## History-aware retrieval
 
-Not everything in the state carries over. Some fields are reset at the start of each request — these are the retrieval fields that are only relevant for the current query:
-
-```python
-# in router_node, these reset every turn:
-"web_search": web_search,
-"web_search_done": False,
-"web_fallback_needed": False,
-"question": result.rewritten_query,
-"raw_documents": None,
-"docs_retrieved_total": None,
-```
-
-`chat_history` is not reset — it just keeps growing.
+Memory and retrieval are two different problems. The checkpointer gives the agent the whole
+conversation, but a follow-up like *"the third one"* carries no search terms on its own — so a
+naive retrieval call would fail. There's no separate router rewriting the query anymore; the
+**agent itself** handles it. Its system prompt (`src/core/agent/prompts.py`) instructs it,
+when a question refers to earlier conversation, to resolve the reference into a standalone
+`retrieve_documents` query *before* searching. The agent has the history in `messages`, so it
+has everything it needs to do that.
 
 ---
 
-## The limitation
+## Durability
 
-`MemorySaver` is in-process memory. If the server restarts, all conversation history is gone. For production this would need a persistent checkpointer. LangGraph supports swapping `MemorySaver` out for other backends — options would include a database like Postgres, a cache like Redis, or object storage like S3. The interface stays the same, only the checkpointer changes.
+SQLite makes history survive a **process restart** — *as long as the database file persists*.
+
+- **docker-compose**: the `./data` volume is mounted, so `checkpoints.db` persists across
+  restarts.
+- **Cloud Run**: the local disk is ephemeral and not shared across instances, so a SQLite file
+  there is lost on instance recycle and isn't seen by sibling instances.
+
+For durable, horizontally-scaled memory, swap the checkpointer for a shared backend (e.g.
+Postgres via `langgraph-checkpoint-postgres`). `build_graph` already accepts an injectable
+checkpointer, so it's a one-line change in `graph.py`.

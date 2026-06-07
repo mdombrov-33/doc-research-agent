@@ -1,17 +1,20 @@
 # Document Research Agent
 
-An adaptive agentic RAG service. Upload documents, ask questions, get streamed answers
-grounded in your files — with a live web search mixed in when the question needs it.
+An agentic RAG service. Upload documents, ask questions, get streamed answers grounded in your
+files — with the agent reaching for a live web search on its own when your documents don't
+cover the question.
 
-Built on a **LangGraph** state machine with **hybrid retrieval** (dense + BM25), a
-**cross-encoder reranker**, LLM **document grading** with a **web-search fallback**, SSE token
-**streaming**, LLM-based **guardrails**, and per-IP **rate limiting**.
+Built on a **LangGraph** agent (a **ReAct** tool-calling loop with **corrective document
+grading**), **hybrid retrieval** (dense + BM25), a **cross-encoder reranker**, persistent
+**conversation memory**, SSE token **streaming**, local **guardrails**, and per-IP **rate
+limiting**.
 
 **Frontend:** Streamlit · **Backend:** FastAPI on GCP Cloud Run · **Vector DB:** Qdrant
 
 > **Full reference:** [`docs/architecture.md`](docs/architecture.md) explains every part —
-> ingestion, retrieval, the graph and its custom reducers, grading, fallbacks, streaming,
-> guardrails, memory, evaluation, and deployment. Start there to understand how it works.
+> ingestion, retrieval, the agent (its tools, state, and the grade step), the web-search
+> fallback, streaming, guardrails, memory, evaluation, and deployment. Start there to
+> understand how it works.
 
 ## Screenshots
 
@@ -24,26 +27,30 @@ Built on a **LangGraph** state machine with **hybrid retrieval** (dense + BM25),
 ```
 POST /api/stream
       │
-   Guardrails (input: moderation ‖ injection)
+   Guardrails (input: llm-guard Toxicity + PromptInjection, local)
       │
-   router ──► retrieve (+ websearch in parallel?) ──► grade_documents ⇄ websearch ──► generate
-      │                                                  (fallback if <2 relevant)      │
-   Guardrails (output: moderation, best-effort)                          streamed tokens ┘
+   ┌─── LangGraph agent (ReAct + corrective grading) ───┐
+   │   agent ──► tools ──► grade ──┐                     │
+   │     ▲                         │   loop until        │
+   │     └─────────────────────────┘   the agent answers │
+   │     └──► END (answer)                               │
+   └─────────────────────────────────────────────────────┘
       │
-   SSE → client   +   telemetry recorded
+   streamed answer tokens → SSE → client   +   telemetry recorded
 ```
 
-- **Router** — one LLM call classifies the query (documents vs documents+web) and rewrites it
-  for search.
-- **Retrieve** — always runs. Hybrid dense + BM25 search in Qdrant (fused with RRF), then a
-  cross-encoder reranks a wide candidate pool down to your `top_k`.
-- **Grade** — an LLM scores each candidate yes/no; if too little is relevant, the graph falls
-  back to web search and merges the results.
-- **Generate** — answers from the graded context and streams tokens over SSE; conversation
-  history is kept per session.
+- **Agent** — a tool-calling LLM decides each step: search the documents, search the web, or
+  write the answer. Its trajectory isn't fixed — it's chosen per question.
+- **Tools** — `retrieve_documents` runs hybrid dense + BM25 search in Qdrant (fused with RRF),
+  then a cross-encoder reranks a wide candidate pool down to your `top_k`; `web_search` hits
+  the live web.
+- **Grade** — an LLM scores each retrieved chunk yes/no and drops the rest. An empty result is
+  the signal that makes the agent fall back to web search on its own.
+- **Answer** — once the agent has enough graded context it writes the answer and streams it
+  over SSE; conversation history is persisted per session.
 
-See [`docs/architecture.md`](docs/architecture.md) for the state machine, the parallel/fallback
-web-search paths, and the custom state reducers.
+See [`docs/architecture.md`](docs/architecture.md) for the agent topology, the tools and state,
+the web-search fallback walkthrough, and memory.
 
 ## Quickstart
 
@@ -69,9 +76,12 @@ Every field in `src/config.py` can be set via an env var of the same name; `.env
 the values that differ per environment. See [`.env.example`](.env.example) for the annotated
 list. Keys:
 
-- `OPENAI_API_KEY` — embeddings (`text-embedding-3-small`) **and** the guardrails moderation API
-- `OPENROUTER_API_KEY` — all chat/LLM calls (routing, grading, generation)
+- `OPENAI_API_KEY` — embeddings (`text-embedding-3-small`) only
+- `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer, and grading)
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`)
+
+Guardrails run locally (llm-guard) and need no API key. Conversation memory and live telemetry
+persist to SQLite under `DATA_DIR` (default `./data`).
 
 ## API
 
@@ -91,6 +101,7 @@ push to main.
 
 ## Tech stack
 
-**LangGraph** · **LangChain** · **Qdrant** (hybrid dense + BM25) · **FastEmbed** (BM25 sparse +
-cross-encoder reranker) · **FastAPI** · **slowapi** (rate limiting) · **OpenAI** (embeddings + moderation) · **OpenRouter**
-(LLMs) · **PyMuPDF** · **spaCy** · **Streamlit** · **Docker** · **Terraform**
+**LangGraph** (ReAct agent + SQLite checkpointer) · **LangChain** · **Qdrant** (hybrid dense +
+BM25) · **FastEmbed** (BM25 sparse + cross-encoder reranker) · **llm-guard** (local input
+guardrails) · **FastAPI** · **slowapi** (rate limiting) · **OpenAI** (embeddings) ·
+**OpenRouter** (LLMs) · **PyMuPDF** · **spaCy** · **Streamlit** · **Docker** · **Terraform**
