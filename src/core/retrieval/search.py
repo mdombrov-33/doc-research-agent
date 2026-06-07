@@ -46,11 +46,28 @@ def hybrid_search(question: str, top_k: int) -> list[dict]:
     query_entities = extract_entities(question)
     entity_filter = _entity_filter(query_entities)
 
+    logger.info(
+        "retrieval_start",
+        question=question,
+        top_k=top_k,
+        fetch_k=fetch_k,
+        query_entities=query_entities or None,
+        entity_filter_active=entity_filter is not None,
+    )
+
     results = vector_store.similarity_search_with_score(question, k=fetch_k, filter=entity_filter)
 
     entity_fallback = bool(entity_filter) and not results
     if entity_fallback:
+        logger.info("entity_filter_fallback", reason="zero_results")
         results = vector_store.similarity_search_with_score(question, k=fetch_k)
+    elif entity_filter and len(results) < fetch_k:
+        logger.warning(
+            "entity_filter_narrow",
+            results_returned=len(results),
+            fetch_k=fetch_k,
+            query_entities=query_entities,
+        )
 
     doc_items = []
     scores = []

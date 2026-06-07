@@ -69,11 +69,15 @@ def ensure_collection_exists() -> None:
             SPARSE_VECTOR_NAME: SparseVectorParams(modifier=Modifier.IDF),
         },
     )
-    # Index the spaCy entities so retrieval can filter on them efficiently.
     client.create_payload_index(
         collection_name=settings.QDRANT_COLLECTION_NAME,
         field_name="metadata.entities",
         field_schema=PayloadSchemaType.KEYWORD,
+    )
+    client.create_payload_index(
+        collection_name=settings.QDRANT_COLLECTION_NAME,
+        field_name="metadata.document_id",
+        field_schema=PayloadSchemaType.UUID,
     )
     logger.info("qdrant_collection_created", collection=settings.QDRANT_COLLECTION_NAME)
 
