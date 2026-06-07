@@ -32,9 +32,11 @@ import asyncio
 from evals import judges, ranking
 from evals.embeddings_check import check_separation
 from src.config import get_settings
-from src.core.agent.nodes import generate_node, retrieve_node
+from src.core.agent.prompts import GENERATION_SYSTEM_PROMPT, GENERATION_USER_PROMPT
 from src.core.ingestion.pipeline import process_and_store
+from src.core.llm import get_llm
 from src.core.nlp import get_spacy_model
+from src.core.retrieval.search import hybrid_search
 from src.core.vectorstore import (
     ensure_collection_exists,
     get_embeddings,
@@ -114,8 +116,8 @@ def _dedup(filenames: list[str]) -> list[str]:
 def _evaluate_query(row: dict, full: bool) -> QueryResult:
     relevant = set(row["relevant_filenames"])
 
-    out = retrieve_node({"question": row["question"], "top_k": TOP_K})
-    docs = out["raw_documents"] or []
+    # Score the retrieval layer directly (ungraded), independent of the agent's tool loop.
+    docs = hybrid_search(row["question"], TOP_K)
     ranked = _dedup([doc["filename"] for doc in docs])
     result = QueryResult(
         question=row["question"],
@@ -124,10 +126,13 @@ def _evaluate_query(row: dict, full: bool) -> QueryResult:
     )
 
     if full:
-        answer = generate_node(
-            {"question": row["question"], "documents": docs, "chat_history": []}
-        )["generation"]
         context = "\n\n".join(doc["content"] for doc in docs)
+        messages = [
+            {"role": "system", "content": GENERATION_SYSTEM_PROMPT.format(context=context)},
+            {"role": "user", "content": GENERATION_USER_PROMPT.format(question=row["question"])},
+        ]
+        response = get_llm(temperature=0.7).invoke(messages)
+        answer = response.content if isinstance(response.content, str) else str(response.content)
         result.faithfulness = judges.normalize(judges.judge_faithfulness(context, answer).score)
         result.answer_relevance = judges.normalize(
             judges.judge_answer_relevance(row["question"], answer).score

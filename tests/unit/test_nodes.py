@@ -1,163 +1,89 @@
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from src.core.agent import nodes
-from src.core.agent.grading import RouteAndRewrite
 
-# --------------------------- router_node ---------------------------
-
-
-def test_router_node_routes_to_websearch_and_rewrites(monkeypatch):
-    monkeypatch.setattr(
-        nodes,
-        "route_and_rewrite",
-        lambda q, h=None: RouteAndRewrite(datasource="websearch", rewritten_query="rewritten"),
-    )
-    out = nodes.router_node({"question": "raw question"})
-    assert out["web_search"] is True
-    assert out["question"] == "rewritten"
-    # Per-query state is reset so accumulators don't leak across turns.
-    assert out["web_search_done"] is False
-    assert out["web_fallback_needed"] is False
-    assert out["raw_documents"] is None
-    assert out["docs_retrieved_total"] is None
+# --------------------------- agent_node ---------------------------
 
 
-def test_router_node_routes_to_vectorstore(monkeypatch):
-    monkeypatch.setattr(
-        nodes,
-        "route_and_rewrite",
-        lambda q, h=None: RouteAndRewrite(datasource="vectorstore", rewritten_query="q"),
-    )
-    assert nodes.router_node({"question": "q"})["web_search"] is False
+def test_agent_node_binds_tools_and_prepends_system_prompt(monkeypatch):
+    bound = MagicMock()
+    bound.invoke.return_value = AIMessage(content="hi")
+    llm = MagicMock()
+    llm.bind_tools.return_value = bound
+    monkeypatch.setattr(nodes, "get_llm", lambda *a, **k: llm)
 
+    out = nodes.agent_node({"messages": [HumanMessage(content="q")]})
 
-# --------------------------- retrieve_node ---------------------------
-
-
-def test_retrieve_node_delegates_to_hybrid_search(monkeypatch):
-    # The node is a thin adapter: it calls hybrid_search and maps the result into state.
-    docs = [{"content": "x", "filename": "a.pdf", "source": "vectorstore"}]
-    monkeypatch.setattr(nodes, "hybrid_search", lambda question, top_k: docs)
-
-    out = nodes.retrieve_node({"question": "q", "top_k": 5})
-
-    assert out["raw_documents"] == docs
-    assert out["docs_retrieved_total"] == 1
-
-
-# --------------------------- web_search_node ---------------------------
-
-
-def test_web_search_node_wraps_result(monkeypatch):
-    tool = MagicMock()
-    tool.invoke.return_value = "web answer"
-    monkeypatch.setattr(nodes, "DuckDuckGoSearchRun", lambda: tool)
-
-    out = nodes.web_search_node({"question": "q"})
-
-    assert out["web_search_done"] is True
-    assert out["docs_retrieved_total"] == 1
-    assert out["raw_documents"][0]["source"] == "web"
-
-
-def test_web_search_node_swallows_errors(monkeypatch):
-    tool = MagicMock()
-    tool.invoke.side_effect = RuntimeError("ddg down")
-    monkeypatch.setattr(nodes, "DuckDuckGoSearchRun", lambda: tool)
-
-    out = nodes.web_search_node({"question": "q"})
-
-    assert out["raw_documents"] == []
-    assert out["docs_retrieved_total"] == 0
-    assert out["web_search_done"] is True
+    llm.bind_tools.assert_called_once()
+    sent = bound.invoke.call_args.args[0]
+    assert isinstance(sent[0], SystemMessage)  # system prompt leads
+    assert isinstance(sent[1], HumanMessage)
+    assert out["messages"][0].content == "hi"
 
 
 # --------------------------- grade_documents_node ---------------------------
 
 
-def _docs(n):
-    return [{"content": f"doc {i}", "filename": "f", "source": "vectorstore"} for i in range(n)]
-
-
-def test_grade_node_no_documents_short_circuits(monkeypatch):
-    monkeypatch.setattr(nodes, "grade_documents_batch", lambda *_: pytest.fail("should not grade"))
-    assert nodes.grade_documents_node({"question": "q", "raw_documents": []}) == {"documents": []}
-
-
-def test_grade_node_triggers_web_fallback_when_few_relevant(monkeypatch):
-    monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes", "no", "no"])
-    out = nodes.grade_documents_node(
-        {"question": "q", "raw_documents": _docs(3), "web_search_done": False}
-    )
-    assert out["web_fallback_needed"] is True
-    assert out["raw_documents"] is None
-    assert len(out["documents"]) == 1
-
-
-def test_grade_node_no_fallback_when_enough_relevant(monkeypatch):
-    monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes", "yes", "no"])
-    out = nodes.grade_documents_node(
-        {"question": "q", "raw_documents": _docs(3), "web_search_done": False}
-    )
-    assert out["web_fallback_needed"] is False
-    assert len(out["documents"]) == 2
-
-
-def test_grade_node_merges_after_web_fallback(monkeypatch):
-    monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes"])
-    existing = [{"content": "vec doc", "source": "vectorstore"}]
-    out = nodes.grade_documents_node(
-        {
-            "question": "q",
-            "raw_documents": [{"content": "web doc", "source": "web"}],
-            "web_search_done": True,
-            "documents": existing,
-        }
-    )
-    assert out["web_fallback_needed"] is False
-    assert len(out["documents"]) == 2  # existing vectorstore + new web
-
-
-# --------------------------- generate_node ---------------------------
-
-
-def test_generate_node_builds_context_and_updates_history(monkeypatch):
-    llm = MagicMock()
-    llm.invoke.return_value = SimpleNamespace(content="the answer")
-    monkeypatch.setattr(nodes, "get_llm", lambda *a, **k: llm)
-
-    out = nodes.generate_node(
-        {
-            "question": "what is X?",
-            "documents": [
-                {"content": "from a file", "filename": "a.pdf", "source": "vectorstore"},
-                {"content": "from the web", "source": "web"},
-            ],
-            "chat_history": [],
-        }
-    )
-
-    assert out["generation"] == "the answer"
-    # Context passed to the system prompt must label both sources.
-    system_msg = llm.invoke.call_args.args[0][0]["content"]
-    assert "[Document: a.pdf]" in system_msg
-    assert "[Web Search]" in system_msg
-    # History grows by the user turn + assistant turn.
-    assert out["chat_history"][-2:] == [
-        {"role": "user", "content": "what is X?"},
-        {"role": "assistant", "content": "the answer"},
+def _docs(*sources):
+    return [
+        {"content": f"doc {i}", "filename": f"f{i}", "source": s} for i, s in enumerate(sources)
     ]
 
 
-def test_generate_node_retries_once_on_empty_generation(monkeypatch):
-    llm = MagicMock()
-    llm.invoke.side_effect = [SimpleNamespace(content="   "), SimpleNamespace(content="real")]
-    monkeypatch.setattr(nodes, "get_llm", lambda *a, **k: llm)
+def _tool_msg(docs, name="retrieve_documents", tcid="1", mid="tm1"):
+    return ToolMessage(content="raw", tool_call_id=tcid, name=name, id=mid, artifact=docs)
 
-    out = nodes.generate_node({"question": "q", "documents": [], "chat_history": []})
 
-    assert out["generation"] == "real"
-    assert llm.invoke.call_count == 2
+def test_grade_node_returns_empty_without_tool_messages():
+    msgs = [HumanMessage(content="q"), AIMessage(content="answer")]
+    assert nodes.grade_documents_node({"messages": msgs}) == {}
+
+
+def test_grade_node_filters_to_relevant_and_rewrites_message(monkeypatch):
+    monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes", "no"])
+    docs = _docs("vectorstore", "vectorstore")
+    msgs = [
+        HumanMessage(content="q"),
+        AIMessage(content="", tool_calls=[{"name": "retrieve_documents", "args": {}, "id": "1"}]),
+        _tool_msg(docs),
+    ]
+
+    out = nodes.grade_documents_node({"messages": msgs})
+
+    assert len(out["documents"]) == 1
+    assert out["documents"][0]["filename"] == "f0"
+    assert out["docs_retrieved_total"] == 2
+    # The tool message is replaced in place (same id) with only the surviving doc.
+    assert out["messages"][0].id == "tm1"
+    assert out["messages"][0].artifact == out["documents"]
+
+
+def test_grade_node_signals_no_relevant_results(monkeypatch):
+    monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["no"])
+    msgs = [
+        HumanMessage(content="q"),
+        AIMessage(content="", tool_calls=[{"name": "retrieve_documents", "args": {}, "id": "1"}]),
+        _tool_msg(_docs("vectorstore")),
+    ]
+
+    out = nodes.grade_documents_node({"messages": msgs})
+
+    assert out["documents"] == []
+    assert "No relevant results" in out["messages"][0].content
+    assert "web_search_used" not in out  # retrieval-only cycle
+
+
+def test_grade_node_marks_web_search_used(monkeypatch):
+    monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes"])
+    msgs = [
+        HumanMessage(content="q"),
+        AIMessage(content="", tool_calls=[{"name": "web_search", "args": {}, "id": "1"}]),
+        _tool_msg(_docs("web"), name="web_search"),
+    ]
+
+    out = nodes.grade_documents_node({"messages": msgs})
+
+    assert out["web_search_used"] is True
+    assert out["documents"][0]["source"] == "web"

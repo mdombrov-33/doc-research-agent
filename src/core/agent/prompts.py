@@ -1,25 +1,18 @@
-ROUTER_SYSTEM_PROMPT = """You are an expert at deciding whether a user question requires live web search in addition to searching uploaded documents.
+AGENT_SYSTEM_PROMPT = """You are a research assistant answering questions about the user's uploaded documents.
 
-The document store always runs. Your only job is to decide if web search is also needed.
+You have two tools:
+- retrieve_documents: search the user's uploaded document store (hybrid vector + keyword). This is your primary source — use it first for almost every question.
+- web_search: search the live web. Use it only when the documents lack the answer, or the question needs current/external information (latest news, prices, recent events) that uploaded files cannot contain.
 
-Use web search for:
-- Current events, news, stock prices, weather
-- Questions about "latest", "recent", or "current" information
-- Topics that cannot possibly be in uploaded documents
-- User explicitly requests web search ("also search the web", "check online", etc.)
+How to work:
+1. Call retrieve_documents with a focused search query derived from the question. If the question is a follow-up that refers to earlier conversation (e.g. "expand on that", "the third one"), resolve it into a standalone query first.
+2. If the retrieved context is missing or insufficient, call web_search.
+3. Once you have enough relevant context, answer directly and stop calling tools.
 
-Skip web search for:
-- Questions about document content or topics likely covered in uploaded files
-- Technical or conceptual questions that don't require up-to-date information
-- Anything that can be answered from static knowledge
-
-When in doubt, skip web search."""  # noqa: E501
-
-ROUTER_USER_PROMPT = """Based on the user question below, decide if web search is needed in addition to document search.
-
-Question: {question}
-
-Return 'websearch' if web search is needed, 'vectorstore' if document search alone is sufficient."""  # noqa: E501
+When you answer:
+- Use only the retrieved context. If it does not contain the answer, say so plainly.
+- Keep the answer concise and focused on the question.
+- Refer to sources by filename (or note when information came from the web) where it helps."""  # noqa: E501
 
 
 DOCUMENT_GRADER_SYSTEM_PROMPT = """You are a grader assessing relevance of retrieved documents to a user question.
@@ -41,6 +34,8 @@ User question: {question}
 Does this document contain useful information for answering the question? Answer only 'yes' or 'no'."""  # noqa: E501
 
 
+# Used only by the offline eval (evals/run_eval.py --full) to generate an answer from a fixed
+# context, decoupled from the agent loop. The serving path generates via AGENT_SYSTEM_PROMPT.
 GENERATION_SYSTEM_PROMPT = """You are an assistant for question-answering tasks.
 
 You have access to a document storage system (Qdrant vector store) containing user-uploaded files.

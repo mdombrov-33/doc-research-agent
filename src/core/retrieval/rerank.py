@@ -15,6 +15,14 @@ def _get_cross_encoder(model_name: str) -> TextCrossEncoder:
     return encoder
 
 
+def warmup() -> None:
+    """Prime the cross-encoder at startup so the first query doesn't pay the ~2s model load.
+    No-op when reranking is disabled, since rerank() is the only caller."""
+    settings = get_settings()
+    if settings.RERANK_ENABLED:
+        _get_cross_encoder(settings.RERANK_MODEL)
+
+
 def rerank(query: str, documents: list[dict], top_k: int) -> list[dict]:
     """Reorder retrieved documents by cross-encoder relevance and keep the top_k.
 

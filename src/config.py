@@ -42,7 +42,16 @@ class Settings(BaseSettings):
     RERANK_MULTIPLIER: int = 4
     RERANK_FETCH_CAP: int = 100
 
-    METRICS_DB_PATH: str = "./data/metrics.db"
+    DATA_DIR: str = "./data"
+
+    @property
+    def metrics_db_path(self) -> str:
+        return f"{self.DATA_DIR}/metrics.db"
+
+    @property
+    def checkpoints_db_path(self) -> str:
+        return f"{self.DATA_DIR}/checkpoints.db"
+
     UPLOAD_DIR: str = "./uploads"
 
     RATE_LIMIT_ENABLED: bool = True

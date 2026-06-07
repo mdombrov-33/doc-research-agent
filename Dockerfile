@@ -32,6 +32,14 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV FASTEMBED_CACHE_PATH=/app/.model_cache
 RUN python -c "from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder(model_name='Xenova/ms-marco-MiniLM-L-6-v2')"
 
+# Bake llm-guard's HuggingFace models (Toxicity, PromptInjection) so the first request
+# skips a ~64s cold-start download. Same rationale as the reranker bake above: scanner
+# names are inlined (not imported from src) so this layer — and the download — stays
+# cached across code changes. HF_HOME is set here so it also applies at runtime, where
+# the models must be found. Keep in sync with src/core/guardrails.py.
+ENV HF_HOME=/app/.hf_cache
+RUN python -c "from llm_guard.input_scanners import PromptInjection, Toxicity; Toxicity(); PromptInjection()"
+
 COPY . .
 
 ARG GIT_SHA=unknown

@@ -32,6 +32,7 @@ dependencies = [
     "structlog>=25.0.0",
     "types-requests>=2.32.4.20260107",
     "uvicorn[standard]>=0.40.0",
+    "langgraph-checkpoint-sqlite>=3.0.3",
 ]
 
 [dependency-groups]

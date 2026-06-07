@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi.responses import StreamingResponse
+from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
@@ -28,15 +29,23 @@ async def _token_generator(
         yield f"data: {json.dumps({'token': refusal, 'done': True})}\n\n"
         return
 
+    # None resets the per-query accumulators (see state reducers); the checkpointer keeps the
+    # message history for this thread_id, so we only append the new question.
     inputs = {
-        "question": request.question,
-        "web_search": False,
-        "raw_documents": [],
-        "documents": [],
-        "model": request.model,
-        "top_k": request.top_k,
+        "messages": [HumanMessage(content=request.question)],
+        "documents": None,
+        "docs_retrieved_total": None,
+        "web_search_used": False,
     }
-    config: RunnableConfig = {"configurable": {"thread_id": request.session_id}}
+    # thread_id keys the persisted conversation; model/top_k are per-request knobs the agent
+    # node and retrieve tool read back from config.
+    config: RunnableConfig = {
+        "configurable": {
+            "thread_id": request.session_id,
+            "model": request.model,
+            "top_k": request.top_k,
+        }
+    }
 
     accumulated: list[str] = []
     sources_count = 0
@@ -49,9 +58,11 @@ async def _token_generator(
         async for event in agent.astream_events(inputs, config=config, version="v2"):
             kind = event["event"]
 
+            # The agent node both decides tools and writes the final answer. Tool-deciding
+            # turns carry no content, so only the answer turn yields tokens here.
             if (
                 kind == "on_chat_model_stream"
-                and event.get("metadata", {}).get("langgraph_node") == "generate"
+                and event.get("metadata", {}).get("langgraph_node") == "agent"
             ):
                 token = event["data"]["chunk"].content
                 if token:
@@ -71,9 +82,7 @@ async def _token_generator(
                     }
                     for d in graded_docs
                 ]
-                web_search_triggered = output.get("web_search_done", False) or output.get(
-                    "web_search", False
-                )
+                web_search_triggered = output.get("web_search_used", False)
                 docs_retrieved_total = output.get("docs_retrieved_total", sources_count)
 
     except Exception as e:

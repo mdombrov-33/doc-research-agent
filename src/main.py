@@ -13,6 +13,7 @@ from src.core import guardrails
 from src.core.agent.graph import build_graph
 from src.core.monitoring.tracker import MetricsTracker
 from src.core.nlp import get_spacy_model
+from src.core.retrieval import rerank
 from src.core.vectorstore import ensure_collection_exists, get_vector_store
 from src.utils.logger import logger
 
@@ -29,7 +30,8 @@ async def lifespan(app: FastAPI):
     app.state.nlp = get_spacy_model()
     app.state.agent = build_graph()
     guardrails.warmup()
-    app.state.metrics_tracker = MetricsTracker(db_path=settings.METRICS_DB_PATH)
+    rerank.warmup()
+    app.state.metrics_tracker = MetricsTracker(db_path=settings.metrics_db_path)
 
     logger.info("startup_complete")
     yield
