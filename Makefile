@@ -1,4 +1,4 @@
-.PHONY: help install dev build up down logs shell test eval eval-retrieval lint format clean deploy destroy
+.PHONY: help install dev build up down restart logs shell test eval eval-retrieval lint format clean deploy destroy
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 APP_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
@@ -29,6 +29,9 @@ up-d: ## Start all services detached
 
 down: ## Stop all services
 	docker compose down
+
+restart: ## Restart 
+	docker compose restart
 
 logs: ## View logs from all services
 	docker compose logs -f
