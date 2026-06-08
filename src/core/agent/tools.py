@@ -5,8 +5,6 @@ from langchain_core.tools import tool
 from src.core.retrieval.search import hybrid_search
 from src.utils.logger import logger
 
-RETRIEVE_TOP_K = 5
-
 
 def format_docs(docs: list[dict]) -> str:
     """Render docs for the model, labelling each by its source (file vs web)."""
@@ -24,8 +22,7 @@ def format_docs(docs: list[dict]) -> str:
 
 
 # response_format="content_and_artifact": the string goes into the ToolMessage the model
-# reads; the structured docs ride along as the ToolMessage.artifact, which the grade node
-# pulls back out to score relevance and build source metadata.
+# reads; the structured docs ride along as ToolMessage.artifact for source metadata.
 @tool(response_format="content_and_artifact")
 def retrieve_documents(query: str, config: RunnableConfig) -> tuple[str, list[dict]]:
     """Search the user's uploaded documents with hybrid vector + keyword search.
@@ -33,7 +30,7 @@ def retrieve_documents(query: str, config: RunnableConfig) -> tuple[str, list[di
     Use this first for almost any question about the user's documents. `query` should be a
     focused search query (resolve vague follow-ups into standalone terms before calling)."""
     # config is injected by ToolNode, not exposed to the model. top_k is the per-request value.
-    top_k = (config.get("configurable") or {}).get("top_k") or RETRIEVE_TOP_K
+    top_k = (config.get("configurable") or {}).get("top_k") or 10
     docs = hybrid_search(query, top_k)
     logger.info("retrieve_tool", count=len(docs))
     return format_docs(docs), docs

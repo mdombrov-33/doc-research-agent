@@ -31,6 +31,7 @@ async def _token_generator(
 
     inputs = {
         "messages": [HumanMessage(content=request.question)],
+        "tool_call_count": None,
     }
     # thread_id keys the persisted conversation; model/top_k are per-request knobs the agent
     # node and retrieve tool read back from config.

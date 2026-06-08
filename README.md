@@ -4,15 +4,14 @@ An agentic RAG service. Upload documents, ask questions, get streamed answers gr
 files — with the agent reaching for a live web search on its own when your documents don't
 cover the question.
 
-Built on a **LangGraph** agent (a **ReAct** tool-calling loop with **corrective document
-grading**), **hybrid retrieval** (dense + BM25), a **cross-encoder reranker**, persistent
-**conversation memory**, SSE token **streaming**, local **guardrails**, and per-IP **rate
-limiting**.
+Built on a **LangGraph** agent (a **ReAct** tool-calling loop), **hybrid retrieval** (dense +
+BM25), a **cross-encoder reranker**, persistent **conversation memory**, SSE token
+**streaming**, local **guardrails**, and per-IP **rate limiting**.
 
 **Frontend:** Streamlit · **Backend:** FastAPI on GCP Cloud Run · **Vector DB:** Qdrant
 
 > **Full reference:** [`docs/architecture.md`](docs/architecture.md) explains every part —
-> ingestion, retrieval, the agent (its tools, state, and the grade step), the web-search
+> ingestion, retrieval, the agent (its tools, state, and the tool-call cap), the web-search
 > fallback, streaming, guardrails, memory, evaluation, and deployment. Start there to
 > understand how it works.
 
@@ -29,10 +28,10 @@ POST /api/stream
       │
    Guardrails (input: llm-guard Toxicity + PromptInjection, local)
       │
-   ┌─── LangGraph agent (ReAct + corrective grading) ───┐
-   │   agent ──► tools ──► grade ──┐                     │
-   │     ▲                         │   loop until        │
-   │     └─────────────────────────┘   the agent answers │
+   ┌─── LangGraph agent (ReAct loop) ───────────────────┐
+   │   agent ──► tools ──► post_tools ──┐                │
+   │     ▲                              │   loop until   │
+   │     └──────────────────────────────┘   cap or done  │
    │     └──► END (answer)                               │
    └─────────────────────────────────────────────────────┘
       │
@@ -44,10 +43,10 @@ POST /api/stream
 - **Tools** — `retrieve_documents` runs hybrid dense + BM25 search in Qdrant (fused with RRF),
   then a cross-encoder reranks a wide candidate pool down to your `top_k`; `web_search` hits
   the live web.
-- **Grade** — an LLM scores each retrieved chunk yes/no and drops the rest. An empty result is
-  the signal that makes the agent fall back to web search on its own.
-- **Answer** — once the agent has enough graded context it writes the answer and streams it
-  over SSE; conversation history is persisted per session.
+- **Post-tools** — increments a per-turn tool-call counter; at the hard cap (4 calls) it
+  injects a stop message that forces the agent to write its final answer immediately.
+- **Answer** — once the agent has enough context (or hits the cap) it writes the answer and
+  streams it over SSE; conversation history is persisted per session.
 
 See [`docs/architecture.md`](docs/architecture.md) for the agent topology, the tools and state,
 the web-search fallback walkthrough, and memory.
@@ -77,7 +76,7 @@ the values that differ per environment. See [`.env.example`](.env.example) for t
 list. Keys:
 
 - `OPENAI_API_KEY` — embeddings (`text-embedding-3-small`) only
-- `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer, and grading)
+- `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer)
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`)
 
 Guardrails run locally (llm-guard) and need no API key. Conversation memory and live telemetry

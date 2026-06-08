@@ -49,10 +49,10 @@ Guardrails — INPUT check        llm-guard scanners (Toxicity + PromptInjection
       ▼
 ┌──────────────────── LangGraph agent (ReAct loop) ────────────────────┐
 │                                                                        │
-│        agent ──tools_condition──► tools ──┐                           │
-│          ▲                                │                           │
-│          └───────────────────────────────-┘   loop until no tool calls│
-│          │                                                             │
+│        agent ──tools_condition──► tools ──► post_tools ──┐            │
+│          ▲                                                │            │
+│          └───────────────────────────────────────────────┘            │
+│          │   loop until no tool calls or hard cap reached              │
 │          └─tools_condition─► END  (the agent wrote an answer)         │
 └────────────────────────────────────────────────────────────────────────┘
       │  the agent's final-answer tokens stream out as they are produced (SSE)
@@ -203,19 +203,23 @@ if it contains tool calls, route to `tools`; otherwise the agent answered, so ro
                      START
                        │
                        ▼
-              ┌──────► agent ─────────────────┐   (ReAct brain: pick a tool, or answer)
-              │          │                    │
-              │    tools_condition            │ no tool calls
-              │          │ tool calls         ▼
-              │          ▼                   END
-              └────── tools     (ToolNode runs retrieve_documents / web_search)
+              ┌──────► agent ──────────────────────┐   (ReAct brain: pick a tool, or answer)
+              │          │                         │
+              │    tools_condition                 │ no tool calls
+              │          │ tool calls              ▼
+              │          ▼                        END
+              │        tools   (ToolNode runs retrieve_documents / web_search)
+              │          │
+              │      post_tools   (increment counter; inject stop if cap reached)
+              └──────────┘
 ```
 
 Edges (`graph.py`):
 - entry: `agent`
 - `agent` → **conditional** via `tools_condition`: `tools` if the agent emitted tool calls,
   else `END`.
-- `tools` → `agent` (loop back so the agent reasons over the tool result)
+- `tools` → `post_tools` → `agent` (post_tools sits between every tool execution and the
+  next reasoning step)
 
 Each custom node is wrapped by `timed(...)` (`src/utils/node_timer.py`), which logs a
 `node_complete` event with `duration_ms`. (`tools` is the prebuilt `ToolNode`, not wrapped.)
@@ -225,11 +229,12 @@ in tests) — that's what makes it multi-turn (§12).
 
 ### 6.2 State
 
-`AgentState` (`state.py`) has a single channel:
+`AgentState` (`state.py`) has two channels:
 
 ```python
 class AgentState(TypedDict, total=False):
     messages: Required[Annotated[list[AnyMessage], add_messages]]
+    tool_call_count: Annotated[int, _add_or_reset_int]
 ```
 
 - **`messages`** — the conversation **and** the ReAct scratchpad in one list. The
@@ -237,6 +242,12 @@ class AgentState(TypedDict, total=False):
   agent answer…). The checkpointer persists this per `thread_id`, so it doubles as the
   multi-turn history — there is no separate `chat_history` field. `Required[...]` marks it as
   always-present inside the otherwise-optional `TypedDict`.
+
+- **`tool_call_count`** — how many tool calls have been made in the **current question's
+  turn**. The custom `_add_or_reset_int` reducer increments when `post_tools_node` returns
+  `{"tool_call_count": 1}`, and resets to `0` when the stream handler passes
+  `{"tool_call_count": None}` as the input for a new question. This is what the hard tool-call
+  cap (§7) reads.
 
 > **Per-request knobs are not in state.** `model` and `top_k` ride in the `RunnableConfig`'s
 > `configurable` dict, not in `AgentState`. The agent node reads `model`; the
@@ -254,7 +265,7 @@ finishes to build source metadata (§10).
 
 | Tool | What it does | Notes |
 |---|---|---|
-| `retrieve_documents(query, config)` | hybrid search over the user's uploaded docs (§5) | `top_k` is read from the injected `config` (`configurable.top_k`), defaulting to `RETRIEVE_TOP_K=5`. `config` is injected by `ToolNode`; the model never sees it. |
+| `retrieve_documents(query, config)` | hybrid search over the user's uploaded docs (§5) | `top_k` is read from the injected `config` (`configurable.top_k`), defaulting to `10`. `config` is injected by `ToolNode`; the model never sees it. |
 | `web_search(query)` | DuckDuckGo live web search | **Fails soft**: on any error it logs `web_search_tool_failed` and returns `("Web search failed.", [])`, so a search outage never breaks the request. |
 
 `format_docs` renders docs for the model, labelling each `[Document: <filename>]` or
@@ -287,6 +298,13 @@ LangGraph's prebuilt `ToolNode` executes whatever tool calls the agent emitted (
 more than one), injects the `RunnableConfig` into tools that ask for it, and appends one
 `ToolMessage` per call — content for the model to reason over, `artifact` for the stream
 handler to extract sources from.
+
+### Post-tools — `post_tools_node` (`nodes.py`)
+Sits between every tool execution and the next reasoning step. It increments `tool_call_count`
+and, once the count reaches `MAX_TOOL_CALLS` (4), injects a `HumanMessage` telling the agent
+to stop calling tools and write its final answer immediately. This is a **hard enforcement**
+mechanism — the system prompt does not need to carry advisory "at most N calls" limits, and the
+agent cannot ignore it because the stop message lands in the conversation as a user turn.
 
 ---
 
@@ -439,7 +457,7 @@ Model roles:
   only needs the per-environment values (secrets, deployment URLs, toggles). Unset fields use
   their code default.
 - Genuine code-fixed invariants live next to their use (e.g. `SPARSE_VECTOR_NAME` in
-  `vectorstore.py`, `RETRIEVE_TOP_K` in `tools.py`, the OpenRouter base URL in `llm.py`).
+  `vectorstore.py`, `MAX_TOOL_CALLS` in `nodes.py`, the OpenRouter base URL in `llm.py`).
 - Eval-only values (thresholds, `K`, `JUDGE_MODEL`, judge prompts) live in `evals/`, never in
   the app package.
 
@@ -505,7 +523,7 @@ quality against known-correct answers.
 
 | Endpoint | Purpose | Request | Response |
 |---|---|---|---|
-| `POST /api/stream` | RAG query, streamed | `{question, session_id?, model?, top_k?}` (`top_k` 1–20, default 5) | `text/event-stream` (§10) |
+| `POST /api/stream` | RAG query, streamed | `{question, session_id?, model?, top_k?}` (`top_k` 1–20, default 10) | `text/event-stream` (§10) |
 | `POST /api/upload` | ingest a document | multipart file (`.pdf`/`.docx`/`.txt`) | `{document_id, filename, chunks_created, file_size}` |
 | `GET /api/monitoring/stats` | live telemetry | — | aggregates (§14) |
 | `GET /health` | liveness | — | `{status, environment, llm_model}` |
@@ -558,9 +576,9 @@ src/
   api/            delivery layer: routes, handlers (stream/upload), middleware, DI, schemas, rate_limit
   core/
     agent/        the LangGraph agent
-      graph.py    builds + compiles the graph (agent ⇄ tools), owns the checkpointer
-      state.py    AgentState (messages only)
-      nodes.py    agent_node
+      graph.py    builds + compiles the graph (agent ⇄ tools ⇄ post_tools), owns the checkpointer
+      state.py    AgentState (messages + tool_call_count)
+      nodes.py    agent_node, post_tools_node (hard tool-call cap)
       tools.py    retrieve_documents + web_search (@tool, content_and_artifact)
       prompts.py  agent system prompt + eval-only generation prompts
     retrieval/    hybrid search (search.py) + cross-encoder reranker (rerank.py)

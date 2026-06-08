@@ -93,6 +93,11 @@ def test_hybrid_search_overfetches_pool_and_truncates_to_top_k(monkeypatch):
     ]
     monkeypatch.setattr(search, "get_vector_store", lambda: store)
     monkeypatch.setattr(search, "extract_entities", lambda q: [])
+    monkeypatch.setattr(
+        search,
+        "get_settings",
+        lambda: SimpleNamespace(RERANK_ENABLED=True, RERANK_MULTIPLIER=4, RERANK_FETCH_CAP=100),
+    )
 
     captured = {}
 
@@ -105,7 +110,7 @@ def test_hybrid_search_overfetches_pool_and_truncates_to_top_k(monkeypatch):
 
     out = search.hybrid_search("q", top_k=3)
 
-    # The pool requested from the store scales with top_k (3 * default multiplier 4 = 12).
+    # The pool requested from the store scales with top_k (3 * multiplier 4 = 12).
     assert store.similarity_search_with_score.call_args.kwargs["k"] == 12
     # The reranker saw every returned candidate and was asked for the user's top_k.
     assert captured["candidates"] == 8

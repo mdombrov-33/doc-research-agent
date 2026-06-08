@@ -127,7 +127,7 @@ def main():
             format_func=lambda x: MODELS[x],
         )
 
-        top_k = st.slider("Top-K results", min_value=3, max_value=15, value=5, step=1)
+        top_k = st.slider("Top-K results", min_value=3, max_value=15, value=10, step=1)
         st.caption("Per retrieval call — the agent may call retrieve multiple times.")
 
         st.caption(f"Backend: {settings.API_URL}")
