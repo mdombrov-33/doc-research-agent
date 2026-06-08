@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -26,7 +27,7 @@ async def process_and_store(
 
     chunks = chunk_text(raw_text)
     enriched_chunks = enrich_chunks(chunks, filename, nlp)
-    index_chunks(vector_store, document_id, filename, enriched_chunks)
+    await asyncio.to_thread(index_chunks, vector_store, document_id, filename, enriched_chunks)
 
     logger.info(
         "document_processed",
