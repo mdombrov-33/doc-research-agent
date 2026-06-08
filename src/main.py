@@ -1,11 +1,10 @@
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request, Response
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from src.api.middleware import RequestLoggingMiddleware
 from src.api.rate_limit import limiter
