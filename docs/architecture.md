@@ -145,6 +145,14 @@ The Qdrant collection holds **two vectors per chunk**:
 
 Plus a **payload index** on `metadata.entities` (KEYWORD) so entity filtering is fast.
 
+**TF/IDF split — who owns what.** `FastEmbedSparse` (BM25 tokenizer) runs both at ingestion
+and at query time. It outputs a sparse vector of `{token_id: tf_score}` — term frequency only,
+no IDF. At ingestion, that TF vector is stored in Qdrant and Qdrant updates its collection-wide
+document-frequency counts. At query time, `Modifier.IDF` intercepts the dot product and
+multiplies each stored dimension by the global `log(N / df)` before scoring. IDF is never
+computed by the client; it is an incrementally maintained server-side value that reflects the
+entire collection. Adding a new book updates those counts automatically — no reindexing needed.
+
 **Why hybrid?** Dense (bi-encoder) search matches meaning even when words differ, but is weak
 on exact tokens — names, codes, rare jargon. BM25 is the opposite. Running both and merging
 recovers a class of misses neither catches alone.
