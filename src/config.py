@@ -60,6 +60,8 @@ class Settings(BaseSettings):
 
     API_URL: str = "http://localhost:8000"
 
+    OTEL_ENDPOINT: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

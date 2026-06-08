@@ -3,8 +3,11 @@ from functools import lru_cache
 
 from llm_guard import scan_prompt  # type: ignore[import-untyped]
 from llm_guard.input_scanners import Toxicity  # type: ignore[import-untyped]
+from opentelemetry import trace
 
 from src.utils.logger import logger
+
+_tracer = trace.get_tracer(__name__)
 
 _BLOCK_INPUT = "I cannot process that request. Please ask a question about your documents."
 
@@ -28,15 +31,16 @@ def _is_flagged(text: str) -> bool:
 
 
 async def check_input(question: str) -> str | None:
-    loop = asyncio.get_running_loop()
-    try:
-        flagged = await loop.run_in_executor(None, _is_flagged, question)
-    except Exception as e:
-        # Local scanners rarely throw, but if they do, fail closed (block) rather than let the
-        # exception break the SSE stream — check_input runs before the handler's try/except.
-        logger.error("guardrails_input_error", error=str(e))
-        return _BLOCK_INPUT
-    if flagged:
-        logger.info("guardrails_input_blocked", preview=question[:100])
-        return _BLOCK_INPUT
+    with _tracer.start_as_current_span("guardrails.scan") as span:
+        loop = asyncio.get_running_loop()
+        try:
+            flagged = await loop.run_in_executor(None, _is_flagged, question)
+        except Exception as e:
+            span.set_status(trace.StatusCode.ERROR, str(e))
+            logger.error("guardrails_input_error", error=str(e))
+            return _BLOCK_INPUT
+        span.set_attribute("guardrails.flagged", flagged)
+        if flagged:
+            logger.info("guardrails_input_blocked", preview=question[:100])
+            return _BLOCK_INPUT
     return None

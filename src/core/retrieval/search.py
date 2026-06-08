@@ -1,3 +1,4 @@
+from opentelemetry import trace
 from qdrant_client import models
 
 from src.config import Settings, get_settings
@@ -5,6 +6,8 @@ from src.core.nlp import extract_entities
 from src.core.retrieval.rerank import rerank
 from src.core.vectorstore import get_vector_store
 from src.utils.logger import logger
+
+_tracer = trace.get_tracer(__name__)
 
 
 def _entity_filter(entities: list[str]) -> models.Filter | None:
@@ -40,9 +43,6 @@ def hybrid_search(question: str, top_k: int) -> list[dict]:
     vector_store = get_vector_store()
     fetch_k = _fetch_k(top_k, settings)
 
-    # Entity-aware retrieval: pull named entities from the query and use them to filter on the
-    # entities extracted at ingestion. Falls back to unfiltered hybrid search if the query has
-    # no entities or the filter matches nothing.
     query_entities = extract_entities(question)
     entity_filter = _entity_filter(query_entities)
 
@@ -55,62 +55,74 @@ def hybrid_search(question: str, top_k: int) -> list[dict]:
         entity_filter_active=entity_filter is not None,
     )
 
-    results = vector_store.similarity_search_with_score(question, k=fetch_k, filter=entity_filter)
+    with _tracer.start_as_current_span("retrieval.hybrid_search") as span:
+        span.set_attribute("retrieval.top_k", top_k)
+        span.set_attribute("retrieval.fetch_k", fetch_k)
+        span.set_attribute("retrieval.entity_filter_active", entity_filter is not None)
 
-    entity_fallback = bool(entity_filter) and not results
-    if entity_fallback:
-        logger.info("entity_filter_fallback", reason="zero_results")
-        results = vector_store.similarity_search_with_score(question, k=fetch_k)
-    elif entity_filter and len(results) < fetch_k:
-        logger.warning(
-            "entity_filter_narrow",
-            results_returned=len(results),
-            fetch_k=fetch_k,
-            query_entities=query_entities,
-        )
+        with _tracer.start_as_current_span("retrieval.qdrant_query"):
+            results = vector_store.similarity_search_with_score(
+                question, k=fetch_k, filter=entity_filter
+            )
 
-    doc_items = []
-    scores = []
+        entity_fallback = bool(entity_filter) and not results
+        if entity_fallback:
+            logger.info("entity_filter_fallback", reason="zero_results")
+            with _tracer.start_as_current_span("retrieval.qdrant_query_fallback"):
+                results = vector_store.similarity_search_with_score(question, k=fetch_k)
+        elif entity_filter and len(results) < fetch_k:
+            logger.warning(
+                "entity_filter_narrow",
+                results_returned=len(results),
+                fetch_k=fetch_k,
+                query_entities=query_entities,
+            )
 
-    for doc, score in results:
-        content = doc.page_content if hasattr(doc, "page_content") else str(doc)
-        if not content.strip():
-            continue
-        metadata = doc.metadata if hasattr(doc, "metadata") else {}
-        doc_items.append(
-            {
-                "content": content,
-                "filename": metadata.get("filename", "unknown"),
-                "chunk_index": metadata.get("chunk_index", 0),
-                "chunk_length": metadata.get("chunk_length", len(content)),
-                "source": "vectorstore",
+        doc_items = []
+        scores = []
+
+        for doc, score in results:
+            content = doc.page_content if hasattr(doc, "page_content") else str(doc)
+            if not content.strip():
+                continue
+            metadata = doc.metadata if hasattr(doc, "metadata") else {}
+            doc_items.append(
+                {
+                    "content": content,
+                    "filename": metadata.get("filename", "unknown"),
+                    "chunk_index": metadata.get("chunk_index", 0),
+                    "chunk_length": metadata.get("chunk_length", len(content)),
+                    "source": "vectorstore",
+                }
+            )
+            scores.append(float(score))
+
+        empty_filtered = len(results) - len(doc_items)
+
+        score_stats = {}
+        if scores:
+            score_stats = {
+                "score_min": round(min(scores), 4),
+                "score_max": round(max(scores), 4),
+                "score_mean": round(sum(scores) / len(scores), 4),
             }
+
+        span.set_attribute("retrieval.docs_found", len(doc_items))
+        span.set_attribute("retrieval.entity_fallback", entity_fallback)
+
+        logger.info(
+            "docs_retrieved",
+            count=len(doc_items),
+            fetch_k=fetch_k,
+            empty_filtered=empty_filtered,
+            query_entities=query_entities or None,
+            entity_filtered=bool(entity_filter) and not entity_fallback,
+            entity_fallback=entity_fallback,
+            **score_stats,
         )
-        scores.append(float(score))
 
-    empty_filtered = len(results) - len(doc_items)
-
-    score_stats = {}
-    if scores:
-        score_stats = {
-            "score_min": round(min(scores), 4),
-            "score_max": round(max(scores), 4),
-            "score_mean": round(sum(scores) / len(scores), 4),
-        }
-
-    logger.info(
-        "docs_retrieved",
-        count=len(doc_items),
-        fetch_k=fetch_k,
-        empty_filtered=empty_filtered,
-        query_entities=query_entities or None,
-        entity_filtered=bool(entity_filter) and not entity_fallback,
-        entity_fallback=entity_fallback,
-        **score_stats,
-    )
-
-    # Rerank the candidate pool with a cross-encoder and keep the user's top_k. Disabled →
-    # fetch_k already equals top_k, so the trim is a defensive no-op preserving the contract.
-    if settings.RERANK_ENABLED and doc_items:
-        return rerank(question, doc_items, top_k)
-    return doc_items[:top_k]
+        # Rerank the candidate pool with a cross-encoder and keep the user's top_k. Disabled →
+        # fetch_k already equals top_k, so the trim is a defensive no-op preserving the contract.
+        if settings.RERANK_ENABLED and doc_items:
+            return rerank(question, doc_items, top_k)
+        return doc_items[:top_k]

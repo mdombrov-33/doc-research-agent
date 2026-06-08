@@ -4,6 +4,9 @@ from fastapi import Depends, FastAPI, Request, Response
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
 from src.api.middleware import RequestLoggingMiddleware
 from src.api.rate_limit import limiter
 from src.api.routes import router
@@ -14,6 +17,7 @@ from src.core.agent.graph import build_graph
 from src.core.monitoring.tracker import MetricsTracker
 from src.core.nlp import get_spacy_model
 from src.core.retrieval import rerank
+from src.core.tracing import setup_tracing
 from src.core.vectorstore import ensure_collection_exists, get_vector_store
 from src.utils.logger import logger
 
@@ -22,6 +26,8 @@ from src.utils.logger import logger
 async def lifespan(app: FastAPI):
     logger.info("startup")
     settings = get_settings()
+    setup_tracing(settings.OTEL_ENDPOINT)
+    HTTPXClientInstrumentor().instrument()
     ensure_collection_exists()
 
     # Build expensive, process-wide resources once and stash them on app.state;
@@ -44,6 +50,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+FastAPIInstrumentor.instrument_app(app)
 
 
 def _on_rate_limit(request: Request, exc: Exception) -> Response:

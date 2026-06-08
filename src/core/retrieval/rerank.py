@@ -1,9 +1,12 @@
 from functools import lru_cache
 
 from fastembed.rerank.cross_encoder import TextCrossEncoder
+from opentelemetry import trace
 
 from src.config import get_settings
 from src.utils.logger import logger
+
+_tracer = trace.get_tracer(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -34,29 +37,36 @@ def rerank(query: str, documents: list[dict], top_k: int) -> list[dict]:
         return documents
 
     settings = get_settings()
-    encoder = _get_cross_encoder(settings.RERANK_MODEL)
-    scores = list(encoder.rerank(query, [doc["content"] for doc in documents]))
+    with _tracer.start_as_current_span("retrieval.rerank") as span:
+        span.set_attribute("rerank.model", settings.RERANK_MODEL)
+        span.set_attribute("rerank.candidates", len(documents))
+        span.set_attribute("rerank.top_k", top_k)
 
-    # Pair each doc with its score and original retrieval rank, then sort by score, best first.
-    ranked = sorted(
-        zip(documents, scores, range(len(documents))),
-        key=lambda triple: triple[1],
-        reverse=True,
-    )
-    top = ranked[:top_k]
+        encoder = _get_cross_encoder(settings.RERANK_MODEL)
+        scores = list(encoder.rerank(query, [doc["content"] for doc in documents]))
 
-    # "promoted" = docs the cross-encoder pulled into the result set from beyond the original
-    # top_k retrieval positions, i.e. hits that raw hybrid ordering would have dropped.
-    promoted = sum(1 for _, _, original_rank in top if original_rank >= top_k)
+        # Pair each doc with its score and original retrieval rank, then sort by score, best first.
+        ranked = sorted(
+            zip(documents, scores, range(len(documents))),
+            key=lambda triple: triple[1],
+            reverse=True,
+        )
+        top = ranked[:top_k]
 
-    logger.info(
-        "documents_reranked",
-        model=settings.RERANK_MODEL,
-        candidates=len(documents),
-        returned=len(top),
-        promoted=promoted,
-        score_max=round(top[0][1], 4),
-        score_min=round(top[-1][1], 4),
-    )
+        # "promoted" = docs the reranker moved into the top_k slice from positions top_k..fetch_k,
+        # i.e. hits that raw hybrid ordering would have cut.
+        promoted = sum(1 for _, _, original_rank in top if original_rank >= top_k)
 
-    return [doc for doc, _, _ in top]
+        span.set_attribute("rerank.promoted", promoted)
+
+        logger.info(
+            "documents_reranked",
+            model=settings.RERANK_MODEL,
+            candidates=len(documents),
+            returned=len(top),
+            promoted=promoted,
+            score_max=round(top[0][1], 4),
+            score_min=round(top[-1][1], 4),
+        )
+
+        return [doc for doc, _, _ in top]

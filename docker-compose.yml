@@ -14,8 +14,18 @@ services:
       - ./data:/app/data
     depends_on:
       - qdrant
+      - jaeger
     environment:
       QDRANT_LOCAL_URL: http://qdrant:6333
+      OTEL_ENDPOINT: http://jaeger:4317
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
 
   qdrant:
     image: qdrant/qdrant:latest

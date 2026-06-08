@@ -1,9 +1,12 @@
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from opentelemetry import trace
 
 from src.core.retrieval.search import hybrid_search
 from src.utils.logger import logger
+
+_tracer = trace.get_tracer(__name__)
 
 
 def format_docs(docs: list[dict]) -> str:
@@ -29,9 +32,12 @@ def retrieve_documents(query: str, config: RunnableConfig) -> tuple[str, list[di
 
     Use this first for almost any question about the user's documents. `query` should be a
     focused search query (resolve vague follow-ups into standalone terms before calling)."""
-    # config is injected by ToolNode, not exposed to the model. top_k is the per-request value.
     top_k = (config.get("configurable") or {}).get("top_k") or 10
-    docs = hybrid_search(query, top_k)
+    with _tracer.start_as_current_span("tool.retrieve_documents") as span:
+        span.set_attribute("tool.query", query)
+        span.set_attribute("tool.top_k", top_k)
+        docs = hybrid_search(query, top_k)
+        span.set_attribute("tool.docs_returned", len(docs))
     logger.info("retrieve_tool", count=len(docs))
     return format_docs(docs), docs
 
@@ -41,11 +47,15 @@ def web_search(query: str) -> tuple[str, list[dict]]:
     """Search the live web for current or external information not in the user's documents.
 
     Use only when the documents lack the answer or the question needs up-to-date facts."""
-    try:
-        result = str(DuckDuckGoSearchRun().invoke(query))
-    except Exception as e:
-        logger.error("web_search_tool_failed", error=str(e))
-        return "Web search failed.", []
+    with _tracer.start_as_current_span("tool.web_search") as span:
+        span.set_attribute("tool.query", query)
+        try:
+            result = str(DuckDuckGoSearchRun().invoke(query))
+        except Exception as e:
+            span.set_status(trace.StatusCode.ERROR, str(e))
+            logger.error("web_search_tool_failed", error=str(e))
+            return "Web search failed.", []
+        span.set_attribute("tool.result_chars", len(result))
     doc = {
         "content": result,
         "filename": "web",
