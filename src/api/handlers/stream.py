@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
@@ -29,13 +29,8 @@ async def _token_generator(
         yield f"data: {json.dumps({'token': refusal, 'done': True})}\n\n"
         return
 
-    # None resets the per-query accumulators (see state reducers); the checkpointer keeps the
-    # message history for this thread_id, so we only append the new question.
     inputs = {
         "messages": [HumanMessage(content=request.question)],
-        "documents": None,
-        "docs_retrieved_total": None,
-        "web_search_used": False,
     }
     # thread_id keys the persisted conversation; model/top_k are per-request knobs the agent
     # node and retrieve tool read back from config.
@@ -71,8 +66,18 @@ async def _token_generator(
 
             elif kind == "on_chain_end" and event.get("name") == "LangGraph":
                 output = event.get("data", {}).get("output", {})
-                graded_docs = output.get("documents", [])
-                sources_count = len(graded_docs)
+                messages = output.get("messages", [])
+                last_human_idx = max(
+                    (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
+                    default=-1,
+                )
+                all_docs: list[dict] = []
+                for msg in messages[last_human_idx + 1 :]:
+                    if isinstance(msg, ToolMessage) and msg.artifact:
+                        all_docs.extend(msg.artifact)
+                        if msg.name == "web_search":
+                            web_search_triggered = True
+                sources_count = len(all_docs)
                 sources_meta = [
                     {
                         "filename": d.get("filename", "unknown"),
@@ -80,10 +85,9 @@ async def _token_generator(
                         "chunk_length": d.get("chunk_length", 0),
                         "source": d.get("source", "vectorstore"),
                     }
-                    for d in graded_docs
+                    for d in all_docs
                 ]
-                web_search_triggered = output.get("web_search_used", False)
-                docs_retrieved_total = output.get("docs_retrieved_total", sources_count)
+                docs_retrieved_total = sources_count
 
     except Exception as e:
         logger.error("stream_failed", error=str(e), exc_info=True)

@@ -2,8 +2,7 @@
 
 This is the canonical reference for how the Document Research Agent works. Open it to
 re-understand any part of the system: ingestion, retrieval, the LangGraph agent and its
-tools, grading, the web-search fallback, streaming, guardrails, memory, evaluation, and
-deployment.
+tools, the web-search fallback, streaming, guardrails, memory, evaluation, and deployment.
 
 File paths are given throughout so you can jump from a concept to the code.
 
@@ -18,22 +17,19 @@ agent:
 2. **decides for itself** which tool to use — search your documents, or search the live web,
 3. retrieves candidate chunks with **hybrid search**, then re-orders them with a
    **cross-encoder reranker**,
-4. **grades** each retrieved chunk for relevance and drops the rest; an empty result nudges
-   the agent to try a different tool,
-5. loops — reason, act, observe — until it has enough context, then **writes the answer**,
+4. loops — reason, act, observe — until it has enough context, then **writes the answer**,
    streaming it token by token,
-6. records telemetry.
+5. records telemetry.
 
 It is "agentic" because the path through the graph is **not fixed**: a tool-calling LLM picks
 its own trajectory. A question answerable from your files retrieves once and answers. A
-question the files don't cover retrieves, sees nothing relevant, and **falls back to web
-search** on its own. This is the **ReAct** loop (reason → act → observe) with a **corrective
-grading** step bolted on (the CRAG idea) — see §6. Conversations are multi-turn; history is
-persisted per session (§12).
+question the files don't cover retrieves, finds nothing useful, and **falls back to web
+search** on its own. This is the **ReAct** loop (reason → act → observe). Conversations are
+multi-turn; history is persisted per session (§12).
 
 **Two LLM providers, by role:**
-- **OpenRouter** — every chat/LLM call (the agent's reasoning + answer, document grading, and
-  the eval judges). Lets the UI swap models freely. See `src/core/llm.py`.
+- **OpenRouter** — every chat/LLM call (the agent's reasoning and answer, and the eval
+  judges). Lets the UI swap models freely. See `src/core/llm.py`.
 - **OpenAI (direct)** — embeddings only (`text-embedding-3-small`), for ingestion and
   retrieval. See `src/core/vectorstore.py`.
 
@@ -51,17 +47,17 @@ POST /api/stream  (QueryRequest: question, session_id?, model?, top_k?)
 Guardrails — INPUT check        llm-guard scanners (Toxicity + PromptInjection), local
       │  (flagged → refusal, the graph never runs)
       ▼
-┌──────────────────── LangGraph agent (ReAct + corrective grading) ────────────────────┐
-│                                                                                        │
-│        agent ──tools_condition──► tools ──► grade ──┐                                  │
-│          ▲                                          │                                  │
-│          └──────────────────────────────────────────┘   loop until no tool calls      │
-│          │                                                                             │
-│          └─tools_condition─► END  (the agent wrote an answer instead of calling a tool)│
-└────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────── LangGraph agent (ReAct loop) ────────────────────┐
+│                                                                        │
+│        agent ──tools_condition──► tools ──┐                           │
+│          ▲                                │                           │
+│          └───────────────────────────────-┘   loop until no tool calls│
+│          │                                                             │
+│          └─tools_condition─► END  (the agent wrote an answer)         │
+└────────────────────────────────────────────────────────────────────────┘
       │  the agent's final-answer tokens stream out as they are produced (SSE)
       ▼
-MetricsTracker.record(...)      latency, docs retrieved/relevant, web-search rate
+MetricsTracker.record(...)      latency, docs retrieved, web-search rate
       │
       ▼
 SSE stream closes  ({"done": true, "sources": [...]})
@@ -118,7 +114,7 @@ enrich each chunk       enrich.py  (enrich_chunks → spaCy NER + keywords)
    │   entity_types = ent.label_   (first 10)
    │   keywords     = NOUN/PROPN, non-stopword, len>2, deduped (first 15)
    ▼
-store in Qdrant         index.py  (index_chunks → vector_store.add_documents)
+store in Qdrant         index.py  (index_chunks → vector_store.add_documents, offloaded via asyncio.to_thread)
        computes BOTH vectors per chunk:
          • dense  = OpenAI text-embedding-3-small (1536-d)
          • sparse = BM25 (FastEmbed "Qdrant/bm25")
@@ -128,6 +124,10 @@ store in Qdrant         index.py  (index_chunks → vector_store.add_documents)
 
 Why enrich with entities? So retrieval can **filter** on them (see §5). The same spaCy NER
 runs at ingestion and at query time, so a query's entities match the stored ones.
+
+`index_chunks` calls `langchain_qdrant`'s sync `add_documents`, which blocks on a Qdrant HTTP
+request. It is offloaded to a thread pool via `asyncio.to_thread` so the event loop stays free
+during the upload.
 
 ---
 
@@ -190,36 +190,32 @@ directly from the offline eval (§15) — the retrieval layer is the same in bot
 ## 6. The LangGraph agent — state, tools, topology
 
 `src/core/agent/graph.py` builds the graph; `src/core/agent/state.py` defines the shared
-state; `src/core/agent/nodes.py` holds the two node functions; `src/core/agent/tools.py`
-holds the tools.
+state; `src/core/agent/nodes.py` holds the agent node; `src/core/agent/tools.py` holds the
+tools.
 
-### 6.1 The shape: ReAct + corrective grading
+### 6.1 The shape: ReAct loop
 
 A tool-calling LLM (the `agent` node) drives the loop. It either **calls a tool** or **writes
 the final answer**. `tools_condition` (a LangGraph prebuilt) reads the agent's last message:
 if it contains tool calls, route to `tools`; otherwise the agent answered, so route to `END`.
 
 ```
-                         START
-                           │
-                           ▼
-                  ┌────►  agent  ──────────────────┐   (ReAct brain: pick a tool, or answer)
-                  │        │                        │
-                  │   tools_condition               │ no tool calls
-                  │        │ tool calls             ▼
-                  │        ▼                        END
-                  │      tools     (ToolNode runs retrieve_documents / web_search)
-                  │        │
-                  │        ▼
-                  └──────  grade    (score docs, drop irrelevant, rewrite the tool message)
+                     START
+                       │
+                       ▼
+              ┌──────► agent ─────────────────┐   (ReAct brain: pick a tool, or answer)
+              │          │                    │
+              │    tools_condition            │ no tool calls
+              │          │ tool calls         ▼
+              │          ▼                   END
+              └────── tools     (ToolNode runs retrieve_documents / web_search)
 ```
 
 Edges (`graph.py`):
 - entry: `agent`
 - `agent` → **conditional** via `tools_condition`: `tools` if the agent emitted tool calls,
   else `END`.
-- `tools` → `grade`
-- `grade` → `agent` (loop back so the agent reasons over the graded result)
+- `tools` → `agent` (loop back so the agent reasons over the tool result)
 
 Each custom node is wrapped by `timed(...)` (`src/utils/node_timer.py`), which logs a
 `node_complete` event with `duration_ms`. (`tools` is the prebuilt `ToolNode`, not wrapped.)
@@ -227,60 +223,25 @@ Each custom node is wrapped by `timed(...)` (`src/utils/node_timer.py`), which l
 The graph is compiled with a checkpointer (`AsyncSqliteSaver` in production, a `MemorySaver`
 in tests) — that's what makes it multi-turn (§12).
 
-**Why a corrective grade step at all?** Plain ReAct would feed *raw* retrieval back to the
-agent. The `grade` node sits between `tools` and `agent` and filters each retrieval to only
-the chunks an LLM judged relevant. If nothing survives, the agent sees *"No relevant results
-found."* — which is exactly the signal that makes it reach for `web_search` next. The
-corrective filter is what turns "retrieved something" into "retrieved something useful".
+### 6.2 State
 
-### 6.2 State and the reducers
-
-`AgentState` (`state.py`) is a small `TypedDict` (`total=False`) with four channels:
+`AgentState` (`state.py`) has a single channel:
 
 ```python
 class AgentState(TypedDict, total=False):
     messages: Required[Annotated[list[AnyMessage], add_messages]]
-    documents: Annotated[list[dict], _add_or_reset_list]
-    docs_retrieved_total: Annotated[int, _add_or_reset_int]
-    web_search_used: bool
 ```
 
 - **`messages`** — the conversation **and** the ReAct scratchpad in one list. The
   `add_messages` reducer appends each turn (human question, agent tool-call, tool result,
   agent answer…). The checkpointer persists this per `thread_id`, so it doubles as the
   multi-turn history — there is no separate `chat_history` field. `Required[...]` marks it as
-  always-present inside the otherwise-optional `TypedDict`, while keeping the `add_messages`
-  metadata that LangGraph reads for the reducer.
-- **`documents`** — the graded-relevant docs for the **current** query, used for source
-  metadata and metrics. Carries the `_add_or_reset_list` reducer.
-- **`docs_retrieved_total`** — pre-grade count, for the precision metric. Carries
-  `_add_or_reset_int`.
-- **`web_search_used`** — did the `web_search` tool run this query (for the web-search-rate
-  metric). Plain `bool`.
-
-The two reducers do one job: **accumulate within a query, reset between queries.**
-
-```python
-def _add_or_reset_list(left, right):   # right is the node's returned value
-    if right is None: return []        # explicit reset
-    return left + right                # otherwise accumulate
-
-def _add_or_reset_int(left, right):
-    if right is None: return 0
-    return left + right
-```
-
-Within one query the agent may retrieve several times (e.g. retrieve, then two web searches);
-each `grade` pass adds its survivors to `documents` and its count to `docs_retrieved_total`.
-At the **start** of each new query the stream handler sends `documents=None` and
-`docs_retrieved_total=None`, which the reducers interpret as "reset to empty" so last turn's
-docs don't bleed into this one. `messages` is deliberately **not** reset — that's the history
-the checkpointer carries forward.
+  always-present inside the otherwise-optional `TypedDict`.
 
 > **Per-request knobs are not in state.** `model` and `top_k` ride in the `RunnableConfig`'s
 > `configurable` dict, not in `AgentState`. The agent node reads `model`; the
 > `retrieve_documents` tool reads `top_k`. Keeping invocation-scoped parameters out of the
-> evolving, persisted state is what keeps the state minimal (§13, §12).
+> evolving, persisted state keeps the state minimal (§12).
 
 ### 6.3 The tools
 
@@ -288,8 +249,8 @@ the checkpointer carries forward.
 `@tool(response_format="content_and_artifact")`. That response format is the key trick: each
 tool returns a **`(string, list[dict])`** pair — the **string** becomes the `ToolMessage`
 content the model reads, and the **list of doc dicts** rides along as the `ToolMessage`'s
-**`artifact`**. The `grade` node pulls the artifact back out to score relevance and build
-source metadata, none of which has to be re-parsed from the model-facing text.
+**`artifact`**. The stream handler pulls the artifacts from `ToolMessage`s after the graph
+finishes to build source metadata (§10).
 
 | Tool | What it does | Notes |
 |---|---|---|
@@ -313,8 +274,7 @@ to `messages`. Two outcomes:
   and those tokens are what stream to the user (§10).
 
 The model is per-request: `get_llm(config.configurable.model)`, falling back to `LLM_MODEL`.
-Temperature is `get_llm`'s default of **0** (the system was previously 0.7 in a dedicated
-generate step; there is no separate generate step now).
+Temperature is `get_llm`'s default of **0**.
 
 The system prompt (`prompts.py:AGENT_SYSTEM_PROMPT`) is what makes the loop behave: it tells
 the agent to (1) call `retrieve_documents` first for almost any question, resolving vague
@@ -325,22 +285,8 @@ tools and answer once it has enough context, using only the retrieved context.
 ### Tools — `ToolNode(TOOLS)` (prebuilt)
 LangGraph's prebuilt `ToolNode` executes whatever tool calls the agent emitted (it can run
 more than one), injects the `RunnableConfig` into tools that ask for it, and appends one
-`ToolMessage` per call — content for the model, `artifact` for us (§6.3).
-
-### Grade — `grade_documents_node` (`nodes.py`)
-The corrective step. It looks only at the `ToolMessage`s produced **since the last agent turn**
-(`_recent_tool_messages`), so each pass grades just the fresh retrieval. For each:
-- pull the docs from `tm.artifact`; count them into `docs_retrieved_total`;
-- if it was the `web_search` tool, mark `web_search_used`;
-- **batch-grade** the docs against the question (`grade_documents_batch`, §13) — one `yes/no`
-  per doc;
-- keep the `yes` docs, accumulate them into `documents`, and **rewrite the `ToolMessage` in
-  place** (same `id`, so `add_messages` replaces rather than appends) with `format_docs` of
-  the survivors — or the literal `"No relevant results found."` when none survive.
-
-That rewrite is the whole point: the agent's next turn reasons over *graded* context, and an
-empty result is the explicit nudge to try another tool. `web_search_used` is only ever set to
-`True`, so an earlier retrieve pass's `False` can't clobber a later web pass within one query.
+`ToolMessage` per call — content for the model to reason over, `artifact` for the stream
+handler to extract sources from.
 
 ---
 
@@ -348,22 +294,19 @@ empty result is the explicit nudge to try another tool. `web_search_used` is onl
 
 **Documents-only (the common case).**
 1. `agent` → calls `retrieve_documents` (query derived from the question).
-2. `tools` → hybrid search returns chunks as a `ToolMessage` + artifact.
-3. `grade` → enough chunks pass; it rewrites the tool message to the relevant subset and adds
-   them to `documents`.
-4. `agent` → has what it needs, writes the answer. `tools_condition` → `END`.
+2. `tools` → hybrid search returns reranked chunks as a `ToolMessage` + artifact.
+3. `agent` → has what it needs, writes the answer. `tools_condition` → `END`.
 
-**Web-search fallback (the corrective path).** *(Observed live on an off-corpus question.)*
+**Web-search fallback.**
 1. `agent` → calls `retrieve_documents`.
-2. `tools` → returns chunks.
-3. `grade` → **zero** relevant; rewrites the tool message to *"No relevant results found."*
-4. `agent` → sees nothing useful, **calls `web_search`** on its own.
-5. `tools` → web results; `grade` → relevant, added to `documents`, `web_search_used=True`.
-6. `agent` → answers from the web context. (It may run `web_search` more than once if it
-   judges it needs more — each call is graded and accumulated.)
+2. `tools` → returns chunks; the agent sees the content and judges it insufficient.
+3. `agent` → **calls `web_search`** on its own.
+4. `tools` → web results appended.
+5. `agent` → answers from the web context.
 
-Nothing routes this — the **agent decides** based on the graded observation. There is no
-classifier and no parallel branch; the trajectory emerges from the ReAct loop.
+Nothing routes this — the **agent decides** based on what the retrieved content actually says.
+There is no classifier and no parallel branch; the trajectory emerges from the ReAct loop and
+the system prompt's instructions.
 
 ---
 
@@ -397,12 +340,12 @@ is tuned for precision (sharpen the order).
 The handler drives the graph with `agent.astream_events(..., version="v2")` and filters two
 event kinds:
 - `on_chat_model_stream` **where `metadata.langgraph_node == "agent"`** → forwards the token.
-  This filter matters: the grader also calls the LLM and emits token events, but only the
-  *agent* node's tokens should reach the user. The agent node both *decides tools* and *writes
-  the answer*; tool-deciding turns carry no content, so in the normal case only the final
-  answer yields tokens here.
-- `on_chain_end` with `name == "LangGraph"` → the final graph state, used to extract
-  `sources`/`sources_count` (from `documents`), `web_search_used`, and `docs_retrieved_total`.
+  The agent node both *decides tools* and *writes the answer*; tool-deciding turns carry no
+  content, so only the final answer yields tokens here.
+- `on_chain_end` with `name == "LangGraph"` → the final graph state. The handler scans
+  `messages` for `ToolMessage`s that appeared after the last `HumanMessage` in this turn,
+  collects their `.artifact` lists to build `sources_meta`, and flags `web_search_triggered`
+  if any came from the `web_search` tool.
 
 Event shapes the client sees:
 ```
@@ -416,8 +359,8 @@ the stream closes the handler records metrics (§14).
 > **Known edge — preamble tokens.** Because the agent node *can* emit content alongside a tool
 > call (e.g. *"Let me search the web for you!"* right before a `web_search` call), that
 > narration is on the `agent` node and therefore streams to the user ahead of the real answer.
-> It's harmless (the final answer is complete and correct) but it mixes process-narration into
-> the output. The system prompt can be tuned to suppress it if undesired.
+> It's harmless but mixes process-narration into the output. The system prompt can be tuned to
+> suppress it if undesired.
 
 ---
 
@@ -435,9 +378,8 @@ the stream closes the handler records metrics (§14).
   `_get_scanners`) and primed at startup by `guardrails.warmup()` (§3); the models are **baked
   into the Docker image** so the first request skips a ~64s download (§19).
 - **No output check.** Because the agent streams its answer token by token, there is no point
-  at which a full response exists to screen before the user sees it. The previous
-  buffer-and-correct design was dropped along with the dedicated generate step; output safety
-  would require giving up streaming, which we don't.
+  at which a full response exists to screen before the user sees it. Output safety would
+  require giving up streaming.
 
 > Note: the input scanners are not wrapped in a try/except, so a scanner *internal* error
 > propagates rather than failing open. If you need fail-open behaviour (degrade safety but
@@ -459,9 +401,9 @@ tool calls, tool results, prior answers — is reloaded from the checkpoint. Tha
 feeds both:
 - **Conversational memory** — the agent answers *"expand on that"* coherently because the
   prior turns are right there in `messages`.
-- **Conversational retrieval** — there's no separate router rewriting follow-ups anymore; the
-  agent itself, seeing the history, is instructed by its system prompt to resolve a
-  context-dependent follow-up into a standalone `retrieve_documents` query before searching.
+- **Conversational retrieval** — the agent itself, seeing the history, is instructed by its
+  system prompt to resolve a context-dependent follow-up into a standalone `retrieve_documents`
+  query before searching.
 
 **Persistent checkpointer.** Production uses `AsyncSqliteSaver(aiosqlite.connect(path))`
 (`langgraph-checkpoint-sqlite`), where `path = settings.checkpoints_db_path` (under
@@ -486,7 +428,6 @@ Model roles:
 | Role | Setting / value | Provider | Temp | Where |
 |---|---|---|---|---|
 | Agent (reason + answer) | `LLM_MODEL` (UI-overridable) | OpenRouter | 0 | `agent_node` |
-| Grader | `CLASSIFIER_MODEL` | OpenRouter | 0 | `grade_documents_batch` |
 | Embeddings | `EMBEDDING_MODEL` (`text-embedding-3-small`) | OpenAI | — | ingestion + retrieval |
 | Reranker | `RERANK_MODEL` (MiniLM cross-encoder) | local ONNX | — | `rerank` |
 | Guardrails | Toxicity + PromptInjection | local (HF, via llm-guard) | — | `guardrails` |
@@ -526,9 +467,7 @@ tracker keeps running totals (thread-safe via a `Lock`) and **persists them to S
 |---|---|
 | `total_queries` | queries served |
 | `web_search_rate` | fraction of queries where the agent used `web_search` |
-| `avg_docs_retrieved` | mean candidates retrieved per query (pre-grade) |
-| `avg_docs_relevant` | mean docs passing the grader |
-| `avg_retrieval_precision` | relevant ÷ retrieved (corpus-wide) |
+| `avg_docs_retrieved` | mean docs retrieved per query (all tool calls combined) |
 | `avg_latency_ms` | mean end-to-end latency |
 
 ---
@@ -582,7 +521,6 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 | Failure | Handling | Where |
 |---|---|---|
 | Transient LLM API errors | `ChatOpenAI(max_retries=LLM_MAX_RETRIES)` | `llm.py` |
-| Malformed structured output (grader) | `with_retry` (bounded retry on parse/validation) | `utils/retry.py`, used in `grading.py` |
 | Web search outage | fail soft → empty docs, request continues | `web_search` tool |
 | Entity filter over-narrows | fall back to unfiltered hybrid search | `search.py` |
 | Empty / unsupported upload | typed exceptions → 400/500, temp file always cleaned up | `handlers/upload.py` |
@@ -609,8 +547,7 @@ shared `Limiter` decorates those two routes (`@limiter.limit(rate_limit)`), so
   Cloud Run autoscales, so in-memory counters aren't shared and a client spread across N
   instances effectively gets N× the limit. The fix is **one config change**: point the URI at
   `redis://…` and slowapi shares counters across instances. Keyed on IP rather than user
-  because the app has no auth. *(Chose the maintained library over a hand-rolled token bucket:
-  it's the standard FastAPI tool and gives the Redis backend for free.)*
+  because the app has no auth.
 
 ---
 
@@ -621,12 +558,11 @@ src/
   api/            delivery layer: routes, handlers (stream/upload), middleware, DI, schemas, rate_limit
   core/
     agent/        the LangGraph agent
-      graph.py    builds + compiles the graph (agent ⇄ tools → grade), owns the checkpointer
-      state.py    AgentState + the reducers
-      nodes.py    agent_node + grade_documents_node
+      graph.py    builds + compiles the graph (agent ⇄ tools), owns the checkpointer
+      state.py    AgentState (messages only)
+      nodes.py    agent_node
       tools.py    retrieve_documents + web_search (@tool, content_and_artifact)
-      grading.py  the batched yes/no document grader (structured-output LLM)
-      prompts.py  agent system prompt, grader prompts, eval-only generation prompts
+      prompts.py  agent system prompt + eval-only generation prompts
     retrieval/    hybrid search (search.py) + cross-encoder reranker (rerank.py)
     ingestion/    extract, chunk, enrich (spaCy), index, pipeline
     monitoring/   online telemetry (tracker + SQLite)

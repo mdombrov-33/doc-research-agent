@@ -11,8 +11,6 @@ from src.core.agent.graph import build_graph
 
 @pytest.fixture
 def graph():
-    # Sync MemorySaver so these tests can drive the graph with .invoke (serving uses the
-    # async sqlite checkpointer, which only supports the async API).
     return build_graph(checkpointer=MemorySaver())
 
 
@@ -32,12 +30,7 @@ def _run(graph, question, model=None, top_k=None):
     if top_k is not None:
         configurable["top_k"] = top_k
     config = {"configurable": configurable}
-    inputs = {
-        "messages": [HumanMessage(content=question)],
-        "documents": None,
-        "docs_retrieved_total": None,
-        "web_search_used": False,
-    }
+    inputs = {"messages": [HumanMessage(content=question)]}
     return graph.invoke(inputs, config=config)
 
 
@@ -65,19 +58,14 @@ def test_graph_retrieves_then_answers(graph, monkeypatch):
             {"content": "two", "filename": "b.pdf", "source": "vectorstore"},
         ],
     )
-    monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes"] * len(c))
 
     state = _run(graph, "q", top_k=11)
 
-    # Per-request top_k flows from config through to the retrieve tool.
     assert seen["top_k"] == 11
-    assert {d["source"] for d in state["documents"]} == {"vectorstore"}
-    assert state["docs_retrieved_total"] == 2
     assert state["messages"][-1].content == "final answer"
 
 
 def test_graph_falls_back_to_web_search(graph, monkeypatch):
-    # Agent retrieves, then chooses to web search, then answers.
     _patch_agent_llm(
         monkeypatch, [_retrieve_call(), _web_call(), AIMessage(content="final answer")]
     )
@@ -89,11 +77,8 @@ def test_graph_falls_back_to_web_search(graph, monkeypatch):
     web_tool = MagicMock()
     web_tool.invoke.return_value = "web result"
     monkeypatch.setattr(tools, "DuckDuckGoSearchRun", lambda: web_tool)
-    monkeypatch.setattr(nodes, "grade_documents_batch", lambda q, c: ["yes"] * len(c))
 
     state = _run(graph, "q")
 
     web_tool.invoke.assert_called_once()
-    assert {d["source"] for d in state["documents"]} == {"vectorstore", "web"}
-    assert state["web_search_used"] is True
     assert state["messages"][-1].content == "final answer"

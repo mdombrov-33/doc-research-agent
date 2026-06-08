@@ -15,25 +15,6 @@ When you answer:
 - Refer to sources by filename (or note when information came from the web) where it helps."""  # noqa: E501
 
 
-DOCUMENT_GRADER_SYSTEM_PROMPT = """You are a grader assessing relevance of retrieved documents to a user question.
-
-Grade as 'yes' if the document contains information that helps answer the question — including definitions, descriptions, facts, or context about the topic being asked.
-
-Grade as 'no' if:
-- The document mentions the topic only in passing without useful substance
-- The document is completely unrelated to the question
-
-Give a binary score 'yes' or 'no'."""  # noqa: E501
-
-DOCUMENT_GRADER_USER_PROMPT = """Retrieved document:
-
-{document}
-
-User question: {question}
-
-Does this document contain useful information for answering the question? Answer only 'yes' or 'no'."""  # noqa: E501
-
-
 # Used only by the offline eval (evals/run_eval.py --full) to generate an answer from a fixed
 # context, decoupled from the agent loop. The serving path generates via AGENT_SYSTEM_PROMPT.
 GENERATION_SYSTEM_PROMPT = """You are an assistant for question-answering tasks.
