@@ -128,6 +128,7 @@ def main():
         )
 
         top_k = st.slider("Top-K results", min_value=3, max_value=15, value=5, step=1)
+        st.caption("Per retrieval call — the agent may call retrieve multiple times.")
 
         st.caption(f"Backend: {settings.API_URL}")
         st.caption(f"Session: {st.session_state.session_id[:8]}...")
