@@ -72,13 +72,18 @@ async def _token_generator(
                     (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
                     default=-1,
                 )
-                all_docs: list[dict] = []
+                vector_docs: list[dict] = []
+                web_docs: list[dict] = []
                 for msg in messages[last_human_idx + 1 :]:
                     if isinstance(msg, ToolMessage) and msg.artifact:
-                        all_docs.extend(msg.artifact)
                         if msg.name == "web_search":
+                            web_docs.extend(msg.artifact)
                             web_search_triggered = True
-                sources_count = len(all_docs)
+                        else:
+                            vector_docs.extend(msg.artifact)
+                docs_retrieved_total = len(vector_docs) + len(web_docs)
+                answer_docs = web_docs if web_search_triggered else vector_docs
+                sources_count = len(answer_docs)
                 sources_meta = [
                     {
                         "filename": d.get("filename", "unknown"),
@@ -86,9 +91,8 @@ async def _token_generator(
                         "chunk_length": d.get("chunk_length", 0),
                         "source": d.get("source", "vectorstore"),
                     }
-                    for d in all_docs
+                    for d in answer_docs
                 ]
-                docs_retrieved_total = sources_count
 
     except Exception as e:
         logger.error("stream_failed", error=str(e), exc_info=True)
