@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     UPLOAD_READ_CHUNK_BYTES: int = 1024 * 1024
     MAX_PDF_PAGES: int = 200
     MAX_EXTRACTED_CHARACTERS: int = 1_000_000
+    MAX_CHUNKS_PER_DOCUMENT: int = 1_000
 
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT: str = "30/minute"

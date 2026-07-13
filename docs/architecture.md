@@ -109,7 +109,8 @@ extract text            extract.py  (extract_from_file)
    ▼
 chunk                   chunk.py  (chunk_text → RecursiveCharacterTextSplitter)
    │   chunk_size=1200 chars, chunk_overlap=240, split on ¶ → line → sentence → … 
-   │   chunks shorter than 100 chars are dropped
+   │   chunks shorter than 100 chars are dropped; reject documents over
+   │   MAX_CHUNKS_PER_DOCUMENT (1,000 by default) before enrichment and indexing
    ▼
 enrich each chunk       enrich.py  (enrich_chunks → spaCy NER + keywords)
    │   entities     = ent.text     (first 10)

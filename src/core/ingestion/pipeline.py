@@ -6,7 +6,7 @@ from langchain_qdrant import QdrantVectorStore
 from spacy.language import Language
 
 from src.config import Settings
-from src.core.exceptions import EmptyDocumentError
+from src.core.exceptions import DocumentLimitError, EmptyDocumentError
 from src.core.ingestion.chunk import chunk_text
 from src.core.ingestion.enrich import enrich_chunks
 from src.core.ingestion.extract import extract_from_file
@@ -33,6 +33,9 @@ async def process_and_store(
         raise EmptyDocumentError("No text extracted from document")
 
     chunks = chunk_text(raw_text)
+    if len(chunks) > settings.MAX_CHUNKS_PER_DOCUMENT:
+        raise DocumentLimitError("Chunk limit exceeded")
+
     enriched_chunks = enrich_chunks(chunks, filename, nlp)
     await asyncio.to_thread(index_chunks, vector_store, document_id, filename, enriched_chunks)
 

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.config import Settings
-from src.core.exceptions import EmptyDocumentError
+from src.core.exceptions import DocumentLimitError, EmptyDocumentError
 from src.core.ingestion import pipeline
 
 
@@ -33,6 +33,24 @@ async def test_process_and_store_rejects_empty_document(vector_store, nlp, tmp_p
     monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value="   \n\t "))
     with pytest.raises(EmptyDocumentError):
         await pipeline.process_and_store(str(path), "empty.txt", vector_store, nlp, Settings())
+    vector_store.add_documents.assert_not_called()
+
+
+async def test_process_and_store_rejects_too_many_chunks(vector_store, nlp, tmp_path, monkeypatch):
+    path = tmp_path / "doc.txt"
+    path.write_text("document", encoding="utf-8")
+    monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value="document"))
+    monkeypatch.setattr(pipeline, "chunk_text", lambda _: ["one", "two", "three"])
+
+    with pytest.raises(DocumentLimitError):
+        await pipeline.process_and_store(
+            str(path),
+            "doc.txt",
+            vector_store,
+            nlp,
+            Settings(MAX_CHUNKS_PER_DOCUMENT=2),
+        )
+
     vector_store.add_documents.assert_not_called()
 
 
