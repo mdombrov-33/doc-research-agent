@@ -123,8 +123,9 @@ store in Qdrant         index.py  (index_chunks → vector_store.add_documents, 
                   entities, entity_types, keywords, file_extension}
 ```
 
-Why enrich with entities? So retrieval can **filter** on them (see §5). The same spaCy NER
-runs at ingestion and at query time, so a query's entities match the stored ones.
+Why enrich with entities? So retrieval can add entity-matched chunks to its candidate pool
+(see §5). The same spaCy NER runs at ingestion and at query time, so a query's entities can
+match the stored ones without excluding ordinary hybrid results.
 
 `index_chunks` calls `langchain_qdrant`'s sync `add_documents`, which blocks on a Qdrant HTTP
 request. It is offloaded to a thread pool via `asyncio.to_thread` so the event loop stays free
@@ -144,7 +145,7 @@ The Qdrant collection holds **two vectors per chunk**:
 | Dense | semantic meaning | `text-embedding-3-small`, 1536-d, **cosine** distance |
 | Sparse | exact terms (BM25) | named `langchain-sparse`, IDF computed **server-side** (`Modifier.IDF`) |
 
-Plus a **payload index** on `metadata.entities` (KEYWORD) so entity filtering is fast.
+Plus a **payload index** on `metadata.entities` (KEYWORD) so entity supplements are fast.
 
 **TF/IDF split — who owns what.** `FastEmbedSparse` (BM25 tokenizer) runs both at ingestion
 and at query time. It outputs a sparse vector of `{token_id: tf_score}` — term frequency only,
@@ -669,6 +670,9 @@ tooling (excluded from the Docker image via `.dockerignore`).
 - **Runtime state**: `DATA_DIR` (`/app/data`) holds the local `metrics.db` and
   `checkpoints.db`. docker-compose mounts `./data:/app/data` so both persist locally; on
   Cloud Run the disk is ephemeral, so state resets when an instance is replaced.
+- **Qdrant compatibility**: Compose pins the Qdrant server image and `pyproject.toml` pins the
+  Python SDK to the same minor release. Keep their minor versions equal when upgrading; `latest`
+  can move the server beyond the client's supported minor-version window.
 - **Target**: GCP Cloud Run (Terraform in `terraform/gcp`). spaCy + onnxruntime + the
   reranker + llm-guard's models must fit in the instance memory; watch for OOM if you scale the
   corpus or models.

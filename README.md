@@ -71,7 +71,8 @@ This one command starts Qdrant, Jaeger, the FastAPI service, and Streamlit. Open
 `http://localhost:8501`; the API remains at `http://localhost:8000`. `src/` and `ui.py` are
 bind-mounted into their containers: Uvicorn reloads on backend edits and Streamlit reloads on
 frontend edits. The first run builds the image; rebuild only after changing `Dockerfile`,
-`pyproject.toml`, or `uv.lock`.
+`pyproject.toml`, or `uv.lock`. Compose pins Qdrant to the same minor release as
+`qdrant-client`, so the server and SDK stay within Qdrant's compatibility contract.
 
 Local dev without Docker:
 
