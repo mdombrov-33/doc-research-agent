@@ -68,3 +68,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   externally visible behaviour.
 - Verify changing external facts, such as model availability, before relying on them.
 - Treat public API errors as part of the product. Do not return raw internal or provider errors.
+
+## Terraform
+
+When working with Terraform or OpenTofu, follow the workflow in `.terrashark/SKILL.md`.
+Load references from `.terrashark/references/` as needed.
