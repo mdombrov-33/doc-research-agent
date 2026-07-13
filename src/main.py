@@ -12,6 +12,7 @@ from src.api.routes import router
 from src.api.schemas import HealthResponse
 from src.config import Settings, get_settings
 from src.core import guardrails
+from src.core.agent.checkpointer import open_checkpointer
 from src.core.agent.graph import build_graph
 from src.core.monitoring.tracker import MetricsTracker
 from src.core.nlp import get_spacy_model
@@ -31,16 +32,17 @@ async def lifespan(app: FastAPI):
 
     # Build expensive, process-wide resources once and stash them on app.state;
     # request handlers read them back via the providers in api/dependencies.py.
-    app.state.vector_store = get_vector_store()
-    app.state.nlp = get_spacy_model()
-    app.state.agent = build_graph()
-    guardrails.warmup()
-    rerank.warmup()
-    app.state.metrics_tracker = MetricsTracker(db_path=settings.metrics_db_path)
+    async with open_checkpointer(settings) as checkpointer:
+        app.state.vector_store = get_vector_store()
+        app.state.nlp = get_spacy_model()
+        app.state.agent = build_graph(checkpointer)
+        guardrails.warmup()
+        rerank.warmup()
+        app.state.metrics_tracker = MetricsTracker(db_path=settings.metrics_db_path)
 
-    logger.info("startup_complete")
-    yield
-    logger.info("shutdown")
+        logger.info("startup_complete")
+        yield
+        logger.info("shutdown")
 
 
 app = FastAPI(

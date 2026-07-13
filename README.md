@@ -79,8 +79,9 @@ list. Keys:
 - `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer)
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`)
 
-Guardrails run locally (llm-guard) and need no API key. Conversation memory and live telemetry
-persist to SQLite under `DATA_DIR` (default `./data`).
+Guardrails run locally (llm-guard) and need no API key. Local conversation memory and live
+telemetry persist to SQLite under `DATA_DIR` (default `./data`); production conversation memory
+uses the configured Postgres checkpointer.
 
 ## API
 
@@ -100,7 +101,7 @@ push to main.
 
 ## Tech stack
 
-**LangGraph** (ReAct agent + SQLite checkpointer) · **LangChain** · **Qdrant** (hybrid dense +
+**LangGraph** (ReAct agent + SQLite/Postgres checkpointer) · **LangChain** · **Qdrant** (hybrid dense +
 BM25) · **FastEmbed** (BM25 sparse + cross-encoder reranker) · **llm-guard** (local input
 guardrails) · **FastAPI** · **slowapi** (rate limiting) · **OpenAI** (embeddings) ·
 **OpenRouter** (LLMs) · **PyMuPDF** · **spaCy** · **Streamlit** · **Docker** · **Terraform**

@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     RERANK_FETCH_CAP: int = 100
 
     DATA_DIR: str = "./data"
+    CHECKPOINT_BACKEND: Literal["sqlite", "postgres"] = "sqlite"
+    DATABASE_URL: str = ""
 
     @property
     def metrics_db_path(self) -> str:

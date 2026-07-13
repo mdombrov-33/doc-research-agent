@@ -46,15 +46,19 @@ over. `messages` is deliberately *not* reset; that's the conversation history.
 
 ## The checkpointer
 
-When the graph is compiled it's given a checkpointer (`src/core/agent/graph.py`):
+When the graph is compiled it's given a checkpointer (`src/core/agent/checkpointer.py`):
 
 ```python
-checkpointer = AsyncSqliteSaver(aiosqlite.connect(settings.checkpoints_db_path))
-app = workflow.compile(checkpointer=checkpointer)
+async with open_checkpointer(settings) as checkpointer:
+    app = build_graph(checkpointer)
 ```
 
-`AsyncSqliteSaver` (from `langgraph-checkpoint-sqlite`) stores each thread's state in a SQLite
-file under `DATA_DIR`. Two details matter:
+`CHECKPOINT_BACKEND=sqlite` (the local default) uses `AsyncSqliteSaver` from
+`langgraph-checkpoint-sqlite` to store each thread's state under `DATA_DIR`. In production,
+set `CHECKPOINT_BACKEND=postgres` and `DATABASE_URL`; `AsyncPostgresSaver` creates its tables
+on startup and shares history across instances.
+
+For SQLite, two details matter:
 
 - **It must be async.** The serving path streams with `astream_events`, which uses the async
   checkpointer API. A sync `SqliteSaver` raises *"does not support async methods"* there.
@@ -118,6 +122,5 @@ SQLite makes history survive a **process restart** — *as long as the database 
 - **Cloud Run**: the local disk is ephemeral and not shared across instances, so a SQLite file
   there is lost on instance recycle and isn't seen by sibling instances.
 
-For durable, horizontally-scaled memory, swap the checkpointer for a shared backend (e.g.
-Postgres via `langgraph-checkpoint-postgres`). `build_graph` already accepts an injectable
-checkpointer, so it's a one-line change in `graph.py`.
+For durable, horizontally-scaled memory, use the Postgres configuration above. The connection
+is owned by the FastAPI lifespan and closes during shutdown.

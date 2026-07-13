@@ -78,8 +78,7 @@ per-request work cheap and makes everything trivially mockable in tests.
   - `ensure_collection_exists()` — create the Qdrant collection + indexes if missing.
   - `app.state.vector_store` — the hybrid `QdrantVectorStore`.
   - `app.state.nlp` — the loaded spaCy model (`en_core_web_sm`).
-  - `app.state.agent` — the compiled LangGraph app (built **here**, inside the running event
-    loop, because the async SQLite checkpointer grabs the loop at construction — §12).
+  - `app.state.agent` — the compiled LangGraph app, using the configured checkpointer (§12).
   - `guardrails.warmup()` — primes the llm-guard scanners so the first request doesn't pay
     their cold start (§11).
   - `rerank.warmup()` — primes the cross-encoder for the same reason (§9).
@@ -227,8 +226,8 @@ Edges (`graph.py`):
 Each custom node is wrapped by `timed(...)` (`src/utils/node_timer.py`), which logs a
 `node_complete` event with `duration_ms`. (`tools` is the prebuilt `ToolNode`, not wrapped.)
 
-The graph is compiled with a checkpointer (`AsyncSqliteSaver` in production, a `MemorySaver`
-in tests) — that's what makes it multi-turn (§12).
+The graph is compiled with a checkpointer (`AsyncSqliteSaver` locally, `AsyncPostgresSaver` in
+production, and a `MemorySaver` in tests) — that's what makes it multi-turn (§12).
 
 ### 6.2 State
 
@@ -427,19 +426,17 @@ feeds both:
   system prompt to resolve a context-dependent follow-up into a standalone `retrieve_documents`
   query before searching.
 
-**Persistent checkpointer.** Production uses `AsyncSqliteSaver(aiosqlite.connect(path))`
-(`langgraph-checkpoint-sqlite`), where `path = settings.checkpoints_db_path` (under
-`DATA_DIR`, §13). The serving path is async (`astream_events`), so the checkpointer must be
-async too — a sync `SqliteSaver` raises on the async API. It self-initializes its tables on
-first use and is **built inside the FastAPI lifespan** (§3) because `AsyncSqliteSaver` grabs
-the running event loop at construction. Tests inject a sync `MemorySaver` via
+**Persistent checkpointer.** `CHECKPOINT_BACKEND=sqlite` is the local default and uses
+`AsyncSqliteSaver` under `DATA_DIR` (§13). Production sets `CHECKPOINT_BACKEND=postgres` and
+`DATABASE_URL`, then uses `AsyncPostgresSaver` with tables initialized at startup. The serving
+path is async (`astream_events`), so both are async checkpointers. The FastAPI lifespan owns
+the connection and closes it at shutdown. Tests inject a sync `MemorySaver` via
 `build_graph(checkpointer=...)`, which works with the sync `.invoke` API they drive.
 
 > **Durability caveat.** SQLite makes history survive a process restart *when the database
 > file persists* — true under docker-compose (the `./data` volume, §19) but **not** on Cloud
-> Run, whose local disk is ephemeral and not shared across instances. For durable,
-> horizontally-scaled memory, point the checkpointer at a shared backend (e.g. Postgres). The
-> graph code already takes an injectable checkpointer, so that's a one-line swap in `graph.py`.
+> Run, whose local disk is ephemeral and not shared across instances. Cloud Run must use the
+> Postgres configuration above.
 
 ---
 
@@ -465,10 +462,9 @@ Model roles:
 - Eval-only values (thresholds, `K`, `JUDGE_MODEL`, judge prompts) live in `evals/`, never in
   the app package.
 
-**`DATA_DIR`.** A single `DATA_DIR` (default `./data`) is the home for runtime SQLite files;
-two derived properties hang off it — `metrics_db_path` (`monitoring`, §14) and
-`checkpoints_db_path` (the conversation checkpointer, §12). Mounting one directory persists
-both.
+**`DATA_DIR`.** A single `DATA_DIR` (default `./data`) is the home for local SQLite state;
+`metrics_db_path` holds telemetry and `checkpoints_db_path` is used only when
+`CHECKPOINT_BACKEND=sqlite`. Mounting one directory persists both locally.
 
 Other key settings: `RERANK_*` (§9), `QDRANT_MODE` (`local`|`cloud`, picks the URL/credentials),
 `LLM_MAX_RETRIES` (§17), `RATE_LIMIT*` (§17). See `.env.example` for the full annotated list.
@@ -616,9 +612,9 @@ tooling (excluded from the Docker image via `.dockerignore`).
 - **Why not `/tmp`**: fastembed's default cache is `/tmp/fastembed_cache`, but Cloud Run mounts
   a fresh in-memory tmpfs over `/tmp` per instance — a model baked there would vanish at
   runtime. The persistent `/app/.model_cache` and `/app/.hf_cache` paths are the fix.
-- **Runtime state**: `DATA_DIR` (`/app/data`) holds `metrics.db` and `checkpoints.db`.
-  docker-compose mounts `./data:/app/data` so both persist locally; on Cloud Run the disk is
-  ephemeral (see the §12 caveat).
+- **Runtime state**: `DATA_DIR` (`/app/data`) holds `metrics.db` and the local
+  `checkpoints.db`. docker-compose mounts `./data:/app/data` so both persist locally; on
+  Cloud Run the disk is ephemeral (see the §12 caveat).
 - **Target**: GCP Cloud Run (Terraform in `terraform/gcp`). spaCy + onnxruntime + the
   reranker + llm-guard's models must fit in the instance memory; watch for OOM if you scale the
   corpus or models.
