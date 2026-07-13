@@ -9,12 +9,19 @@ from src.config import get_settings
 settings = get_settings()
 
 MODELS: dict[str, str] = {
+    "anthropic/claude-fable-5": "Claude Fable 5",
+    "anthropic/claude-opus-4.8": "Claude Opus 4.8",
     "anthropic/claude-opus-4.7": "Claude Opus 4.7",
+    "anthropic/claude-sonnet-5": "Claude Sonnet 5",
     "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
-    "google/gemini-3-flash-preview": "Gemini 3 Flash Preview",
     "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
-    "openai/gpt-5.4-mini": "GPT 5.4 Mini",
+    "openai/gpt-5.6-sol": "GPT-5.6 Sol",
+    "openai/gpt-5.6-terra": "GPT-5.6 Terra",
+    "openai/gpt-5.6-luna": "GPT-5.6 Luna",
     "openai/gpt-5.5": "GPT 5.5",
+    "openai/gpt-5.4-mini": "GPT 5.4 Mini",
+    "google/gemini-3-flash-preview": "Gemini 3 Flash Preview",
+    "x-ai/grok-4.5": "Grok 4.5",
     "deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
 }
 
