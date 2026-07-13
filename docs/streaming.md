@@ -192,4 +192,6 @@ handler reads everything the monitoring tracker needs:
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see
 `docs/architecture.md` §14). The tracker persists aggregate counters only; the accompanying
 request logs and OpenTelemetry spans use request IDs plus safe operational fields, never the
-question, answer, or retrieved evidence text.
+question, answer, or retrieved evidence text. That same point emits one `query_completed` log
+event with outcome, stop reason, aggregate source counts, web-search flag, latency, and optional
+first-token latency; the existing request ID correlates it with the HTTP completion log.

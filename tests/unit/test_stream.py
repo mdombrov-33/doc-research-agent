@@ -220,6 +220,85 @@ async def test_stream_records_time_to_first_visible_answer_token(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_logs_safe_completion_metadata(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    answer = "The confidential rollout is complete."
+    source_text = "Confidential evidence from the rollout plan."
+
+    class Agent:
+        async def astream_events(self, *_args, **_kwargs):
+            yield {
+                "event": "on_chat_model_stream",
+                "metadata": {"langgraph_node": "answer"},
+                "data": {"chunk": SimpleNamespace(content=answer)},
+            }
+            yield {
+                "event": "on_chain_end",
+                "name": "LangGraph",
+                "data": {
+                    "output": {
+                        "messages": [
+                            HumanMessage(content="What is the confidential rollout status?"),
+                            ToolMessage(
+                                content="retrieved evidence",
+                                tool_call_id="retrieve-1",
+                                name="retrieve_documents",
+                                artifact=[
+                                    {
+                                        "content": source_text,
+                                        "document_id": "rollout-plan",
+                                        "chunk_id": "rollout-plan:1",
+                                        "filename": "confidential.pdf",
+                                        "source": "document",
+                                    }
+                                ],
+                            ),
+                            AIMessage(
+                                content=f"{answer} [document:rollout-plan:1]"
+                            ),
+                        ],
+                        "outcome": "document_answer",
+                        "stop_reason": "document_evidence_sufficient",
+                    }
+                },
+            }
+
+    log_info = MagicMock()
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    monkeypatch.setattr("src.api.handlers.stream.logger.info", log_info)
+
+    events = [
+        event
+        async for event in _token_generator(
+            QueryRequest(question="What is the confidential rollout status?"),
+            Agent(),
+            MetricsTracker(),
+            ConnectedRequest(),
+        )
+    ]
+
+    completion = next(call for call in log_info.call_args_list if call.args == ("query_completed",))
+    assert completion.kwargs == {
+        "outcome": "document_answer",
+        "stop_reason": "document_evidence_sufficient",
+        "latency_ms": completion.kwargs["latency_ms"],
+        "time_to_first_token_ms": completion.kwargs["time_to_first_token_ms"],
+        "sources_retrieved": 1,
+        "sources_cited": 1,
+        "web_search_triggered": False,
+    }
+    assert completion.kwargs["latency_ms"] >= 0
+    assert completion.kwargs["time_to_first_token_ms"] >= 0
+    assert all(
+        value not in str(completion.kwargs)
+        for value in (answer, source_text, "confidential rollout", "confidential.pdf")
+    )
+    assert events[-1].startswith("data: ")
+
+
+@pytest.mark.asyncio
 async def test_stream_stops_before_guardrails_when_client_is_disconnected(monkeypatch):
     class DisconnectedRequest:
         async def is_disconnected(self) -> bool:

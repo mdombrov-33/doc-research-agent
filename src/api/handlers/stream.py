@@ -160,6 +160,18 @@ async def _token_generator(
             outcome=outcome,
         )
     )
+    logger.info(
+        "query_completed",
+        outcome=outcome,
+        stop_reason=stop_reason,
+        latency_ms=round(latency_ms, 1),
+        time_to_first_token_ms=(
+            round(time_to_first_token_ms, 1) if time_to_first_token_ms is not None else None
+        ),
+        sources_retrieved=sources_retrieved_total,
+        sources_cited=sources_count,
+        web_search_triggered=web_search_triggered,
+    )
 
     yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'sources': sources_meta, 'session_id': request.session_id, 'outcome': outcome, 'stop_reason': stop_reason})}\n\n"  # noqa: E501
 

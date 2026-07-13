@@ -562,7 +562,9 @@ retrieval, and provider logs inherit it. They record operational metadata only: 
 counts, booleans, configured limits, and exception class. Raw questions, rewritten retrieval
 queries, extracted entities, answers, document chunks, web snippets, and exception messages are
 not attached to normal telemetry. Upload events similarly use a document's extension and
-size bucket instead of its filename.
+size bucket instead of its filename. A completed stream emits one `query_completed` event with
+the outcome, stop reason, source counts, web-search flag, full latency, and optional first-token
+latency; its inherited request ID correlates it with the request log without adding content.
 
 Time to first token starts when the graph begins, after the input-guardrail gate, and stops only
 when the handler sends its first visible answer token. Internal citation markers that are buffered
