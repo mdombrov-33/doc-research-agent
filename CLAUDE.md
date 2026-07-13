@@ -58,3 +58,13 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## 5. Communication and Quality
+
+- Keep explanations brief and specific to the change. Explain only non-obvious decisions.
+- For a multi-step task, work in small reviewable slices: explain the slice, implement it, verify
+  it, then provide one commit message and wait.
+- Do not add comments that restate code. Comments should preserve non-obvious constraints or
+  externally visible behaviour.
+- Verify changing external facts, such as model availability, before relying on them.
+- Treat public API errors as part of the product. Do not return raw internal or provider errors.
