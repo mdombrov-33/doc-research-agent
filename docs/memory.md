@@ -35,15 +35,12 @@ the checkpoint (`src/api/handlers/stream.py`):
 ```python
 inputs = {
     "messages": [HumanMessage(content=request.question)],
-    "documents": None,            # reset per-query accumulators (see reducers)
-    "docs_retrieved_total": None,
-    "web_search_used": False,
+    "tool_call_count": None,
 }
 ```
 
-> Note `documents` / `docs_retrieved_total` are set to `None` here — their reducers read that
-> as "reset to empty" so last turn's retrieved docs don't bleed into this one. `messages` is
-> deliberately *not* reset; that's the part that carries over.
+`tool_call_count` is reset for each question so the per-query tool-call limit does not carry
+over. `messages` is deliberately *not* reset; that's the conversation history.
 
 ---
 

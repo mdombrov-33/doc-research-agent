@@ -43,7 +43,7 @@ POST /api/stream
       ↓
 Guardrails input check → flagged? send refusal and close stream
       ↓ (if safe)
-LangGraph agent starts running (agent ⇄ tools → grade loop)
+LangGraph agent starts running (agent ⇄ tools → post_tools loop)
       ↓
 on_chat_model_stream events from the "agent" node → each token → SSE line → client renders it
       ↓
@@ -84,10 +84,10 @@ fires for every single token the LLM produces.
 
 **Why filter on the `agent` node?**
 
-More than one node calls an LLM: the **agent** node (which both decides tools *and* writes the
-answer) and the **grade** node (which scores documents). Only the agent node's tokens should
-reach the user, so we filter on `langgraph_node == "agent"`. In the normal case, tool-deciding
-agent turns carry no content, so the only tokens that stream are the final answer's.
+The **agent** node both decides tools and writes the answer. We filter on
+`langgraph_node == "agent"` so tool events never reach the client. In the normal case,
+tool-deciding agent turns carry no content, so the only tokens that stream are the final
+answer's.
 
 > **Known edge — preamble tokens.** The agent node *can* emit content alongside a tool call —
 > e.g. *"Let me search the web for you!"* immediately before a `web_search` call. That text is
@@ -102,7 +102,7 @@ agent turns carry no content, so the only tokens that stream are the final answe
 | `on_chat_model_stream` from `agent` node    | Every token    | Yield it to client, append to `accumulated` |
 | `on_chain_end` from `LangGraph`             | Graph finishes | Pull sources metadata out of the final state |
 
-Everything else (grader token events, tool events, etc.) is ignored.
+Everything else (tool events, graph lifecycle events, etc.) is ignored.
 
 ---
 
@@ -164,10 +164,10 @@ separately after the stream closes.
 When the graph finishes, the `on_chain_end` event carries the final state, from which the
 handler reads everything the monitoring tracker needs:
 
-- `sources_count` — how many docs passed grading (`len(documents)`)
-- `sources` — per-doc filename, chunk index, chunk length, source (vectorstore vs web)
+- `sources_count` — sources returned by the agent's tool calls for this question
+- `sources` — per-source filename, chunk index, chunk length, and origin (vectorstore vs web)
 - `web_search_used` — whether the agent used the web_search tool this query
-- `docs_retrieved_total` — total candidates before grading
+- `docs_retrieved_total` — total sources returned by retrieval and web search
 - `latency_ms` — full request duration
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see
