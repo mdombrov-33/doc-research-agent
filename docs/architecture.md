@@ -44,7 +44,7 @@ Safety screening uses **neither** provider: it runs **local** HuggingFace models
 POST /api/stream  (QueryRequest: question, session_id?, model?, top_k?)
       │
       ▼
-Guardrails — INPUT check        llm-guard scanners (Toxicity + PromptInjection), local
+Guardrails — INPUT check        llm-guard Toxicity scanner, local
       │  (flagged → refusal, the graph never runs)
       ▼
 ┌──────────────────── LangGraph agent (ReAct loop) ────────────────────┐
@@ -387,10 +387,9 @@ the stream closes the handler records metrics (§14).
 `src/core/guardrails.py`. **Input only** — there is no output guardrail.
 
 - **Input (hard gate, before the graph).** `check_input` runs the question through
-  **llm-guard**'s `scan_prompt` with two **local** HuggingFace scanners: `Toxicity` (harmful
-  content) and `PromptInjection` (jailbreaks / system probing). The scan runs in a thread
-  executor so it doesn't block the event loop. If **either** scanner flags the text, the
-  request is refused immediately (a fixed refusal string) and the graph never runs.
+  **llm-guard**'s `scan_prompt` with the local HuggingFace `Toxicity` scanner. The scan runs in
+  a thread executor so it doesn't block the event loop. If it flags the text, the request is
+  refused immediately (a fixed refusal string) and the graph never runs.
 - **No external provider.** Unlike the rest of the app, guardrails touch neither OpenAI nor
   OpenRouter — the models run in-process. They're loaded once (`@lru_cache` on
   `_get_scanners`) and primed at startup by `guardrails.warmup()` (§3); the models are **baked
@@ -448,7 +447,7 @@ Model roles:
 | Agent (reason + answer) | `LLM_MODEL` (UI-overridable) | OpenRouter | 0 | `agent_node` |
 | Embeddings | `EMBEDDING_MODEL` (`text-embedding-3-small`) | OpenAI | — | ingestion + retrieval |
 | Reranker | `RERANK_MODEL` (MiniLM cross-encoder) | local ONNX | — | `rerank` |
-| Guardrails | Toxicity + PromptInjection | local (HF, via llm-guard) | — | `guardrails` |
+| Guardrails | Toxicity | local (HF, via llm-guard) | — | `guardrails` |
 | Judge | `JUDGE_MODEL` (eval only) | OpenRouter | 0 | `evals/judges.py` |
 
 **Config vs constants** (the project's rule):
@@ -605,7 +604,7 @@ tooling (excluded from the Docker image via `.dockerignore`).
 - **Docker**: multi-stage build (`Dockerfile`). The runtime stage bakes **two** sets of models
   into the image so cold starts don't download them:
   - the reranker cross-encoder into `FASTEMBED_CACHE_PATH=/app/.model_cache` (skips ~9s);
-  - llm-guard's Toxicity + PromptInjection models into `HF_HOME=/app/.hf_cache` (skips ~64s).
+  - llm-guard's Toxicity model into `HF_HOME=/app/.hf_cache`.
   Both bakes run *before* `COPY . .` and inline the model names (not imported from `src`) so the
   layers — and the downloads — stay cached across code changes. Keep the names in sync with
   `config.RERANK_MODEL` and `guardrails.py`.
