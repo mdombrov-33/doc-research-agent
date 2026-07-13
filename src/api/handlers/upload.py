@@ -46,15 +46,24 @@ async def handle_upload(
         logger.info("upload_complete", **result)
         return result
 
-    except EmptyDocumentError as e:
-        logger.info("upload_rejected", filename=file.filename, reason=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+    except EmptyDocumentError:
+        logger.info("upload_rejected", filename=file.filename)
+        raise HTTPException(
+            status_code=400,
+            detail="No text could be extracted from this document.",
+        )
     except DocumentProcessingError as e:
-        logger.error("upload_processing_failed", filename=file.filename, error=str(e))
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+        logger.exception("upload_processing_failed", filename=file.filename, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process the document. Please try again.",
+        )
     except Exception as e:
-        logger.error("upload_failed", filename=file.filename, error=str(e))
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+        logger.exception("upload_failed", filename=file.filename, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process the document. Please try again.",
+        )
     finally:
         if file_path.exists():
             os.remove(file_path)

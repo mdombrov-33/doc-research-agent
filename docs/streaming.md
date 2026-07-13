@@ -127,8 +127,10 @@ Three kinds of messages the frontend can receive:
 **Error:**
 
 ```json
-{ "error": "something went wrong", "done": true }
+{ "error": "Unable to complete the request. Please try again.", "done": true }
 ```
+
+The client receives this fixed message for stream failures; exception details stay in server logs.
 
 ---
 

@@ -1,5 +1,8 @@
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.api.dependencies import (
     get_agent,
@@ -12,6 +15,7 @@ from src.api.handlers import upload as upload_module
 from src.api.rate_limit import limiter
 from src.config import Settings
 from src.core import guardrails
+from src.core.exceptions import DocumentProcessingError
 from src.core.monitoring.tracker import MetricsTracker
 from src.main import app
 
@@ -77,6 +81,21 @@ def test_upload_cleans_up_temp_file(client, monkeypatch, tmp_path):
     assert list(Path(tmp_path).iterdir()) == []
 
 
+@pytest.mark.parametrize(
+    "error",
+    [DocumentProcessingError("vector database password: leaked"), RuntimeError("api key: leaked")],
+)
+def test_upload_hides_processing_errors(client, monkeypatch, tmp_path, error):
+    process_mock = AsyncMock(side_effect=error)
+    _override_upload_deps(tmp_path, process_mock, monkeypatch)
+
+    resp = client.post("/api/upload", files={"file": ("note.txt", b"hello", "text/plain")})
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Unable to process the document. Please try again."
+    assert "leaked" not in resp.text
+
+
 def test_monitoring_stats_empty(client):
     app.dependency_overrides[get_metrics_tracker] = lambda: MetricsTracker()
     resp = client.get("/api/monitoring/stats")
@@ -99,6 +118,27 @@ def test_stream_returns_guardrail_refusal(client, monkeypatch):
     assert resp.status_code == 200
     assert refusal in resp.text
     check_input.assert_awaited_once()
+
+
+def test_stream_hides_internal_errors(client, monkeypatch):
+    class FailingAgent:
+        async def astream_events(self, *args, **kwargs):
+            raise RuntimeError("provider api key: leaked")
+            yield
+
+    monkeypatch.setattr(guardrails, "check_input", AsyncMock(return_value=None))
+    app.dependency_overrides[get_agent] = FailingAgent
+    app.dependency_overrides[get_metrics_tracker] = lambda: MagicMock()
+
+    resp = client.post("/api/stream", json={"question": "hello"})
+    payload = json.loads(resp.text.removeprefix("data: "))
+
+    assert resp.status_code == 200
+    assert payload == {
+        "error": "Unable to complete the request. Please try again.",
+        "done": True,
+    }
+    assert "leaked" not in resp.text
 
 
 def test_stream_rate_limited_returns_429(client, monkeypatch):

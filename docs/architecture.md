@@ -540,7 +540,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 | Transient LLM API errors | `ChatOpenAI(max_retries=LLM_MAX_RETRIES)` | `llm.py` |
 | Web search outage | fail soft → empty docs, request continues | `web_search` tool |
 | Entity filter over-narrows | fall back to unfiltered hybrid search | `search.py` |
-| Empty / unsupported upload | typed exceptions → 400/500, temp file always cleaned up | `handlers/upload.py` |
+| Empty / unsupported upload | safe client message → 400/500; details logged; temp file always cleaned up | `handlers/upload.py` |
 | Request floods / runaway cost | per-IP rate limit (slowapi) → 429 + `Retry-After` | `api/rate_limit.py` |
 
 ### Rate limiting

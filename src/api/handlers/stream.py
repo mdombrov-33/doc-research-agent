@@ -109,7 +109,11 @@ async def _token_generator(
 
     except Exception as e:
         logger.error("stream_failed", error=str(e), exc_info=True)
-        yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+        error_event = {
+            "error": "Unable to complete the request. Please try again.",
+            "done": True,
+        }
+        yield f"data: {json.dumps(error_event)}\n\n"
         return
 
     latency_ms = time.monotonic() * 1000 - start_ms
