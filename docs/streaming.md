@@ -167,7 +167,7 @@ handler reads everything the monitoring tracker needs:
 - `sources_count` — sources returned by the agent's tool calls for this question
 - `sources` — per-source filename, chunk index, chunk length, and origin (vectorstore vs web)
 - `web_search_used` — whether the agent used the web_search tool this query
-- `docs_retrieved_total` — total sources returned by retrieval and web search
+- `sources_retrieved_total` — total sources returned by retrieval and web search
 - `latency_ms` — full request duration
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see

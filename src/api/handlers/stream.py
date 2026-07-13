@@ -82,7 +82,7 @@ async def _token_generator(
     sources_count = 0
     sources_meta: list[dict] = []
     web_search_triggered = False
-    docs_retrieved_total = 0
+    sources_retrieved_total = 0
     start_ms = time.monotonic() * 1000
 
     try:
@@ -102,7 +102,7 @@ async def _token_generator(
 
             elif kind == "on_chain_end" and event.get("name") == "LangGraph":
                 output = event.get("data", {}).get("output", {})
-                sources_meta, docs_retrieved_total, web_search_triggered = _turn_sources(
+                sources_meta, sources_retrieved_total, web_search_triggered = _turn_sources(
                     output.get("messages", [])
                 )
                 sources_count = len(sources_meta)
@@ -116,11 +116,7 @@ async def _token_generator(
     tracker.record(
         QueryMetrics(
             question=request.question,
-            retrieval_precision=sources_count / docs_retrieved_total
-            if docs_retrieved_total
-            else 0.0,
-            docs_retrieved=docs_retrieved_total,
-            docs_relevant=sources_count,
+            sources_retrieved=sources_retrieved_total,
             web_search_triggered=web_search_triggered,
             latency_ms=latency_ms,
         )

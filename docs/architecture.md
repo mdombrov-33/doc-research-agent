@@ -484,7 +484,7 @@ tracker keeps running totals (thread-safe via a `Lock`) and **persists them to S
 |---|---|
 | `total_queries` | queries served |
 | `web_search_rate` | fraction of queries where the agent used `web_search` |
-| `avg_docs_retrieved` | mean docs retrieved per query (all tool calls combined) |
+| `avg_sources_retrieved` | mean sources returned per query (all tool calls combined) |
 | `avg_latency_ms` | mean end-to-end latency |
 
 ---

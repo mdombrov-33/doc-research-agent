@@ -83,7 +83,7 @@ def test_monitoring_stats_empty(client):
     assert resp.status_code == 200
     stats = resp.json()
     assert stats["total_queries"] == 0
-    assert stats["avg_retrieval_precision"] == 0.0
+    assert stats["avg_sources_retrieved"] == 0.0
 
 
 def test_stream_returns_guardrail_refusal(client, monkeypatch):

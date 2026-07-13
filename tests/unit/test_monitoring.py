@@ -1,19 +1,16 @@
-import pytest
+import sqlite3
 
 from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 
 
 def _make_eval(
-    docs_retrieved: int = 5,
-    docs_relevant: int = 4,
+    sources_retrieved: int = 5,
     web_search_triggered: bool = False,
     latency_ms: float = 1000.0,
 ) -> QueryMetrics:
     return QueryMetrics(
         question="test question",
-        retrieval_precision=docs_relevant / docs_retrieved if docs_retrieved else 0.0,
-        docs_retrieved=docs_retrieved,
-        docs_relevant=docs_relevant,
+        sources_retrieved=sources_retrieved,
         web_search_triggered=web_search_triggered,
         latency_ms=latency_ms,
     )
@@ -23,28 +20,49 @@ def test_empty_tracker():
     tracker = MetricsTracker()
     stats = tracker.get_stats()
     assert stats["total_queries"] == 0
-    assert stats["avg_retrieval_precision"] == 0.0
+    assert stats["avg_sources_retrieved"] == 0.0
     assert stats["web_search_rate"] == 0.0
 
 
 def test_single_query_stats():
     tracker = MetricsTracker()
-    tracker.record(_make_eval(docs_retrieved=5, docs_relevant=4, latency_ms=2000.0))
+    tracker.record(_make_eval(sources_retrieved=5, latency_ms=2000.0))
     stats = tracker.get_stats()
     assert stats["total_queries"] == 1
-    assert stats["avg_docs_retrieved"] == 5.0
-    assert stats["avg_docs_relevant"] == 4.0
-    assert stats["avg_retrieval_precision"] == pytest.approx(4 / 5)
+    assert stats["avg_sources_retrieved"] == 5.0
     assert stats["avg_latency_ms"] == 2000.0
+    assert "avg_retrieval_precision" not in stats
 
 
-def test_retrieval_precision_across_multiple_queries():
+def test_legacy_database_migrates_source_total(tmp_path):
+    db_path = tmp_path / "metrics.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE monitoring_stats ("
+            "id INTEGER PRIMARY KEY, total_queries INTEGER, "
+            "web_search_triggered INTEGER, total_docs_retrieved INTEGER, "
+            "total_docs_relevant INTEGER, total_latency_ms REAL)"
+        )
+        conn.execute(
+            "INSERT INTO monitoring_stats VALUES (1, 2, 1, 6, 5, 3000.0)"
+        )
+
+    stats = MetricsTracker(str(db_path)).get_stats()
+
+    assert stats == {
+        "total_queries": 2,
+        "web_search_rate": 0.5,
+        "avg_sources_retrieved": 3.0,
+        "avg_latency_ms": 1500.0,
+    }
+
+
+def test_avg_sources_retrieved_across_multiple_queries():
     tracker = MetricsTracker()
-    tracker.record(_make_eval(docs_retrieved=4, docs_relevant=4))  # precision 1.0
-    tracker.record(_make_eval(docs_retrieved=4, docs_relevant=2))  # precision 0.5
+    tracker.record(_make_eval(sources_retrieved=4))
+    tracker.record(_make_eval(sources_retrieved=2))
     stats = tracker.get_stats()
-    # total relevant=6, total retrieved=8 → precision = 0.75
-    assert stats["avg_retrieval_precision"] == pytest.approx(6 / 8)
+    assert stats["avg_sources_retrieved"] == 3.0
 
 
 def test_web_search_rate():
@@ -53,7 +71,7 @@ def test_web_search_rate():
     tracker.record(_make_eval(web_search_triggered=True))
     tracker.record(_make_eval(web_search_triggered=False))
     stats = tracker.get_stats()
-    assert stats["web_search_rate"] == pytest.approx(2 / 3)
+    assert stats["web_search_rate"] == 2 / 3
 
 
 def test_avg_latency():
@@ -61,11 +79,4 @@ def test_avg_latency():
     tracker.record(_make_eval(latency_ms=1000.0))
     tracker.record(_make_eval(latency_ms=3000.0))
     stats = tracker.get_stats()
-    assert stats["avg_latency_ms"] == pytest.approx(2000.0)
-
-
-def test_zero_docs_retrieved_precision():
-    tracker = MetricsTracker()
-    tracker.record(_make_eval(docs_retrieved=0, docs_relevant=0))
-    stats = tracker.get_stats()
-    assert stats["avg_retrieval_precision"] == 0.0
+    assert stats["avg_latency_ms"] == 2000.0
