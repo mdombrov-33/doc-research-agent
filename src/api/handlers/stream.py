@@ -13,6 +13,41 @@ from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 from src.utils.logger import logger
 
 
+def _turn_sources(messages: list[Any]) -> tuple[list[dict], int, bool]:
+    last_human_idx = max(
+        (i for i, message in enumerate(messages) if isinstance(message, HumanMessage)),
+        default=-1,
+    )
+    documents: list[dict] = []
+    web_search_triggered = False
+    for message in messages[last_human_idx + 1 :]:
+        if not isinstance(message, ToolMessage) or not message.artifact:
+            continue
+        documents.extend(message.artifact)
+        web_search_triggered |= message.name == "web_search"
+
+    sources: list[dict] = []
+    seen: set[tuple[str, str, int, int]] = set()
+    for document in documents:
+        source = {
+            "filename": document.get("filename", "unknown"),
+            "chunk_index": document.get("chunk_index", 0),
+            "chunk_length": document.get("chunk_length", 0),
+            "source": document.get("source", "vectorstore"),
+        }
+        key = (
+            source["source"],
+            source["filename"],
+            source["chunk_index"],
+            source["chunk_length"],
+        )
+        if key not in seen:
+            seen.add(key)
+            sources.append(source)
+
+    return sources, len(documents), web_search_triggered
+
+
 async def _token_generator(
     request: QueryRequest,
     agent: Any,
@@ -67,32 +102,10 @@ async def _token_generator(
 
             elif kind == "on_chain_end" and event.get("name") == "LangGraph":
                 output = event.get("data", {}).get("output", {})
-                messages = output.get("messages", [])
-                last_human_idx = max(
-                    (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
-                    default=-1,
+                sources_meta, docs_retrieved_total, web_search_triggered = _turn_sources(
+                    output.get("messages", [])
                 )
-                vector_docs: list[dict] = []
-                web_docs: list[dict] = []
-                for msg in messages[last_human_idx + 1 :]:
-                    if isinstance(msg, ToolMessage) and msg.artifact:
-                        if msg.name == "web_search":
-                            web_docs.extend(msg.artifact)
-                            web_search_triggered = True
-                        else:
-                            vector_docs.extend(msg.artifact)
-                docs_retrieved_total = len(vector_docs) + len(web_docs)
-                answer_docs = web_docs if web_search_triggered else vector_docs
-                sources_count = len(answer_docs)
-                sources_meta = [
-                    {
-                        "filename": d.get("filename", "unknown"),
-                        "chunk_index": d.get("chunk_index", 0),
-                        "chunk_length": d.get("chunk_length", 0),
-                        "source": d.get("source", "vectorstore"),
-                    }
-                    for d in answer_docs
-                ]
+                sources_count = len(sources_meta)
 
     except Exception as e:
         logger.error("stream_failed", error=str(e), exc_info=True)
