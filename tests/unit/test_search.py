@@ -52,7 +52,19 @@ def test_fetch_k_returns_top_k_when_reranking_disabled():
 def test_hybrid_search_maps_results_and_skips_blank(monkeypatch):
     store = MagicMock()
     store.similarity_search_with_score.return_value = [
-        (_Doc("real content", {"filename": "a.pdf", "chunk_index": 2, "chunk_length": 12}), 0.9),
+        (
+            _Doc(
+                "real content",
+                {
+                    "document_id": "doc-a",
+                    "chunk_id": "doc-a:2",
+                    "filename": "a.pdf",
+                    "chunk_index": 2,
+                    "chunk_length": 12,
+                },
+            ),
+            0.9,
+        ),
         (_Doc("   ", {"filename": "blank.pdf"}), 0.5),  # blank → skipped
     ]
     monkeypatch.setattr(search, "get_vector_store", lambda: store)
@@ -63,7 +75,9 @@ def test_hybrid_search_maps_results_and_skips_blank(monkeypatch):
 
     assert len(out) == 1
     assert out[0]["filename"] == "a.pdf"
-    assert out[0]["source"] == "vectorstore"
+    assert out[0]["document_id"] == "doc-a"
+    assert out[0]["chunk_id"] == "doc-a:2"
+    assert out[0]["source"] == "document"
 
 
 def test_hybrid_search_falls_back_to_unfiltered_when_filter_empty(monkeypatch):

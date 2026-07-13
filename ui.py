@@ -139,13 +139,12 @@ def main():
             if sources_meta:
                 with st.expander(f"Sources ({sources})"):
                     for s in sources_meta:
-                        if s["source"] == "web":
-                            st.caption("🌐 Web Search")
+                        if s["source_type"] == "web":
+                            st.markdown(f"🌐 [{s['title']}]({s['url']})")
                         else:
-                            st.caption(
-                                f"📄 {s['filename']} · chunk {s['chunk_index']} · "
-                                f"{s['chunk_length']} chars"
-                            )
+                            location = f" · page {s['page']}" if s.get("page") else ""
+                            st.caption(f"📄 {s['title']}{location}")
+                        st.caption(s["excerpt"])
 
         st.session_state.messages.append(
             {"role": "assistant", "content": answer, "sources": sources}

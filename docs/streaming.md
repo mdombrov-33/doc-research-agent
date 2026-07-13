@@ -18,7 +18,7 @@ Plain chunked streaming works fine if all you're sending is text. But over the s
 we need to send different kinds of things:
 
 - Tokens (the answer text, one by one)
-- Sources metadata at the end (filenames, chunk indices, where it came from)
+- Typed source citations at the end (actual evidence excerpts plus document or web identity)
 - Errors
 
 With raw chunked streaming the frontend gets a byte stream with no structure — it can't tell
@@ -124,6 +124,11 @@ Three kinds of messages the frontend can receive:
 {"done": true, "sources_count": 3, "sources": [...], "session_id": "..."}
 ```
 
+Each `sources` item is a validated `SourceCitation`. Documents provide `document_id` and
+`chunk_id` (and optionally `page`); web sources provide a real `title` and HTTP(S) `url`.
+Both include a short `excerpt` copied from the evidence used by the model. The server removes
+invalid and duplicate citations before sending the event, preserving the first evidence order.
+
 **Error:**
 
 ```json
@@ -167,7 +172,8 @@ When the graph finishes, the `on_chain_end` event carries the final state, from 
 handler reads everything the monitoring tracker needs:
 
 - `sources_count` — sources returned by the agent's tool calls for this question
-- `sources` — per-source filename, chunk index, chunk length, and origin (vectorstore vs web)
+- `sources` — typed citations: `source_id`, `source_type`, title, evidence excerpt, and either
+  document identifiers or a web URL
 - `web_search_used` — whether the agent used the web_search tool this query
 - `sources_retrieved_total` — total sources returned by retrieval and web search
 - `latency_ms` — full request duration

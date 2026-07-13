@@ -46,7 +46,8 @@ POST /api/stream
 - **Post-tools** — increments a per-turn tool-call counter; at the hard cap (4 calls) it
   injects a stop message that forces the agent to write its final answer immediately.
 - **Answer** — once the agent has enough context (or hits the cap) it writes the answer and
-  streams it over SSE; conversation history is persisted per session.
+  streams it over SSE; the final event includes typed citations with real evidence excerpts,
+  document chunk IDs, or web titles and URLs; conversation history is persisted per session.
 
 See [`docs/architecture.md`](docs/architecture.md) for the agent topology, the tools and state,
 the web-search fallback walkthrough, and memory.

@@ -1,8 +1,12 @@
-from langchain_community.tools import DuckDuckGoSearchRun
+from collections.abc import Iterable, Mapping
+from typing import Any
+
+from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from opentelemetry import trace
 
+from src.core.citations import citation_from_artifact
 from src.core.retrieval.search import hybrid_search
 from src.utils.logger import logger
 
@@ -16,7 +20,7 @@ def format_docs(docs: list[dict]) -> str:
     parts = []
     for doc in docs:
         label = (
-            "[Web Search]"
+            f"[Web: {doc.get('title', 'unknown')}]"
             if doc.get("source") == "web"
             else f"[Document: {doc.get('filename', 'unknown')}]"
         )
@@ -50,21 +54,46 @@ def web_search(query: str) -> tuple[str, list[dict]]:
     with _tracer.start_as_current_span("tool.web_search") as span:
         span.set_attribute("tool.query", query)
         try:
-            result = str(DuckDuckGoSearchRun().invoke(query))
+            results = DuckDuckGoSearchResults(num_results=5, output_format="list").invoke(query)
         except Exception as e:
             span.set_status(trace.StatusCode.ERROR, str(e))
             logger.error("web_search_tool_failed", error=str(e))
             return "Web search failed.", []
-        span.set_attribute("tool.result_chars", len(result))
-    doc = {
-        "content": result,
-        "filename": "web",
-        "chunk_index": 0,
-        "chunk_length": len(result),
-        "source": "web",
-    }
-    logger.info("web_search_tool", chars=len(result))
-    return result, [doc]
+        docs = _web_evidence(results)
+        span.set_attribute("tool.results_returned", len(docs))
+    result = format_docs(docs)
+    logger.info("web_search_tool", count=len(docs))
+    return result, docs
+
+
+def _web_evidence(results: Any) -> list[dict]:
+    """Retain only DuckDuckGo results that can become honest, independently citable evidence."""
+    if not isinstance(results, Iterable) or isinstance(results, (str, bytes, Mapping)):
+        return []
+
+    documents: list[dict] = []
+    for rank, result in enumerate(results, start=1):
+        if not isinstance(result, Mapping):
+            continue
+        title = result.get("title")
+        url = result.get("link")
+        snippet = result.get("snippet")
+        if not isinstance(title, str) or not title.strip():
+            continue
+        if not isinstance(url, str) or not url.strip():
+            continue
+        if not isinstance(snippet, str) or not snippet.strip():
+            continue
+        evidence = {
+            "content": snippet,
+            "title": title.strip(),
+            "url": url.strip(),
+            "rank": rank,
+            "source": "web",
+        }
+        if citation_from_artifact(evidence) is not None:
+            documents.append(evidence)
+    return documents
 
 
 TOOLS = [retrieve_documents, web_search]

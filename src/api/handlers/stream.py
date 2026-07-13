@@ -9,6 +9,7 @@ from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
 from src.core import guardrails
+from src.core.citations import citations_from_artifacts
 from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 from src.utils.logger import logger
 
@@ -18,34 +19,17 @@ def _turn_sources(messages: list[Any]) -> tuple[list[dict], int, bool]:
         (i for i, message in enumerate(messages) if isinstance(message, HumanMessage)),
         default=-1,
     )
-    documents: list[dict] = []
+    artifacts: list[dict] = []
     web_search_triggered = False
     for message in messages[last_human_idx + 1 :]:
         if not isinstance(message, ToolMessage) or not message.artifact:
             continue
-        documents.extend(message.artifact)
+        artifacts.extend(artifact for artifact in message.artifact if isinstance(artifact, dict))
         web_search_triggered |= message.name == "web_search"
 
-    sources: list[dict] = []
-    seen: set[tuple[str, str, int, int]] = set()
-    for document in documents:
-        source = {
-            "filename": document.get("filename", "unknown"),
-            "chunk_index": document.get("chunk_index", 0),
-            "chunk_length": document.get("chunk_length", 0),
-            "source": document.get("source", "vectorstore"),
-        }
-        key = (
-            source["source"],
-            source["filename"],
-            source["chunk_index"],
-            source["chunk_length"],
-        )
-        if key not in seen:
-            seen.add(key)
-            sources.append(source)
-
-    return sources, len(documents), web_search_triggered
+    citations = citations_from_artifacts(artifacts)
+    sources = [citation.model_dump(exclude_none=True) for citation in citations]
+    return sources, len(artifacts), web_search_triggered
 
 
 async def _token_generator(

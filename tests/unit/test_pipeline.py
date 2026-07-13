@@ -69,3 +69,7 @@ async def test_process_and_store_returns_metadata_and_stores(
     assert result["file_size"] == path.stat().st_size
     assert "document_id" in result
     vector_store.add_documents.assert_called_once()
+    stored_documents = vector_store.add_documents.call_args.args[0]
+    assert stored_documents[0].metadata["chunk_id"] == (
+        f"{result['document_id']}:{stored_documents[0].metadata['chunk_index']}"
+    )

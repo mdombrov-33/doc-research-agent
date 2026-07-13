@@ -12,10 +12,12 @@ def test_turn_sources_preserves_document_and_web_evidence():
             name="retrieve_documents",
             artifact=[
                 {
+                    "content": "The document says the rollout is complete.",
+                    "document_id": "doc-report",
+                    "chunk_id": "doc-report:2",
                     "filename": "report.pdf",
-                    "chunk_index": 2,
-                    "chunk_length": 120,
-                    "source": "vectorstore",
+                    "page": 3,
+                    "source": "document",
                 }
             ],
         ),
@@ -25,9 +27,9 @@ def test_turn_sources_preserves_document_and_web_evidence():
             name="web_search",
             artifact=[
                 {
-                    "filename": "web",
-                    "chunk_index": 0,
-                    "chunk_length": 50,
+                    "content": "The official announcement confirms it.",
+                    "title": "Official announcement",
+                    "url": "https://example.com/announcement",
                     "source": "web",
                 }
             ],
@@ -38,12 +40,21 @@ def test_turn_sources_preserves_document_and_web_evidence():
 
     assert sources == [
         {
-            "filename": "report.pdf",
-            "chunk_index": 2,
-            "chunk_length": 120,
-            "source": "vectorstore",
+            "source_id": "document:doc-report:2",
+            "source_type": "document",
+            "title": "report.pdf",
+            "document_id": "doc-report",
+            "chunk_id": "doc-report:2",
+            "page": 3,
+            "excerpt": "The document says the rollout is complete.",
         },
-        {"filename": "web", "chunk_index": 0, "chunk_length": 50, "source": "web"},
+        {
+            "source_id": "web:https://example.com/announcement",
+            "source_type": "web",
+            "title": "Official announcement",
+            "url": "https://example.com/announcement",
+            "excerpt": "The official announcement confirms it.",
+        },
     ]
     assert retrieved_total == 2
     assert web_search_triggered is True
@@ -51,10 +62,11 @@ def test_turn_sources_preserves_document_and_web_evidence():
 
 def test_turn_sources_deduplicates_repeated_artifacts():
     artifact = {
+        "content": "Repeated document evidence.",
+        "document_id": "doc-report",
+        "chunk_id": "doc-report:2",
         "filename": "report.pdf",
-        "chunk_index": 2,
-        "chunk_length": 120,
-        "source": "vectorstore",
+        "source": "document",
     }
     messages = [
         HumanMessage(content="What does the document say?"),
@@ -74,6 +86,15 @@ def test_turn_sources_deduplicates_repeated_artifacts():
 
     sources, retrieved_total, web_search_triggered = _turn_sources(messages)
 
-    assert sources == [artifact]
+    assert sources == [
+        {
+            "source_id": "document:doc-report:2",
+            "source_type": "document",
+            "title": "report.pdf",
+            "document_id": "doc-report",
+            "chunk_id": "doc-report:2",
+            "excerpt": "Repeated document evidence.",
+        }
+    ]
     assert retrieved_total == 2
     assert web_search_triggered is False

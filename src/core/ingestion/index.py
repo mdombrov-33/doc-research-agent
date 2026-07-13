@@ -14,6 +14,7 @@ def index_chunks(
             metadata={
                 "document_id": document_id,
                 "filename": filename,
+                "chunk_id": f"{document_id}:{chunk_data['chunk_index']}",
                 "chunk_index": chunk_data["chunk_index"],
                 "chunk_length": chunk_data["chunk_length"],
                 "entities": chunk_data["entities"],

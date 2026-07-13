@@ -120,7 +120,7 @@ store in Qdrant         index.py  (index_chunks → vector_store.add_documents, 
        computes BOTH vectors per chunk:
          • dense  = OpenAI text-embedding-3-small (1536-d)
          • sparse = BM25 (FastEmbed "Qdrant/bm25")
-       payload = {document_id, filename, chunk_index, chunk_length,
+       payload = {document_id, filename, chunk_id, chunk_index, chunk_length,
                   entities, entity_types, keywords, file_extension}
 ```
 
@@ -174,8 +174,9 @@ scales robust. `RetrievalMode.HYBRID` turns this on; it's a single Qdrant query.
    `top_k×4`, capped 100, floored at `top_k`); with it off, `fetch_k = top_k`.
 3. **Hybrid search** for `fetch_k` candidates. If the entity filter matched nothing,
    **fall back** to an unfiltered hybrid search (`entity_fallback`).
-4. Map results to dicts (`content`, `filename`, `chunk_index`, `chunk_length`,
-   `source="vectorstore"`), skipping blanks. Log `docs_retrieved` with score stats.
+4. Map results to dicts (`content`, `document_id`, `filename`, `chunk_id`, `chunk_index`,
+   `chunk_length`, `source="document"`), skipping blanks. Log `docs_retrieved` with score
+   stats.
 5. **Rerank** the pool with the cross-encoder and keep `top_k` (§9). Reranking off → just
    trim to `top_k`.
 
@@ -269,11 +270,11 @@ finishes to build source metadata (§10).
 | Tool | What it does | Notes |
 |---|---|---|
 | `retrieve_documents(query, config)` | hybrid search over the user's uploaded docs (§5) | `top_k` is read from the injected `config` (`configurable.top_k`), defaulting to `10`. `config` is injected by `ToolNode`; the model never sees it. |
-| `web_search(query)` | DuckDuckGo live web search | **Fails soft**: on any error it logs `web_search_tool_failed` and returns `("Web search failed.", [])`, so a search outage never breaks the request. |
+| `web_search(query)` | DuckDuckGo live web search | Returns up to five structured title/link/snippet results, each independently citable. **Fails soft**: on any error it logs `web_search_tool_failed` and returns `("Web search failed.", [])`, so a search outage never breaks the request. |
 
 `format_docs` renders docs for the model, labelling each `[Document: <filename>]` or
-`[Web Search]`. `TOOLS = [retrieve_documents, web_search]` is the list bound to the agent and
-wrapped by `ToolNode`.
+`[Web: <title>]`. `TOOLS = [retrieve_documents, web_search]` is the list bound to the agent
+and wrapped by `ToolNode`.
 
 ---
 
@@ -367,8 +368,24 @@ event kinds:
   content, so only the final answer yields tokens here.
 - `on_chain_end` with `name == "LangGraph"` → the final graph state. The handler scans
   `messages` for `ToolMessage`s that appeared after the last `HumanMessage` in this turn,
-  collects their `.artifact` lists to build `sources_meta`, and flags `web_search_triggered`
-  if any came from the `web_search` tool.
+  collects their `.artifact` lists, normalizes them through `SourceCitation`, and flags
+  `web_search_triggered` if any came from the `web_search` tool. Invalid or untraceable
+  evidence is never shown as a citation; duplicate source IDs preserve first-seen order.
+
+`SourceCitation` is the public evidence contract:
+
+```json
+{
+  "source_id": "document:<chunk_id> | web:<url>",
+  "source_type": "document | web",
+  "title": "report.pdf or page title",
+  "document_id": "required for documents",
+  "chunk_id": "required for documents",
+  "page": "optional document page",
+  "url": "required for web sources",
+  "excerpt": "short text actually supplied as evidence"
+}
+```
 
 Event shapes the client sees:
 ```

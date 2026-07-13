@@ -89,10 +89,13 @@ def hybrid_search(question: str, top_k: int) -> list[dict]:
             doc_items.append(
                 {
                     "content": content,
+                    "document_id": metadata.get("document_id"),
                     "filename": metadata.get("filename", "unknown"),
+                    "chunk_id": metadata.get("chunk_id"),
                     "chunk_index": metadata.get("chunk_index", 0),
                     "chunk_length": metadata.get("chunk_length", len(content)),
-                    "source": "vectorstore",
+                    "page": metadata.get("page"),
+                    "source": "document",
                 }
             )
             scores.append(float(score))

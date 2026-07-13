@@ -54,8 +54,8 @@ def test_graph_retrieves_then_answers(graph, monkeypatch):
         "hybrid_search",
         lambda q, k: seen.update(top_k=k)
         or [
-            {"content": "one", "filename": "a.pdf", "source": "vectorstore"},
-            {"content": "two", "filename": "b.pdf", "source": "vectorstore"},
+            {"content": "one", "filename": "a.pdf", "source": "document"},
+            {"content": "two", "filename": "b.pdf", "source": "document"},
         ],
     )
 
@@ -72,11 +72,13 @@ def test_graph_falls_back_to_web_search(graph, monkeypatch):
     monkeypatch.setattr(
         tools,
         "hybrid_search",
-        lambda q, k: [{"content": "vec", "filename": "a.pdf", "source": "vectorstore"}],
+        lambda q, k: [{"content": "vec", "filename": "a.pdf", "source": "document"}],
     )
     web_tool = MagicMock()
-    web_tool.invoke.return_value = "web result"
-    monkeypatch.setattr(tools, "DuckDuckGoSearchRun", lambda: web_tool)
+    web_tool.invoke.return_value = [
+        {"title": "Web result", "link": "https://example.com", "snippet": "web result"}
+    ]
+    monkeypatch.setattr(tools, "DuckDuckGoSearchResults", lambda **_: web_tool)
 
     state = _run(graph, "q")
 
