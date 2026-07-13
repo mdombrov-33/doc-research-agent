@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -30,3 +31,7 @@ class HealthResponse(BaseModel):
     status: str
     environment: str
     llm_model: str
+
+
+class ReadinessResponse(BaseModel):
+    status: Literal["ready", "unavailable"]

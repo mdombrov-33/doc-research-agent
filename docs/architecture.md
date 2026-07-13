@@ -92,6 +92,13 @@ are the purpose-specific Qdrant clients/stores, the spaCy model, the cross-encod
 the llm-guard scanners. `get_retrieval_vector_store()` uses the short query deadline; the
 lifespan-owned ingestion store and collection setup use the longer indexing deadline.
 
+`GET /health` is liveness only: it is immediate and does not contact a dependency. `GET /ready`
+uses `is_qdrant_ready()` to make a read-only `collection_exists` call with the normal query
+deadline off the event loop. It returns `{status: "ready"}` only when the required collection is
+reachable; a missing collection or Qdrant failure becomes the stable 503 `{status: "unavailable"}`.
+It intentionally does not call an LLM or embedding provider, so readiness itself adds no model
+cost.
+
 ---
 
 ## 4. Ingestion pipeline (`POST /api/upload`)
@@ -592,7 +599,8 @@ module for a short live smoke run; `make eval-graph` runs the full golden set.
 | `POST /api/stream` | RAG query, streamed | `{question, session_id?, model?, top_k?}` (`top_k` 1–20, default 10) | `text/event-stream` (§10) |
 | `POST /api/upload` | ingest a document | multipart file (`.pdf`/`.docx`/`.txt`, 25 MiB default cap) | `{document_id, filename, chunks_created, file_size}` |
 | `GET /api/monitoring/stats` | live telemetry | — | aggregates (§14) |
-| `GET /health` | liveness | — | `{status, environment, llm_model}` |
+| `GET /health` | liveness | — | `{status, environment, llm_model}` without a dependency probe |
+| `GET /ready` | readiness | — | `200 {status: "ready"}` when Qdrant collection is readable; otherwise `503 {status: "unavailable"}` |
 
 Schemas: `src/api/schemas.py`. Every request gets an `x-request-id` (header + bound into
 every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stream` and
@@ -608,6 +616,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 | OpenAI embedding timeout or transient API error | `OpenAIEmbeddings(timeout=EMBEDDING_TIMEOUT_SECONDS, max_retries=EMBEDDING_MAX_RETRIES)`; 30 s and two retries by default. Retrieval follows the fixed-error/web-fallback path; uploads return the existing stable processing error. | `vectorstore.py`, `graph.py`, `handlers/upload.py` |
 | Qdrant retrieval timeout / transient failure | `get_retrieval_vector_store()` uses `QDRANT_QUERY_TIMEOUT_SECONDS`; 10 s default; `hybrid_search` retries once with jitter, then emits a fixed tool error and follows the normal one-shot web fallback | `vectorstore.py`, `search.py`, `graph.py` |
 | Qdrant collection/indexing timeout | `get_ingestion_qdrant_client()` and `get_ingestion_vector_store()` use `QDRANT_INGESTION_TIMEOUT_SECONDS`; 30 s default | `vectorstore.py` |
+| Qdrant unavailable for readiness | one read-only collection check with the 10 s query deadline; return stable 503, never provider text | `vectorstore.py`, `main.py` |
 | Web-search timeout/rate limit | `DDGS(timeout=WEB_SEARCH_TIMEOUT_SECONDS)`; one short jittered retry, then fail soft → empty docs and the graph abstains | `agent/tools.py` |
 | Imperfect entity tags | add entity matches to, never restrict, the unfiltered hybrid pool | `search.py` |
 | Empty / unsupported upload | safe client message → 400/500; details logged; temp file always cleaned up | `handlers/upload.py` |
@@ -618,7 +627,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 The two endpoints that cost money or do real work — `/stream` (LLM + embeddings per call) and
 `/upload` (parsing + embedding) — are rate-limited with **slowapi** (`api/rate_limit.py`). The
 shared `Limiter` decorates those two routes (`@limiter.limit(rate_limit)`), so
-`/monitoring/stats` and `/health` stay unmetered.
+`/monitoring/stats`, `/health`, and `/ready` stay unmetered.
 
 - **What it limits:** requests per client IP. The limit is the `RATE_LIMIT` string
   (e.g. `30/minute`); exceeding it returns **HTTP 429** with a `Retry-After` header, via the

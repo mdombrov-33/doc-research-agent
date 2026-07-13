@@ -116,7 +116,8 @@ when durable, shared state is needed.
 | `POST /api/stream` | RAG query, streamed via SSE (`{question, session_id?, model?, top_k?}`) |
 | `POST /api/upload` | ingest a document (`.pdf` / `.docx` / `.txt`) |
 | `GET /api/monitoring/stats` | live query telemetry |
-| `GET /health` | liveness |
+| `GET /health` | liveness: event loop only |
+| `GET /ready` | readiness: Qdrant collection is readable |
 
 ## Evaluation
 

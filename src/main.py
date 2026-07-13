@@ -1,6 +1,8 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from slowapi import _rate_limit_exceeded_handler
@@ -9,7 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from src.api.middleware import RequestLoggingMiddleware
 from src.api.rate_limit import limiter
 from src.api.routes import router
-from src.api.schemas import HealthResponse
+from src.api.schemas import HealthResponse, ReadinessResponse
 from src.config import Settings, get_settings
 from src.core import guardrails
 from src.core.agent.checkpointer import open_checkpointer
@@ -18,7 +20,11 @@ from src.core.monitoring.tracker import MetricsTracker
 from src.core.nlp import get_spacy_model
 from src.core.retrieval import rerank
 from src.core.tracing import setup_tracing
-from src.core.vectorstore import ensure_collection_exists, get_ingestion_vector_store
+from src.core.vectorstore import (
+    ensure_collection_exists,
+    get_ingestion_vector_store,
+    is_qdrant_ready,
+)
 from src.utils.logger import logger
 
 
@@ -78,3 +84,10 @@ async def health_check(settings: Settings = Depends(get_settings)):
         "environment": settings.APP_ENV,
         "llm_model": settings.LLM_MODEL,
     }
+
+
+@app.get("/ready", response_model=ReadinessResponse, responses={503: {"model": ReadinessResponse}})
+async def readiness_check():
+    if await asyncio.to_thread(is_qdrant_ready):
+        return {"status": "ready"}
+    return JSONResponse(status_code=503, content={"status": "unavailable"})

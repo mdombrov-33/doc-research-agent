@@ -53,6 +53,22 @@ def get_ingestion_qdrant_client() -> QdrantClient:
     return _get_qdrant_client(get_settings().QDRANT_INGESTION_TIMEOUT_SECONDS)
 
 
+def is_qdrant_ready() -> bool:
+    """Return whether the required collection can be read without changing it."""
+    settings = get_settings()
+    try:
+        ready = _get_qdrant_client(settings.QDRANT_QUERY_TIMEOUT_SECONDS).collection_exists(
+            settings.QDRANT_COLLECTION_NAME
+        )
+    except Exception as error:
+        logger.warning("qdrant_readiness_failed", error_type=type(error).__name__)
+        return False
+
+    if not ready:
+        logger.warning("qdrant_collection_unavailable", collection=settings.QDRANT_COLLECTION_NAME)
+    return ready
+
+
 def get_embeddings() -> OpenAIEmbeddings:
     settings = get_settings()
     api_key = settings.OPENAI_API_KEY

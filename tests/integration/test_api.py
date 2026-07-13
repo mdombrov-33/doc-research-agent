@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src import main
 from src.api.dependencies import (
     get_agent,
     get_metrics_tracker,
@@ -20,12 +21,37 @@ from src.core.monitoring.tracker import MetricsTracker
 from src.main import app
 
 
-def test_health(client):
+def test_health_is_liveness(client, monkeypatch):
+    qdrant_ready = MagicMock(return_value=True)
+    monkeypatch.setattr(main, "is_qdrant_ready", qdrant_ready)
+
     resp = client.get("/health")
+
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "healthy"
     assert set(body) == {"status", "environment", "llm_model"}
+    qdrant_ready.assert_not_called()
+
+
+def test_ready_returns_success_when_qdrant_is_available(client, monkeypatch):
+    qdrant_ready = MagicMock(return_value=True)
+    monkeypatch.setattr(main, "is_qdrant_ready", qdrant_ready)
+
+    resp = client.get("/ready")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ready"}
+    qdrant_ready.assert_called_once_with()
+
+
+def test_ready_returns_stable_503_when_qdrant_is_unavailable(client, monkeypatch):
+    monkeypatch.setattr(main, "is_qdrant_ready", MagicMock(return_value=False))
+
+    resp = client.get("/ready")
+
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "unavailable"}
 
 
 def test_upload_rejects_unsupported_extension(client):

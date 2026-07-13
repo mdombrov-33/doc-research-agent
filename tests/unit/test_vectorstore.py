@@ -53,3 +53,20 @@ def test_embeddings_use_configured_timeout_and_retry_limit(monkeypatch):
 
     assert embeddings.call_args.kwargs["timeout"] == 31
     assert embeddings.call_args.kwargs["max_retries"] == 1
+
+
+def test_qdrant_readiness_checks_the_configured_collection_without_mutating(monkeypatch):
+    settings = Settings(
+        QDRANT_MODE="local",
+        QDRANT_COLLECTION_NAME="ready-documents",
+        QDRANT_QUERY_TIMEOUT_SECONDS=11,
+    )
+    client = MagicMock()
+    client.collection_exists.return_value = True
+    monkeypatch.setattr(vectorstore, "get_settings", lambda: settings)
+    monkeypatch.setattr(vectorstore, "_get_qdrant_client", MagicMock(return_value=client))
+
+    assert vectorstore.is_qdrant_ready() is True
+    vectorstore._get_qdrant_client.assert_called_once_with(11)
+    client.collection_exists.assert_called_once_with("ready-documents")
+    client.create_collection.assert_not_called()
