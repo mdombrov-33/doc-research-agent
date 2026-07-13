@@ -205,6 +205,10 @@ resource "google_cloud_run_service" "app" {
           name  = "GIT_SHA"
           value = var.git_sha
         }
+        env {
+          name  = "APP_VERSION"
+          value = var.app_version
+        }
 
         ports {
           container_port = 8000
