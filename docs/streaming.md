@@ -186,6 +186,8 @@ handler reads everything the monitoring tracker needs:
 - `stop_reason` — the terminal cause: document or web evidence passed, evidence stayed
   insufficient after web fallback, or the query model never requested retrieval
 - `latency_ms` — full request duration
+- `time_to_first_token_ms` — graph-start-to-first-visible-answer-token time, present only when
+  the completed stream emitted visible answer text
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see
 `docs/architecture.md` §14). The tracker persists aggregate counters only; the accompanying

@@ -187,6 +187,36 @@ async def test_stream_reports_graph_outcome_and_records_it(monkeypatch):
     assert final["outcome"] == "abstained"
     assert final["stop_reason"] == "insufficient_evidence_after_web"
     assert tracker.get_stats()["abstention_rate"] == 1.0
+    assert tracker.get_stats()["avg_time_to_first_token_ms"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_stream_records_time_to_first_visible_answer_token(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    class Agent:
+        async def astream_events(self, *_args, **_kwargs):
+            yield {
+                "event": "on_chat_model_stream",
+                "metadata": {"langgraph_node": "answer"},
+                "data": {"chunk": SimpleNamespace(content="Visible answer")},
+            }
+
+    now_ms = MagicMock(side_effect=[10_000.0, 11_500.0, 13_000.0])
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    monkeypatch.setattr("src.api.handlers.stream._now_ms", now_ms)
+    tracker = MetricsTracker()
+
+    events = [
+        event
+        async for event in _token_generator(
+            QueryRequest(question="What is the status?"), Agent(), tracker, ConnectedRequest()
+        )
+    ]
+
+    assert any("Visible answer" in event for event in events)
+    assert tracker.get_stats()["avg_time_to_first_token_ms"] == 1500.0
 
 
 @pytest.mark.asyncio

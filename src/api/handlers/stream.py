@@ -21,6 +21,10 @@ from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 from src.utils.logger import logger
 
 
+def _now_ms() -> float:
+    return time.monotonic() * 1000
+
+
 def _turn_sources(messages: list[Any]) -> tuple[list[dict], int, bool]:
     last_human_idx = max(
         (i for i, message in enumerate(messages) if isinstance(message, HumanMessage)),
@@ -87,7 +91,8 @@ async def _token_generator(
     sources_retrieved_total = 0
     outcome: FinalOutcome = "abstained"
     stop_reason: FinalStopReason = "unknown"
-    start_ms = time.monotonic() * 1000
+    start_ms = _now_ms()
+    time_to_first_token_ms: float | None = None
 
     event_stream = agent.astream_events(inputs, config=config, version="v2")
     try:
@@ -112,6 +117,8 @@ async def _token_generator(
                 if token:
                     visible_token = citation_redactor.push(token)
                     if visible_token:
+                        if time_to_first_token_ms is None:
+                            time_to_first_token_ms = _now_ms() - start_ms
                         accumulated.append(visible_token)
                         yield f"data: {json.dumps({'token': visible_token})}\n\n"
 
@@ -137,9 +144,11 @@ async def _token_generator(
         if aclose is not None:
             await aclose()
 
-    latency_ms = time.monotonic() * 1000 - start_ms
+    latency_ms = _now_ms() - start_ms
     visible_tail = citation_redactor.flush()
     if visible_tail:
+        if time_to_first_token_ms is None:
+            time_to_first_token_ms = _now_ms() - start_ms
         accumulated.append(visible_tail)
         yield f"data: {json.dumps({'token': visible_tail})}\n\n"
     tracker.record(
@@ -147,6 +156,7 @@ async def _token_generator(
             sources_retrieved=sources_retrieved_total,
             web_search_triggered=web_search_triggered,
             latency_ms=latency_ms,
+            time_to_first_token_ms=time_to_first_token_ms,
             outcome=outcome,
         )
     )

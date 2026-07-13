@@ -12,6 +12,7 @@ class QueryMetrics:
     sources_retrieved: int
     web_search_triggered: bool
     latency_ms: float
+    time_to_first_token_ms: float | None
     outcome: FinalOutcome
 
 
@@ -27,6 +28,8 @@ class MetricsTracker:
         self.web_search_triggered = 0
         self.total_sources_retrieved = 0
         self.total_latency_ms = 0.0
+        self.total_time_to_first_token_ms = 0.0
+        self.time_to_first_token_samples = 0
         self.document_answers = 0
         self.web_answers = 0
         self.abstentions = 0
@@ -40,6 +43,8 @@ class MetricsTracker:
                 self.web_search_triggered = saved["web_search_triggered"]
                 self.total_sources_retrieved = saved["total_sources_retrieved"]
                 self.total_latency_ms = saved["total_latency_ms"]
+                self.total_time_to_first_token_ms = saved["total_time_to_first_token_ms"]
+                self.time_to_first_token_samples = saved["time_to_first_token_samples"]
                 self.document_answers = saved["document_answers"]
                 self.web_answers = saved["web_answers"]
                 self.abstentions = saved["abstentions"]
@@ -51,6 +56,7 @@ class MetricsTracker:
                     evaluation.sources_retrieved,
                     evaluation.web_search_triggered,
                     evaluation.latency_ms,
+                    evaluation.time_to_first_token_ms,
                     evaluation.outcome,
                 )
                 return
@@ -62,6 +68,9 @@ class MetricsTracker:
 
             self.total_sources_retrieved += evaluation.sources_retrieved
             self.total_latency_ms += evaluation.latency_ms
+            if evaluation.time_to_first_token_ms is not None:
+                self.total_time_to_first_token_ms += evaluation.time_to_first_token_ms
+                self.time_to_first_token_samples += 1
             if evaluation.outcome == "document_answer":
                 self.document_answers += 1
             elif evaluation.outcome == "web_answer":
@@ -83,6 +92,8 @@ class MetricsTracker:
                     "web_search_triggered": self.web_search_triggered,
                     "total_sources_retrieved": self.total_sources_retrieved,
                     "total_latency_ms": self.total_latency_ms,
+                    "total_time_to_first_token_ms": self.total_time_to_first_token_ms,
+                    "time_to_first_token_samples": self.time_to_first_token_samples,
                     "document_answers": self.document_answers,
                     "web_answers": self.web_answers,
                     "abstentions": self.abstentions,
@@ -112,6 +123,11 @@ def _stats_from_totals(totals: dict[str, int | float]) -> dict[str, Any]:
         "web_search_rate": totals["web_search_triggered"] / total_queries,
         "avg_sources_retrieved": totals["total_sources_retrieved"] / total_queries,
         "avg_latency_ms": totals["total_latency_ms"] / total_queries,
+        "avg_time_to_first_token_ms": (
+            totals["total_time_to_first_token_ms"] / totals["time_to_first_token_samples"]
+            if totals["time_to_first_token_samples"]
+            else 0.0
+        ),
         "document_answer_rate": totals["document_answers"] / total_queries,
         "web_answer_rate": totals["web_answers"] / total_queries,
         "abstention_rate": totals["abstentions"] / total_queries,
@@ -124,6 +140,7 @@ def _empty_stats() -> dict[str, float | int]:
         "web_search_rate": 0.0,
         "avg_sources_retrieved": 0.0,
         "avg_latency_ms": 0.0,
+        "avg_time_to_first_token_ms": 0.0,
         "document_answer_rate": 0.0,
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,

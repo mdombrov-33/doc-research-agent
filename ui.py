@@ -81,6 +81,11 @@ def render_monitoring_stats():
     c2.metric("Avg latency", f"{stats['avg_latency_ms'] / 1000:.1f}s")
     c3.metric("Web search rate", f"{stats['web_search_rate']:.0%}")
     c4.metric("Avg sources returned", f"{stats['avg_sources_retrieved']:.1f}")
+    time_to_first_token_ms = stats.get("avg_time_to_first_token_ms", 0.0)
+    if time_to_first_token_ms:
+        st.caption(f"Avg first answer token: {time_to_first_token_ms / 1000:.1f}s")
+    else:
+        st.caption("First answer-token timing will appear after a streamed answer.")
     st.divider()
 
 

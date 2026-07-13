@@ -14,12 +14,14 @@ def _make_eval(
     sources_retrieved: int = 5,
     web_search_triggered: bool = False,
     latency_ms: float = 1000.0,
+    time_to_first_token_ms: float | None = None,
     outcome: FinalOutcome = "document_answer",
 ) -> QueryMetrics:
     return QueryMetrics(
         sources_retrieved=sources_retrieved,
         web_search_triggered=web_search_triggered,
         latency_ms=latency_ms,
+        time_to_first_token_ms=time_to_first_token_ms,
         outcome=outcome,
     )
 
@@ -39,6 +41,7 @@ def test_single_query_stats():
     assert stats["total_queries"] == 1
     assert stats["avg_sources_retrieved"] == 5.0
     assert stats["avg_latency_ms"] == 2000.0
+    assert stats["avg_time_to_first_token_ms"] == 0.0
     assert stats["document_answer_rate"] == 1.0
     assert "avg_retrieval_precision" not in stats
 
@@ -63,6 +66,7 @@ def test_legacy_database_migrates_source_total(tmp_path):
         "web_search_rate": 0.5,
         "avg_sources_retrieved": 3.0,
         "avg_latency_ms": 1500.0,
+        "avg_time_to_first_token_ms": 0.0,
         "document_answer_rate": 0.0,
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
@@ -72,7 +76,14 @@ def test_legacy_database_migrates_source_total(tmp_path):
 def test_sqlite_metrics_persist_recorded_totals(tmp_path):
     db_path = tmp_path / "metrics.db"
     tracker = MetricsTracker(SqliteMetricsDB(str(db_path)))
-    tracker.record(_make_eval(sources_retrieved=4, web_search_triggered=True, latency_ms=500.0))
+    tracker.record(
+        _make_eval(
+            sources_retrieved=4,
+            web_search_triggered=True,
+            latency_ms=500.0,
+            time_to_first_token_ms=125.0,
+        )
+    )
 
     stats = MetricsTracker(SqliteMetricsDB(str(db_path))).get_stats()
 
@@ -81,6 +92,7 @@ def test_sqlite_metrics_persist_recorded_totals(tmp_path):
         "web_search_rate": 1.0,
         "avg_sources_retrieved": 4.0,
         "avg_latency_ms": 500.0,
+        "avg_time_to_first_token_ms": 125.0,
         "document_answer_rate": 1.0,
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
@@ -123,6 +135,15 @@ def test_avg_latency():
     assert stats["avg_latency_ms"] == 2000.0
 
 
+def test_avg_time_to_first_token_uses_visible_token_samples_only():
+    tracker = MetricsTracker()
+    tracker.record(_make_eval(time_to_first_token_ms=None))
+    tracker.record(_make_eval(time_to_first_token_ms=1000.0))
+    tracker.record(_make_eval(time_to_first_token_ms=2000.0))
+
+    assert tracker.get_stats()["avg_time_to_first_token_ms"] == 1500.0
+
+
 def test_postgres_metrics_record_uses_atomic_increment(monkeypatch):
     connection = MagicMock()
     cursor = connection.cursor.return_value.__enter__.return_value
@@ -133,10 +154,20 @@ def test_postgres_metrics_record_uses_atomic_increment(monkeypatch):
         sources_retrieved=3,
         web_search_triggered=True,
         latency_ms=250.0,
+        time_to_first_token_ms=100.0,
         outcome="document_answer",
     )
 
-    assert cursor.execute.call_args_list[-1].args[1] == (True, 3, 250.0, True, False, False)
+    assert cursor.execute.call_args_list[-1].args[1] == (
+        True,
+        3,
+        250.0,
+        100.0,
+        True,
+        True,
+        False,
+        False,
+    )
     record_sql = cursor.execute.call_args_list[-1].args[0]
     assert "total_queries = monitoring_stats.total_queries + excluded.total_queries" in record_sql
 

@@ -57,7 +57,7 @@ Guardrails — INPUT check        llm-guard Toxicity scanner, local
 └────────────────────────────────────────────────────────────────────────┘
       │  answer-node tokens stream out as they are produced (SSE)
       ▼
-MetricsTracker.record(...)      latency, sources retrieved, route outcome
+MetricsTracker.record(...)      latency, first-token timing, sources retrieved, route outcome
       │
       ▼
 SSE stream closes  ({"done": true, "sources": [...]})
@@ -547,6 +547,7 @@ After each query the stream handler calls `MetricsTracker.record(QueryMetrics(..
 | `web_search_rate` | fraction of queries where the agent used `web_search` |
 | `avg_sources_retrieved` | mean sources returned per query (all tool calls combined) |
 | `avg_latency_ms` | mean end-to-end latency |
+| `avg_time_to_first_token_ms` | mean graph-start-to-first-visible-token time; only completed streams that emitted an answer token contribute |
 | `document_answer_rate` | fraction answered from sufficient document evidence |
 | `web_answer_rate` | fraction answered after the one web-fallback route ran |
 | `abstention_rate` | fraction where no evidence passed assessment |
@@ -562,6 +563,11 @@ counts, booleans, configured limits, and exception class. Raw questions, rewritt
 queries, extracted entities, answers, document chunks, web snippets, and exception messages are
 not attached to normal telemetry. Upload events similarly use a document's extension and
 size bucket instead of its filename.
+
+Time to first token starts when the graph begins, after the input-guardrail gate, and stops only
+when the handler sends its first visible answer token. Internal citation markers that are buffered
+or removed do not count. A completed abstention has no TTFT sample, so it cannot make the
+answer-streaming average look artificially fast.
 
 ---
 
