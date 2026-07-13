@@ -87,8 +87,9 @@ per-request work cheap and makes everything trivially mockable in tests.
 - `src/api/routes.py` — the routes wire those dependencies into the handlers.
 
 Settings and singletons are cached: `get_settings()` is `@lru_cache`'d (`src/config.py`), as
-are `get_qdrant_client`, `get_vector_store`, the spaCy model, the cross-encoder loader, and
-the llm-guard scanners.
+are the purpose-specific Qdrant clients/stores, the spaCy model, the cross-encoder loader, and
+the llm-guard scanners. `get_retrieval_vector_store()` uses the short query deadline; the
+lifespan-owned ingestion store and collection setup use the longer indexing deadline.
 
 ---
 
@@ -174,7 +175,9 @@ scales robust. `RetrievalMode.HYBRID` turns this on; it's a single Qdrant query.
    `top_k×4`, capped 100, floored at `top_k`); with it off, `fetch_k = top_k`.
 3. **Hybrid search** for the unfiltered `fetch_k` candidate pool. When reranking is enabled and
    entities exist, fetch up to `top_k` additional entity-matching chunks, de-duplicate them, and
-   add them to the rerank pool. With reranking off, the raw hybrid path remains one query.
+   add them to the rerank pool. With reranking off, the raw hybrid path remains one query. Each
+   Qdrant request uses `QDRANT_QUERY_TIMEOUT_SECONDS` (10 seconds by default), independent of
+   indexing.
 4. Map results to dicts (`content`, `document_id`, `filename`, `chunk_id`, `chunk_index`,
    `chunk_length`, `source="document"`), skipping blanks. Log `docs_retrieved` with score
    stats.
@@ -600,6 +603,8 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 | Failure | Handling | Where |
 |---|---|---|
 | Chat-model timeout or transient API error | `ChatOpenAI(timeout=LLM_TIMEOUT_SECONDS, max_retries=LLM_MAX_RETRIES)`; 60 s default | `llm.py` |
+| Qdrant retrieval timeout | `get_retrieval_vector_store()` uses `QDRANT_QUERY_TIMEOUT_SECONDS`; 10 s default | `vectorstore.py` |
+| Qdrant collection/indexing timeout | `get_ingestion_qdrant_client()` and `get_ingestion_vector_store()` use `QDRANT_INGESTION_TIMEOUT_SECONDS`; 30 s default | `vectorstore.py` |
 | Web search outage | fail soft → empty docs, request continues | `web_search` tool |
 | Imperfect entity tags | add entity matches to, never restrict, the unfiltered hybrid pool | `search.py` |
 | Empty / unsupported upload | safe client message → 400/500; details logged; temp file always cleaned up | `handlers/upload.py` |

@@ -18,7 +18,7 @@ from src.core.monitoring.tracker import MetricsTracker
 from src.core.nlp import get_spacy_model
 from src.core.retrieval import rerank
 from src.core.tracing import setup_tracing
-from src.core.vectorstore import ensure_collection_exists, get_vector_store
+from src.core.vectorstore import ensure_collection_exists, get_ingestion_vector_store
 from src.utils.logger import logger
 
 
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     # Build expensive, process-wide resources once and stash them on app.state;
     # request handlers read them back via the providers in api/dependencies.py.
     async with open_checkpointer(settings) as checkpointer:
-        app.state.vector_store = get_vector_store()
+        app.state.vector_store = get_ingestion_vector_store()
         app.state.nlp = get_spacy_model()
         app.state.agent = build_graph(checkpointer)
         guardrails.warmup()

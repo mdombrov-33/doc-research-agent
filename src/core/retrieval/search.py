@@ -7,7 +7,7 @@ from qdrant_client import models
 from src.config import Settings, get_settings
 from src.core.nlp import extract_entities
 from src.core.retrieval.rerank import rerank
-from src.core.vectorstore import get_vector_store
+from src.core.vectorstore import get_retrieval_vector_store
 from src.utils.logger import logger
 
 _tracer = trace.get_tracer(__name__)
@@ -61,7 +61,7 @@ def hybrid_search(question: str, top_k: int) -> list[dict]:
     in final ranked order.
     """
     settings = get_settings()
-    vector_store = get_vector_store()
+    vector_store = get_retrieval_vector_store()
     fetch_k = _fetch_k(top_k, settings)
 
     query_entities = extract_entities(question)

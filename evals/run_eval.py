@@ -40,8 +40,8 @@ from src.core.retrieval.search import hybrid_search
 from src.core.vectorstore import (
     ensure_collection_exists,
     get_embeddings,
-    get_qdrant_client,
-    get_vector_store,
+    get_ingestion_qdrant_client,
+    get_ingestion_vector_store,
 )
 
 CORPUS_DIR = Path(__file__).parent / "corpus"
@@ -87,7 +87,7 @@ def _load_golden() -> list[dict]:
 
 
 def _reset_collection() -> None:
-    client = get_qdrant_client()
+    client = get_ingestion_qdrant_client()
     try:
         client.delete_collection(get_settings().QDRANT_COLLECTION_NAME)
     except Exception:
@@ -96,7 +96,7 @@ def _reset_collection() -> None:
 
 
 async def _ingest_corpus() -> None:
-    vector_store = get_vector_store()
+    vector_store = get_ingestion_vector_store()
     nlp = get_spacy_model()
     settings = get_settings()
     for path in sorted(CORPUS_DIR.glob("*.txt")):

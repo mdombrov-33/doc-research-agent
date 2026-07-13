@@ -18,7 +18,7 @@ def test_eval_ingestion_passes_current_settings(tmp_path, monkeypatch):
         settings = Settings()
         process = AsyncMock()
         monkeypatch.setattr(run_eval, "CORPUS_DIR", corpus)
-        monkeypatch.setattr(run_eval, "get_vector_store", lambda: vector_store)
+        monkeypatch.setattr(run_eval, "get_ingestion_vector_store", lambda: vector_store)
         monkeypatch.setattr(run_eval, "get_spacy_model", lambda: nlp)
         monkeypatch.setattr(run_eval, "get_settings", lambda: settings)
         monkeypatch.setattr(run_eval, "process_and_store", process)

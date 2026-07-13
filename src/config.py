@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     QDRANT_CLOUD_URL: str = ""
     QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_NAME: str = "documents"
+    QDRANT_QUERY_TIMEOUT_SECONDS: int = 10
+    QDRANT_INGESTION_TIMEOUT_SECONDS: int = 30
 
     @property
     def qdrant_url(self) -> str:

@@ -68,7 +68,7 @@ def test_hybrid_search_maps_results_and_skips_blank(monkeypatch):
         ),
         (_Doc("   ", {"filename": "blank.pdf"}), 0.5),  # blank → skipped
     ]
-    monkeypatch.setattr(search, "get_vector_store", lambda: store)
+    monkeypatch.setattr(search, "get_retrieval_vector_store", lambda: store)
     monkeypatch.setattr(search, "extract_entities", lambda q: [])
     monkeypatch.setattr(search, "rerank", lambda q, docs, k: docs[:k])
 
@@ -126,7 +126,7 @@ def test_hybrid_search_preserves_unfiltered_candidates_with_entity_supplement(
             (_Doc(entity_chunk[1], {"chunk_id": entity_chunk[0]}), 0.7),
         ],
     ]
-    monkeypatch.setattr(search, "get_vector_store", lambda: store)
+    monkeypatch.setattr(search, "get_retrieval_vector_store", lambda: store)
     monkeypatch.setattr(search, "extract_entities", lambda q: [entity])
     monkeypatch.setattr(
         search,
@@ -158,7 +158,7 @@ def test_hybrid_search_overfetches_pool_and_truncates_to_top_k(monkeypatch):
     store.similarity_search_with_score.return_value = [
         (_Doc(f"doc {i}", {"filename": f"{i}.txt"}), 1.0 - i * 0.1) for i in range(8)
     ]
-    monkeypatch.setattr(search, "get_vector_store", lambda: store)
+    monkeypatch.setattr(search, "get_retrieval_vector_store", lambda: store)
     monkeypatch.setattr(search, "extract_entities", lambda q: [])
     monkeypatch.setattr(
         search,
