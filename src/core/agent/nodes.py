@@ -37,7 +37,10 @@ def agent_node(state: AgentState, config: RunnableConfig | None = None) -> dict[
     """Form a history-aware standalone query and call document retrieval."""
     model = _configurable(config).get("model")
     llm = get_llm(model).bind_tools([retrieve_documents])
-    messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT), *state["messages"]]
+    history = _conversation_messages(
+        state["messages"], get_settings().CONVERSATION_HISTORY_TURNS
+    )
+    messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT), *history]
     with _tracer.start_as_current_span("agent.llm_call") as span:
         span.set_attribute("agent.model", model or "default")
         response = llm.invoke(messages)
@@ -140,6 +143,31 @@ def _current_question(state: AgentState) -> str:
         if isinstance(message, HumanMessage) and isinstance(message.content, str):
             return message.content
     return ""
+
+
+def _conversation_messages(messages: list[Any], max_turns: int) -> list[Any]:
+    """Keep recent user/answer turns while excluding workflow scratchpad messages."""
+    human_indexes = [
+        index for index, message in enumerate(messages) if isinstance(message, HumanMessage)
+    ]
+    if not human_indexes:
+        return []
+
+    retained_indexes = human_indexes[-max_turns:]
+    conversation: list[Any] = []
+    for start, end in zip(retained_indexes, [*retained_indexes[1:], len(messages)]):
+        conversation.append(messages[start])
+        answer = next(
+            (
+                message
+                for message in reversed(messages[start + 1 : end])
+                if isinstance(message, AIMessage) and not message.tool_calls
+            ),
+            None,
+        )
+        if answer is not None:
+            conversation.append(answer)
+    return conversation
 
 
 def _turn_messages(state: AgentState) -> list[Any]:

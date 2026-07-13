@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SUPPORTED_MODELS: dict[str, str] = {
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     LLM_MAX_RETRIES: int = 3
     LLM_TIMEOUT_SECONDS: float = 60
     QUERY_TIMEOUT_SECONDS: float = 120
+    CONVERSATION_HISTORY_TURNS: int = Field(default=3, ge=1)
     WEB_SEARCH_TIMEOUT_SECONDS: int = 10
 
     QDRANT_MODE: Literal["local", "cloud"] = "cloud"

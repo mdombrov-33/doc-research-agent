@@ -101,6 +101,8 @@ list. Keys:
 - `LLM_TIMEOUT_SECONDS` — maximum duration of one chat-model request (default `60`)
 - `QUERY_TIMEOUT_SECONDS` — wall-clock ceiling for guardrails plus the whole graph stream
   (default `120`); expiration cancels the in-flight work and returns a stable timeout event
+- `CONVERSATION_HISTORY_TURNS` — most recent user turns given to the query model (default `3`,
+  including the current question); old tool calls and retrieved evidence are never replayed
 - `WEB_SEARCH_TIMEOUT_SECONDS` — maximum duration of one DDGS web-search round (default `10`);
   explicit timeout/rate-limit failures retry once before the graph abstains
 - `EMBEDDING_TIMEOUT_SECONDS` — maximum duration of one OpenAI embedding request (default `30`);

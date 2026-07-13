@@ -34,7 +34,9 @@ def _patch_llms(monkeypatch, agent_script, assessments):
 
     monkeypatch.setattr(nodes, "get_llm", get_llm)
     monkeypatch.setattr(
-        nodes, "get_settings", lambda: SimpleNamespace(CLASSIFIER_MODEL="classifier")
+        nodes,
+        "get_settings",
+        lambda: SimpleNamespace(CLASSIFIER_MODEL="classifier", CONVERSATION_HISTORY_TURNS=3),
     )
     return agent
 

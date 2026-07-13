@@ -321,8 +321,11 @@ wrapped by `ToolNode`; `web_fallback` calls the same `search_web` implementation
 
 ### Query — `agent_node` (`nodes.py`)
 The query model binds only `retrieve_documents`, prepends `AGENT_SYSTEM_PROMPT`, and resolves a
-follow-up into a standalone query using persisted `messages`. It cannot write the final answer
-or call the web. A missing retrieval call is an abstention, not an unsupported answer.
+follow-up into a standalone query using a bounded projection of persisted `messages`. It cannot
+write the final answer or call the web. A missing retrieval call is an abstention, not an
+unsupported answer. The projection keeps the most recent `CONVERSATION_HISTORY_TURNS` user
+turns (three by default, including the current question) and completed assistant answers; it
+excludes prior tool calls, tool results, and evidence artifacts.
 
 The model is per-request: a request may choose one of `SUPPORTED_MODELS` (`src/config.py`),
 otherwise `get_llm(config.configurable.model)` falls back to `LLM_MODEL`. The Streamlit
@@ -330,7 +333,8 @@ selector reads that same list, and the API rejects all other request model IDs w
 Temperature is `get_llm`'s default of **0**.
 
 This remains prompt-directed query formation, not a separate query-analysis module: the query
-model sees the persisted `messages` and supplies the tool's `query` argument directly.
+model sees that bounded conversational projection and supplies the tool's `query` argument
+directly.
 
 ### Evidence assessment, answer, and fallback — `nodes.py`
 `evidence_assessment_node` sends the current question plus this turn's tool evidence to the
@@ -477,12 +481,16 @@ The graph is compiled with a **checkpointer** (`graph.py`). State is keyed by `t
 which the stream handler sets to the request's `session_id`
 (`config={"configurable": {"thread_id": session_id, ...}}`). Across turns with the same
 `session_id`, the `messages` list accumulates (via the `add_messages` reducer) and the agent
-sees the **whole conversation** on every turn.
+receives a bounded conversational projection on every turn.
 
 **`messages` *is* the memory.** There is no separate `chat_history`. Each turn the stream
 handler appends only the new `HumanMessage`; everything else — prior questions, the agent's
-tool calls, tool results, prior answers — is reloaded from the checkpoint. That single list
-feeds both:
+tool calls, tool results, prior answers — is reloaded from the checkpoint. The full list remains
+the workflow record, but `agent_node` selects only the most recent
+`CONVERSATION_HISTORY_TURNS` user turns (three by default, including the current question) plus
+completed assistant answers. It never gives old tool calls, tool results, or evidence artifacts
+to the query model. That split gives bounded prompt cost and avoids treating old untrusted
+evidence as conversational instructions, while still feeding both:
 - **Conversational memory** — the agent answers *"expand on that"* coherently because the
   prior turns are right there in `messages`.
 - **Conversational retrieval** — the agent itself, seeing the history, is instructed by its
