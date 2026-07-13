@@ -1,19 +1,32 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.11, < 1.16"
 
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "7.39.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "7.39.0"
     }
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "3.6.2"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "3.9.0"
     }
   }
 }
 
 provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+provider "google-beta" {
   project = var.project_id
   region  = var.region
 }
@@ -43,17 +56,30 @@ resource "google_project_service" "cloudbuild" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "compute" {
+  service            = "compute.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_project_service" "secretmanager" {
   service            = "secretmanager.googleapis.com"
   disable_on_destroy = false
 }
 
+resource "google_project_service" "sqladmin" {
+  service            = "sqladmin.googleapis.com"
+  disable_on_destroy = false
+}
+
 locals {
   runtime_secret_ids = {
+    database_url       = "${var.service_name}-database-url"
     openai_api_key     = "${var.service_name}-openai-api-key"
     openrouter_api_key = "${var.service_name}-openrouter-api-key"
     qdrant_api_key     = "${var.service_name}-qdrant-api-key"
   }
+  database_name = "app"
+  database_user = "app"
 }
 
 resource "google_service_account" "runtime" {
@@ -78,6 +104,12 @@ resource "google_secret_manager_secret_iam_member" "runtime" {
   secret_id = each.value.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+resource "google_project_iam_member" "runtime_cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
 resource "google_artifact_registry_repository" "app" {
@@ -142,6 +174,23 @@ resource "google_cloud_run_service" "app" {
               key  = "latest"
             }
           }
+        }
+        env {
+          name = "DATABASE_URL"
+          value_from {
+            secret_key_ref {
+              name = google_secret_manager_secret.runtime["database_url"].secret_id
+              key  = "latest"
+            }
+          }
+        }
+        env {
+          name  = "CHECKPOINT_BACKEND"
+          value = "postgres"
+        }
+        env {
+          name  = "METRICS_BACKEND"
+          value = "postgres"
         }
         env {
           name = "OPENROUTER_API_KEY"
@@ -218,8 +267,9 @@ resource "google_cloud_run_service" "app" {
 
     metadata {
       annotations = {
-        "autoscaling.knative.dev/minScale" = "0"
-        "autoscaling.knative.dev/maxScale" = "1"
+        "autoscaling.knative.dev/minScale"      = "0"
+        "autoscaling.knative.dev/maxScale"      = "1"
+        "run.googleapis.com/cloudsql-instances" = module.postgres.instance_connection_name
       }
     }
   }
@@ -233,6 +283,8 @@ resource "google_cloud_run_service" "app" {
     google_project_service.cloudrun,
     docker_registry_image.app,
     google_secret_manager_secret_iam_member.runtime,
+    google_project_iam_member.runtime_cloudsql_client,
+    google_secret_manager_secret_version.database_url,
   ]
 }
 

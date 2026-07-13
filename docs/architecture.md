@@ -427,8 +427,9 @@ feeds both:
   query before searching.
 
 **Persistent checkpointer.** `CHECKPOINT_BACKEND=sqlite` is the local default and uses
-`AsyncSqliteSaver` under `DATA_DIR` (§13). Production sets `CHECKPOINT_BACKEND=postgres` and
-`DATABASE_URL`, then uses `AsyncPostgresSaver` with tables initialized at startup. The serving
+`AsyncSqliteSaver` under `DATA_DIR` (§13). Production receives `CHECKPOINT_BACKEND=postgres`
+and `DATABASE_URL` from Cloud SQL and Secret Manager, then uses `AsyncPostgresSaver` with tables
+initialized at startup. The serving
 path is async (`astream_events`), so both are async checkpointers. The FastAPI lifespan owns
 the connection and closes it at shutdown. Tests inject a sync `MemorySaver` via
 `build_graph(checkpointer=...)`, which works with the sync `.invoke` API they drive.
@@ -478,7 +479,8 @@ from offline evaluation (§15).
 
 After each query the stream handler calls `MetricsTracker.record(QueryMetrics(...))`.
 `METRICS_BACKEND=sqlite` is the local default and writes to `metrics_db_path` under `DATA_DIR`.
-Production sets `METRICS_BACKEND=postgres` with `DATABASE_URL`; each record is an atomic
+Production receives `METRICS_BACKEND=postgres` with `DATABASE_URL` from Cloud SQL and Secret
+Manager; each record is an atomic
 database increment and `/api/monitoring/stats` reads the shared aggregate across instances.
 `GET /api/monitoring/stats` returns:
 

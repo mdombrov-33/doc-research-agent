@@ -1,8 +1,8 @@
 # GCP deployment
 
-Terraform creates the three Secret Manager containers Cloud Run needs, but never stores secret
-values. Copy the example configuration and set the project and Qdrant endpoint. Then bootstrap
-the empty containers once:
+Terraform creates Cloud Run, Cloud SQL, and the Secret Manager containers the service needs.
+Provider keys are never stored in Terraform; copy the example configuration and set the project
+and Qdrant endpoint. Bootstrap the three externally managed provider secrets once:
 
 ```sh
 cp terraform.tfvars.example terraform.tfvars
@@ -30,5 +30,8 @@ terraform plan
 terraform apply
 ```
 
-The Cloud Run service uses its dedicated runtime service account. It has `secretAccessor` only
-on these three secrets.
+Terraform generates the database password ephemerally and writes it directly to Cloud SQL and a
+dedicated Secret Manager version. Neither the password nor the database URL is stored in state.
+Cloud Run uses its dedicated runtime service account with access only to these secrets and the
+Cloud SQL client role. The Cloud SQL instance has automatic backups, point-in-time recovery, and
+deletion protection; removing it requires an explicit configuration change first.
