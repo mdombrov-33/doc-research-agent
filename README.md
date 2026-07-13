@@ -44,7 +44,8 @@ POST /api/stream
   the live web.
 - **Evidence assessment** — a structured classifier validates whether the returned sources are
   sufficient. Insufficient document evidence gets one web fallback; still-insufficient evidence
-  produces an honest abstention.
+  produces an honest abstention. Retrieved document chunks and web snippets are explicitly
+  treated as untrusted data, never instructions for either model.
 - **Answer** — only after sufficient evidence is found does the answer model write and stream
   the response. Internal source IDs are removed before the answer reaches the user;
   the final event includes only the validated citations those IDs selected, with document

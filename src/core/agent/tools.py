@@ -1,3 +1,4 @@
+import json
 import random
 import time
 from collections.abc import Iterable, Mapping
@@ -48,20 +49,26 @@ def _ddgs_text_results(query: str, timeout_seconds: int) -> list[dict[str, Any]]
 
 
 def format_docs(docs: list[dict]) -> str:
-    """Render evidence for the model with the stable source IDs it may cite in its answer."""
+    """Render source data as explicitly untrusted evidence for the model."""
     if not docs:
         return "No documents found."
-    parts = []
+    evidence = []
     for doc in docs:
         citation = citation_from_artifact(doc)
-        label = (
-            f"[Web: {doc.get('title', 'unknown')}]"
-            if doc.get("source") == "web"
-            else f"[Document: {doc.get('filename', 'unknown')}]"
+        is_web = doc.get("source") == "web"
+        evidence.append(
+            {
+                "source_id": citation.source_id if citation else "unavailable",
+                "source_type": "web" if is_web else "document",
+                "title": str(doc.get("title" if is_web else "filename", "unknown")),
+                "content": str(doc["content"]),
+            }
         )
-        source_id = f"[Source ID: {citation.source_id}]" if citation else "[Source ID: unavailable]"
-        parts.append(f"{source_id}\n{label}\n{doc['content']}")
-    return "\n\n".join(parts)
+    return (
+        "<untrusted_evidence_json>\n"
+        + json.dumps(evidence, ensure_ascii=False)
+        + "\n</untrusted_evidence_json>"
+    )
 
 
 # response_format="content_and_artifact": the string goes into the ToolMessage the model

@@ -311,9 +311,13 @@ against these artifacts (§10).
 | `retrieve_documents(query, config)` | hybrid search over the user's uploaded docs (§5) | `top_k` is read from the injected `config` (`configurable.top_k`), defaulting to `10`. `config` is injected by `ToolNode`; the model never sees it. |
 | `web_search(query)` | DuckDuckGo live web search | Returns up to five structured title/link/snippet results, each independently citable. DDGS uses `WEB_SEARCH_TIMEOUT_SECONDS` (10 s default); its explicit timeout/rate-limit errors get one short jittered retry. **Fails soft**: all other/exhausted errors log only their type and return `("Web search failed.", [])`, so an outage never breaks the request. |
 
-`format_docs` renders docs for the model as `[Source ID: ...]`, followed by `[Document:
-<filename>]` or `[Web: <title>]`. Only `retrieve_documents` is bound to the query agent and
-wrapped by `ToolNode`; `web_fallback` calls the same `search_web` implementation directly.
+`format_docs` renders every artifact inside one `<untrusted_evidence_json>` envelope as JSON:
+stable source ID, source type, title, and content. The two evidence-consuming system prompts
+explicitly state that the envelope is reference data, never instructions, so prompt-like text in
+a document or web snippet is not part of their task. This is an instruction/data separation, not
+a claim that prompt injection is impossible for an LLM. Only `retrieve_documents` is bound to the
+query agent and wrapped by `ToolNode`; `web_fallback` calls the same `search_web` implementation
+directly.
 
 ---
 
@@ -340,11 +344,13 @@ directly.
 `evidence_assessment_node` sends the current question plus this turn's tool evidence to the
 small `CLASSIFIER_MODEL` as `EvidenceAssessment(sufficient, supporting_source_ids)`. A verdict
 is accepted only when it is sufficient, names at least one source ID, and every ID exists in the
-actual artifacts. Malformed evaluator output and evaluator failures fail closed.
+actual artifacts. The evidence is explicitly labelled untrusted source data before the model sees
+it; malformed evaluator output and evaluator failures fail closed.
 
 `answer_node` receives the question and only the artifacts named by the validated verdict, then
-writes a cited answer without tools. It records `document_answer` when document evidence passed
-directly, or `web_answer` when the bounded web fallback ran before evidence passed.
+writes a cited answer without tools. Its system prompt separately repeats that those artifacts are
+untrusted data rather than instructions. It records `document_answer` when document evidence
+passed directly, or `web_answer` when the bounded web fallback ran before evidence passed.
 `web_fallback_node` searches once using the query agent's standalone retrieval query. If neither
 evidence set passes, `abstain_node` emits a fixed honest response and records `abstained`.
 
@@ -468,6 +474,12 @@ from starting.
 - **No output check.** Because the agent streams its answer token by token, there is no point
   at which a full response exists to screen before the user sees it. Output safety would
   require giving up streaming.
+- **Retrieved-content isolation.** Documents and web snippets are not trusted merely because the
+  system retrieved them. `format_docs` serializes them in an
+  `<untrusted_evidence_json>` envelope, and the assessment and answer prompts require the models
+  to treat everything inside as factual reference material only. The query model never sees tool
+  payloads, including prior-turn evidence (§12). This reduces prompt-injection exposure; it is
+  not a guarantee that a probabilistic model will never follow malicious source text.
 
 > Note: the input scanners are not wrapped in a try/except, so a scanner *internal* error
 > propagates rather than failing open. If you need fail-open behaviour (degrade safety but
