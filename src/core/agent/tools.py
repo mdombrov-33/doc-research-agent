@@ -1,16 +1,50 @@
+import random
+import time
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from langchain_community.tools import DuckDuckGoSearchResults
+from ddgs import DDGS
+from ddgs.exceptions import DDGSException, RatelimitException, TimeoutException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from opentelemetry import trace
 
+from src.config import get_settings
 from src.core.citations import citation_from_artifact
 from src.core.retrieval.search import hybrid_search
 from src.utils.logger import logger
 
 _tracer = trace.get_tracer(__name__)
+
+
+def _is_transient_web_error(error: Exception) -> bool:
+    if isinstance(error, (RatelimitException, TimeoutException)):
+        return True
+    return (
+        isinstance(error, DDGSException)
+        and bool(error.args)
+        and isinstance(error.args[0], (RatelimitException, TimeoutException))
+    )
+
+
+def _ddgs_text_results(query: str, timeout_seconds: int) -> list[dict[str, Any]]:
+    with DDGS(timeout=timeout_seconds) as ddgs:
+        results = ddgs.text(
+            query,
+            region="wt-wt",
+            safesearch="moderate",
+            timelimit="y",
+            max_results=5,
+            backend="auto",
+        )
+    return [
+        {
+            "title": result["title"],
+            "link": result["href"],
+            "snippet": result["body"],
+        }
+        for result in results
+    ]
 
 
 def format_docs(docs: list[dict]) -> str:
@@ -58,14 +92,24 @@ def web_search(query: str) -> tuple[str, list[dict]]:
 
 def search_web(query: str) -> tuple[str, list[dict]]:
     """Search the web and return model context plus independently citable artifacts."""
+    timeout_seconds = get_settings().WEB_SEARCH_TIMEOUT_SECONDS
     with _tracer.start_as_current_span("tool.web_search") as span:
         span.set_attribute("tool.query", query)
-        try:
-            results = DuckDuckGoSearchResults(num_results=5, output_format="list").invoke(query)
-        except Exception as e:
-            span.set_status(trace.StatusCode.ERROR, str(e))
-            logger.error("web_search_tool_failed", error=str(e))
-            return "Web search failed.", []
+        for attempt in range(1, 3):
+            try:
+                results = _ddgs_text_results(query, timeout_seconds)
+                break
+            except Exception as error:
+                if attempt == 2 or not _is_transient_web_error(error):
+                    span.set_status(trace.StatusCode.ERROR, "web search unavailable")
+                    logger.error("web_search_tool_failed", failure_type=type(error).__name__)
+                    return "Web search failed.", []
+                logger.warning(
+                    "web_search_retry",
+                    attempt=attempt,
+                    failure_type=type(error).__name__,
+                )
+                time.sleep(random.uniform(0.05, 0.25))
         docs = _web_evidence(results)
         span.set_attribute("tool.results_returned", len(docs))
     result = format_docs(docs)

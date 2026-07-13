@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     CLASSIFIER_MODEL: str = "openai/gpt-5.4-mini"
     LLM_MAX_RETRIES: int = 3
     LLM_TIMEOUT_SECONDS: float = 60
+    WEB_SEARCH_TIMEOUT_SECONDS: int = 10
 
     QDRANT_MODE: Literal["local", "cloud"] = "cloud"
     QDRANT_LOCAL_URL: str = "http://localhost:6333"

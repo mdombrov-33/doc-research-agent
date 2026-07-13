@@ -94,6 +94,8 @@ list. Keys:
 - `OPENAI_API_KEY` — embeddings (`text-embedding-3-small`) only
 - `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer)
 - `LLM_TIMEOUT_SECONDS` — maximum duration of one chat-model request (default `60`)
+- `WEB_SEARCH_TIMEOUT_SECONDS` — maximum duration of one DDGS web-search round (default `10`);
+  explicit timeout/rate-limit failures retry once before the graph abstains
 - `EMBEDDING_TIMEOUT_SECONDS` — maximum duration of one OpenAI embedding request (default `30`);
   transient OpenAI rate-limit/server failures retry up to `EMBEDDING_MAX_RETRIES` (default `2`)
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`);

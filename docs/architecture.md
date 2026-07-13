@@ -302,7 +302,7 @@ against these artifacts (§10).
 | Tool | What it does | Notes |
 |---|---|---|
 | `retrieve_documents(query, config)` | hybrid search over the user's uploaded docs (§5) | `top_k` is read from the injected `config` (`configurable.top_k`), defaulting to `10`. `config` is injected by `ToolNode`; the model never sees it. |
-| `web_search(query)` | DuckDuckGo live web search | Returns up to five structured title/link/snippet results, each independently citable. **Fails soft**: on any error it logs `web_search_tool_failed` and returns `("Web search failed.", [])`, so a search outage never breaks the request. |
+| `web_search(query)` | DuckDuckGo live web search | Returns up to five structured title/link/snippet results, each independently citable. DDGS uses `WEB_SEARCH_TIMEOUT_SECONDS` (10 s default); its explicit timeout/rate-limit errors get one short jittered retry. **Fails soft**: all other/exhausted errors log only their type and return `("Web search failed.", [])`, so an outage never breaks the request. |
 
 `format_docs` renders docs for the model as `[Source ID: ...]`, followed by `[Document:
 <filename>]` or `[Web: <title>]`. Only `retrieve_documents` is bound to the query agent and
@@ -608,7 +608,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 | OpenAI embedding timeout or transient API error | `OpenAIEmbeddings(timeout=EMBEDDING_TIMEOUT_SECONDS, max_retries=EMBEDDING_MAX_RETRIES)`; 30 s and two retries by default. Retrieval follows the fixed-error/web-fallback path; uploads return the existing stable processing error. | `vectorstore.py`, `graph.py`, `handlers/upload.py` |
 | Qdrant retrieval timeout / transient failure | `get_retrieval_vector_store()` uses `QDRANT_QUERY_TIMEOUT_SECONDS`; 10 s default; `hybrid_search` retries once with jitter, then emits a fixed tool error and follows the normal one-shot web fallback | `vectorstore.py`, `search.py`, `graph.py` |
 | Qdrant collection/indexing timeout | `get_ingestion_qdrant_client()` and `get_ingestion_vector_store()` use `QDRANT_INGESTION_TIMEOUT_SECONDS`; 30 s default | `vectorstore.py` |
-| Web search outage | fail soft → empty docs, request continues | `web_search` tool |
+| Web-search timeout/rate limit | `DDGS(timeout=WEB_SEARCH_TIMEOUT_SECONDS)`; one short jittered retry, then fail soft → empty docs and the graph abstains | `agent/tools.py` |
 | Imperfect entity tags | add entity matches to, never restrict, the unfiltered hybrid pool | `search.py` |
 | Empty / unsupported upload | safe client message → 400/500; details logged; temp file always cleaned up | `handlers/upload.py` |
 | Request floods / runaway cost | per-IP rate limit (slowapi) → 429 + `Retry-After` | `api/rate_limit.py` |
