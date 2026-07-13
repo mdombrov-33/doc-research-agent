@@ -57,6 +57,7 @@ it's capped at 1/k, so it reflects the question mix, not a regression).
 | `judges.py` | LLM-as-judge faithfulness + answer-relevance scorers |
 | `embeddings_check.py` | Cosine separation guard for the embedding model |
 | `run_eval.py` | Orchestrator: ingest → score all three levels → report → gate |
+| `run_graph_eval.py` | Manual live graph path/citation evaluation against the same corpus |
 
 The pure pieces (`ranking`, `judges`, `embeddings_check`) are unit-tested with no infra in
 `tests/unit/` and run on every PR for free. The full `run_eval.py` needs live services.
@@ -72,6 +73,11 @@ The checks split by what's stable vs noisy, and they run in different places:
   answer relevance. Expensive and noisy (a small judge can score the same answer 1/5 or 3/5),
   so it is **local-only** — run it by hand when you change a prompt or model. The judges run
   on a small model (`JUDGE_MODEL` in `judges.py`); generation stays on the production model.
+- **Live graph (`make eval-graph`).** Runs the compiled serving graph: query model, document
+  tool, evidence assessment, and answer model. Every golden question is expected to end as
+`document_answer` and cite all its labelled filenames. Web fallback is deliberately disabled:
+needing it for a question whose evidence is in the fixed corpus is a failure signal. This is a
+manual check, never a CI gate. Pass `--limit N` to run a shorter live smoke check.
 
 ## Running it
 
@@ -82,6 +88,8 @@ Needs Qdrant up. Retrieval needs `OPENAI_API_KEY` (embeddings); `--full` also ne
 make up              # boot Qdrant
 make eval-retrieval  # retrieval + embeddings only (what CI runs on push to main)
 make eval            # the full thing: + generation + judges (local)
+make eval-graph      # compiled graph: expected document outcome + cited filenames (local)
+uv run python -m evals.run_graph_eval --limit 3  # quick live-graph smoke check
 ```
 
 CI's `rag eval gate` job runs `make eval-retrieval`'s command on every push to main, using

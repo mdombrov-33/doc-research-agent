@@ -113,7 +113,9 @@ when durable, shared state is needed.
 golden set and scores retrieval, generation, and embeddings (details in
 [`evals/README.md`](evals/README.md)). The deterministic retrieval tier runs in CI on every
 push to main. The graph's document-answer, web-fallback, and abstention routes are covered by
-corpus-backed integration tests; live telemetry reports their aggregate rates.
+corpus-backed integration tests; `make eval-graph` manually checks live graph outcomes and
+citations against the same corpus. Use `uv run python -m evals.run_graph_eval --limit 3` for a
+short live smoke run. Live telemetry reports aggregate outcome rates.
 
 ## Tech stack
 

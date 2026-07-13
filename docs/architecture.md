@@ -561,6 +561,14 @@ The graph itself has a separate deterministic route contract in
 abstention. It verifies graph control and outcome reporting, not semantic model quality, so it
 runs with the normal test suite rather than as an LLM evaluation gate.
 
+`make eval-graph` adds the complementary **manual live-graph check**. It re-ingests that same
+corpus into the isolated `documents_eval` collection, then invokes the compiled graph with the
+live query, assessment, and answer models for every golden question. A case passes only when it
+ends as `document_answer` and its final citations cover every labelled filename. Web fallback is
+disabled: a known-corpus question that needs it is precisely the regression the command should
+report. It is intentionally not a CI gate because it uses live models. Pass `--limit N` to the
+module for a short live smoke run; `make eval-graph` runs the full golden set.
+
 ---
 
 ## 16. API reference

@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-compose build up down restart logs shell test eval eval-retrieval lint format clean deploy destroy
+.PHONY: help install dev dev-compose build up down restart logs shell test eval eval-retrieval eval-graph lint format clean deploy destroy
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 APP_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
@@ -50,6 +50,9 @@ eval: ## Run the full RAG eval: retrieval + generation + judges (needs Qdrant + 
 
 eval-retrieval: ## Run retrieval + embedding checks only, no LLM (what CI runs on push to main)
 	uv run python -m evals.run_eval
+
+eval-graph: ## Manually evaluate live graph outcomes and citations against the eval corpus
+	uv run python -m evals.run_graph_eval
 
 lint: ## Run linter
 	uv run ruff check .

@@ -98,8 +98,9 @@ def _reset_collection() -> None:
 async def _ingest_corpus() -> None:
     vector_store = get_vector_store()
     nlp = get_spacy_model()
+    settings = get_settings()
     for path in sorted(CORPUS_DIR.glob("*.txt")):
-        await process_and_store(str(path), path.name, vector_store, nlp)
+        await process_and_store(str(path), path.name, vector_store, nlp, settings)
 
 
 def _dedup(filenames: list[str]) -> list[str]:
