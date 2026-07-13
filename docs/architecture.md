@@ -165,14 +165,15 @@ scales robust. `RetrievalMode.HYBRID` turns this on; it's a single Qdrant query.
 
 **`hybrid_search(question, top_k)`** is the whole retrieval path in one function:
 
-1. **Extract query entities** with spaCy and build an **entity filter** (`_entity_filter`):
-   restrict to chunks whose stored `entities` overlap the query's. This sharpens precision
-   when a query names something specific.
+1. **Extract query entities** with spaCy and build an **entity supplement** (`_entity_filter`).
+   Entity tags are imperfect, so they can add matching chunks but can never exclude ordinary
+   hybrid results.
 2. **Compute `fetch_k`** (`_fetch_k`): the candidate pool to pull *before* reranking. With
    reranking on, `fetch_k = min(top_k × RERANK_MULTIPLIER, RERANK_FETCH_CAP)` (default
    `top_k×4`, capped 100, floored at `top_k`); with it off, `fetch_k = top_k`.
-3. **Hybrid search** for `fetch_k` candidates. If the entity filter matched nothing,
-   **fall back** to an unfiltered hybrid search (`entity_fallback`).
+3. **Hybrid search** for the unfiltered `fetch_k` candidate pool. When reranking is enabled and
+   entities exist, fetch up to `top_k` additional entity-matching chunks, de-duplicate them, and
+   add them to the rerank pool. With reranking off, the raw hybrid path remains one query.
 4. Map results to dicts (`content`, `document_id`, `filename`, `chunk_id`, `chunk_index`,
    `chunk_length`, `source="document"`), skipping blanks. Log `docs_retrieved` with score
    stats.
@@ -592,7 +593,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 |---|---|---|
 | Transient LLM API errors | `ChatOpenAI(max_retries=LLM_MAX_RETRIES)` | `llm.py` |
 | Web search outage | fail soft → empty docs, request continues | `web_search` tool |
-| Entity filter over-narrows | fall back to unfiltered hybrid search | `search.py` |
+| Imperfect entity tags | add entity matches to, never restrict, the unfiltered hybrid pool | `search.py` |
 | Empty / unsupported upload | safe client message → 400/500; details logged; temp file always cleaned up | `handlers/upload.py` |
 | Request floods / runaway cost | per-IP rate limit (slowapi) → 429 + `Retry-After` | `api/rate_limit.py` |
 

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 from qdrant_client import models
 
 from src.core.retrieval import search
@@ -80,23 +81,75 @@ def test_hybrid_search_maps_results_and_skips_blank(monkeypatch):
     assert out[0]["source"] == "document"
 
 
-def test_hybrid_search_falls_back_to_unfiltered_when_filter_empty(monkeypatch):
+@pytest.mark.parametrize(
+    ("question", "entity", "answer_chunk", "entity_chunk"),
+    [
+        (
+            "What are Saturn's rings made of and how thin are they?",
+            "Saturn",
+            ("saturn:0", "rings are water ice and only tens of meters thick"),
+            ("saturn:1", "rings formed from a moon or comet"),
+        ),
+        (
+            "What chunk size and overlap does the article recommend for a RAG pipeline?",
+            "RAG",
+            ("rag:chunking", "chunks should be 500 to 800 tokens with 10 to 15 percent overlap"),
+            ("rag:evaluation", "evaluate retrieval with recall and nDCG"),
+        ),
+        (
+            "Why does adding a cross-encoder reranker improve a RAG pipeline?",
+            "RAG",
+            ("rag:reranking", "a cross-encoder puts the best candidate first"),
+            ("rag:evaluation", "evaluate retrieval with recall and nDCG"),
+        ),
+        (
+            "Which London coffee house grew into a famous insurance market?",
+            "London",
+            ("coffee:lloyd", "Edward Lloyd's coffee house became Lloyd's of London"),
+            ("coffee:stock-exchange", "London stock dealers met at Jonathan's and Garraway's"),
+        ),
+    ],
+)
+def test_hybrid_search_preserves_unfiltered_candidates_with_entity_supplement(
+    monkeypatch, question, entity, answer_chunk, entity_chunk
+):
     store = MagicMock()
-    # First (filtered) call returns nothing, second (unfiltered) returns a hit.
+    # The entity match is real but incomplete. The answer chunk is only in the unfiltered pool
+    # because ingestion did not tag it with the query entity.
     store.similarity_search_with_score.side_effect = [
-        [],
-        [(_Doc("fallback hit", {"filename": "b.txt"}), 0.8)],
+        [
+            (_Doc(answer_chunk[1], {"chunk_id": answer_chunk[0]}), 0.9),
+            (_Doc("unrelated broad match", {"chunk_id": "other:0"}), 0.8),
+        ],
+        [
+            (_Doc(answer_chunk[1], {"chunk_id": answer_chunk[0]}), 0.9),
+            (_Doc(entity_chunk[1], {"chunk_id": entity_chunk[0]}), 0.7),
+        ],
     ]
     monkeypatch.setattr(search, "get_vector_store", lambda: store)
-    monkeypatch.setattr(search, "extract_entities", lambda q: ["Acme"])
-    monkeypatch.setattr(search, "rerank", lambda q, docs, k: docs[:k])
+    monkeypatch.setattr(search, "extract_entities", lambda q: [entity])
+    monkeypatch.setattr(
+        search,
+        "get_settings",
+        lambda: SimpleNamespace(RERANK_ENABLED=True, RERANK_MULTIPLIER=4, RERANK_FETCH_CAP=100),
+    )
+    captured = {}
 
-    out = search.hybrid_search("q", top_k=5)
+    def fake_rerank(question, docs, top_k):
+        captured["chunk_ids"] = [doc["chunk_id"] for doc in docs]
+        return docs[:top_k]
+
+    monkeypatch.setattr(search, "rerank", fake_rerank)
+
+    out = search.hybrid_search(question, top_k=2)
 
     assert store.similarity_search_with_score.call_count == 2
-    assert len(out) == 1
-    # The fallback re-query drops the filter.
-    assert store.similarity_search_with_score.call_args.kwargs.get("filter") is None
+    assert store.similarity_search_with_score.call_args_list[0].kwargs == {"k": 8}
+    assert store.similarity_search_with_score.call_args_list[1].kwargs["k"] == 2
+    entity_call = store.similarity_search_with_score.call_args_list[1]
+    assert entity_call.kwargs["filter"] == search._entity_filter([entity])
+    assert captured["chunk_ids"] == [answer_chunk[0], "other:0", entity_chunk[0]]
+    assert out[0]["chunk_id"] == answer_chunk[0]
 
 
 def test_hybrid_search_overfetches_pool_and_truncates_to_top_k(monkeypatch):
