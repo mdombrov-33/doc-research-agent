@@ -9,7 +9,7 @@ from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
 from src.core import guardrails
-from src.core.citations import citations_referenced_by_answer
+from src.core.citations import CitationMarkerRedactor, citations_referenced_by_answer
 from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 from src.utils.logger import logger
 
@@ -71,6 +71,7 @@ async def _token_generator(
     }
 
     accumulated: list[str] = []
+    citation_redactor = CitationMarkerRedactor()
     sources_count = 0
     sources_meta: list[dict] = []
     web_search_triggered = False
@@ -89,8 +90,10 @@ async def _token_generator(
             ):
                 token = event["data"]["chunk"].content
                 if token:
-                    accumulated.append(token)
-                    yield f"data: {json.dumps({'token': token})}\n\n"
+                    visible_token = citation_redactor.push(token)
+                    if visible_token:
+                        accumulated.append(visible_token)
+                        yield f"data: {json.dumps({'token': visible_token})}\n\n"
 
             elif kind == "on_chain_end" and event.get("name") == "LangGraph":
                 output = event.get("data", {}).get("output", {})
@@ -109,6 +112,10 @@ async def _token_generator(
         return
 
     latency_ms = time.monotonic() * 1000 - start_ms
+    visible_tail = citation_redactor.flush()
+    if visible_tail:
+        accumulated.append(visible_tail)
+        yield f"data: {json.dumps({'token': visible_tail})}\n\n"
     tracker.record(
         QueryMetrics(
             question=request.question,

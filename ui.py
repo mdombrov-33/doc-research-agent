@@ -1,5 +1,6 @@
 import json
 import uuid
+from typing import TypedDict
 
 import requests
 import streamlit as st
@@ -7,6 +8,12 @@ import streamlit as st
 from src.config import SUPPORTED_MODELS, get_settings
 
 settings = get_settings()
+
+
+class DocumentCitationGroup(TypedDict):
+    pages: list[int]
+    cited_count: int
+
 
 def init_session_state():
     if "messages" not in st.session_state:
@@ -77,6 +84,47 @@ def render_monitoring_stats():
     st.divider()
 
 
+def render_cited_evidence(sources: list[dict]) -> None:
+    """Render compact, navigable evidence details without repeating chunk excerpts."""
+    documents: dict[tuple[str, str], DocumentCitationGroup] = {}
+    web_sources: list[dict] = []
+
+    for source in sources:
+        if source.get("source_type") == "web":
+            web_sources.append(source)
+            continue
+
+        title = source.get("title", "Unknown document")
+        document_id = source.get("document_id", title)
+        key = (title, document_id)
+        page = source.get("page")
+        document = documents.setdefault(key, {"pages": [], "cited_count": 0})
+        document["cited_count"] += 1
+        if (
+            isinstance(page, int)
+            and not isinstance(page, bool)
+            and page not in document["pages"]
+        ):
+            document["pages"].append(page)
+
+    if documents:
+        st.caption("Documents")
+        for (title, _), document in documents.items():
+            cited_count = document["cited_count"]
+            passage_label = "passage" if cited_count == 1 else "passages"
+            page_label = ""
+            pages = document["pages"]
+            if pages:
+                page_prefix = "page" if len(pages) == 1 else "pages"
+                page_label = f" · {page_prefix} {', '.join(map(str, pages))}"
+            st.caption(f"📄 {title} · {cited_count} cited {passage_label}{page_label}")
+
+    if web_sources:
+        st.caption("Web")
+        for source in web_sources:
+            st.markdown(f"- 🌐 [{source['title']}]({source['url']})")
+
+
 def main():
     st.set_page_config(page_title="Document Agent", layout="wide")
 
@@ -138,13 +186,7 @@ def main():
             sources_meta = meta.get("sources", [])
             if sources_meta:
                 with st.expander(f"Cited evidence ({sources})"):
-                    for s in sources_meta:
-                        if s["source_type"] == "web":
-                            st.markdown(f"🌐 [{s['title']}]({s['url']})")
-                        else:
-                            location = f" · page {s['page']}" if s.get("page") else ""
-                            st.caption(f"📄 {s['title']}{location}")
-                        st.caption(s["excerpt"])
+                    render_cited_evidence(sources_meta)
 
         st.session_state.messages.append(
             {"role": "assistant", "content": answer, "sources": sources}

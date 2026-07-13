@@ -2,10 +2,12 @@ import pytest
 from pydantic import ValidationError
 
 from src.core.citations import (
+    CitationMarkerRedactor,
     SourceCitation,
     citation_from_artifact,
     citations_from_artifacts,
     citations_referenced_by_answer,
+    strip_source_ids,
 )
 
 
@@ -110,6 +112,30 @@ def test_citations_referenced_by_answer_ignores_unreferenced_and_unknown_evidenc
     citations = citations_referenced_by_answer(artifacts, answer)
 
     assert [citation.source_id for citation in citations] == ["web:https://example.com/release"]
+
+
+def test_strip_source_ids_removes_internal_markers_without_punctuation_gaps():
+    answer = (
+        "The rollout is complete [document:doc-report:2]. "
+        "Read more [web:https://example.com/announcement]."
+    )
+
+    assert strip_source_ids(answer) == "The rollout is complete. Read more."
+
+
+def test_citation_marker_redactor_handles_markers_split_across_model_chunks():
+    redactor = CitationMarkerRedactor()
+
+    visible = "".join(
+        [
+            redactor.push("The rollout is complete [doc"),
+            redactor.push("ument:doc-report:2]"),
+            redactor.push(". [Not a citation]"),
+            redactor.flush(),
+        ]
+    )
+
+    assert visible == "The rollout is complete. [Not a citation]"
 
 
 def test_source_citation_rejects_source_type_specific_fields():

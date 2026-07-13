@@ -9,6 +9,9 @@ SourceType = Literal["document", "web"]
 
 MAX_CITATION_EXCERPT_CHARS = 280
 _SOURCE_ID_MARKER = re.compile(r"\[(?P<source_id>(?:document|web):[^\]\s]+)\]")
+_SOURCE_ID_WITH_LEADING_SPACE_MARKER = re.compile(
+    r"[ \t]*\[(?:document|web):[^\]\s]+\]"
+)
 
 
 class SourceCitation(BaseModel):
@@ -74,6 +77,59 @@ def citations_referenced_by_answer(
 def source_ids_from_answer(answer: str) -> list[str]:
     """Extract square-bracket source IDs in their first-mentioned order."""
     return [match.group("source_id") for match in _SOURCE_ID_MARKER.finditer(answer)]
+
+
+def strip_source_ids(answer: str) -> str:
+    """Remove internal source-ID markers before an answer is displayed to a user."""
+    return _SOURCE_ID_WITH_LEADING_SPACE_MARKER.sub("", answer)
+
+
+class CitationMarkerRedactor:
+    """Hide source-ID markers while preserving ordinary streaming text.
+
+    Model tokens may split a marker across arbitrary chunks. Horizontal whitespace before a
+    possible marker remains buffered so a hidden marker does not leave a space before
+    punctuation in the displayed answer.
+    """
+
+    def __init__(self) -> None:
+        self._pending = ""
+
+    def push(self, chunk: str) -> str:
+        """Return the visible portion of a streamed model chunk."""
+        self._pending += chunk
+        visible: list[str] = []
+
+        while self._pending:
+            marker_start = self._pending.find("[")
+            if marker_start == -1:
+                visible_text = self._pending.rstrip(" \t")
+                visible.append(visible_text)
+                self._pending = self._pending[len(visible_text) :]
+                break
+
+            marker_end = self._pending.find("]", marker_start + 1)
+            prefix = self._pending[:marker_start]
+            if marker_end == -1:
+                visible_prefix = prefix.rstrip(" \t")
+                visible.append(visible_prefix)
+                self._pending = self._pending[len(visible_prefix) :]
+                break
+
+            marker = self._pending[marker_start : marker_end + 1]
+            if _SOURCE_ID_MARKER.fullmatch(marker):
+                visible.append(prefix.rstrip(" \t"))
+            else:
+                visible.append(prefix + marker)
+            self._pending = self._pending[marker_end + 1 :]
+
+        return "".join(visible)
+
+    def flush(self) -> str:
+        """Return any buffered ordinary text once the model has finished streaming."""
+        visible = strip_source_ids(self._pending)
+        self._pending = ""
+        return visible
 
 
 def citation_from_artifact(artifact: Mapping[str, Any]) -> SourceCitation | None:

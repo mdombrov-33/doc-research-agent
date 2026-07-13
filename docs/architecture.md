@@ -371,9 +371,11 @@ event kinds:
   `messages` for `ToolMessage`s that appeared after the last `HumanMessage` in this turn,
   collects their `.artifact` lists, and normalizes them through `SourceCitation`. It then parses
   square-bracket source IDs from the final `AIMessage` and emits only matching artifacts, in
-  answer-reference order. Unknown IDs, untraceable evidence, duplicate IDs, and retrieved but
-  unreferenced evidence are never shown as citations. It also flags `web_search_triggered` if
-  any artifact came from the `web_search` tool.
+  answer-reference order. It redacts those internal IDs from the streamed answer tokens, so
+  users see normal prose rather than implementation identifiers. Unknown IDs, untraceable
+  evidence, duplicate IDs, and retrieved but unreferenced evidence are never shown as
+  citations. It also flags `web_search_triggered` if any artifact came from the `web_search`
+  tool.
 
 `SourceCitation` is the public evidence contract:
 

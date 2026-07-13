@@ -17,8 +17,8 @@ one final message carries metadata (sources, session id, etc.).
 Plain chunked streaming works fine if all you're sending is text. But over the same connection
 we need to send different kinds of things:
 
-- Tokens (the answer text, one by one)
-- Typed source citations at the end (actual evidence excerpts plus document or web identity)
+- Tokens (the user-visible answer text, one by one)
+- Typed source citations at the end (document or web identity, plus an internal evidence excerpt)
 - Errors
 
 With raw chunked streaming the frontend gets a byte stream with no structure — it can't tell
@@ -126,9 +126,11 @@ Three kinds of messages the frontend can receive:
 
 Each `sources` item is a validated `SourceCitation`. Documents provide `document_id` and
 `chunk_id` (and optionally `page`); web sources provide a real `title` and HTTP(S) `url`.
-Both include a short `excerpt` copied from the evidence. The answer must reference a source ID
-in square brackets for it to appear here; the server drops invalid, unknown, duplicate, and
-retrieved-but-unreferenced citations, preserving the answer's first-reference order.
+Both include a short `excerpt` copied from the evidence for programmatic use. The model's raw
+answer must reference a source ID in square brackets for it to appear here; the stream removes
+those implementation markers before sending answer tokens to the UI. The server drops invalid,
+unknown, duplicate, and retrieved-but-unreferenced citations, preserving the raw answer's
+first-reference order.
 
 **Error:**
 
@@ -173,8 +175,9 @@ When the graph finishes, the `on_chain_end` event carries the final state, from 
 handler reads everything the monitoring tracker needs:
 
 - `sources_count` — validated evidence citations referenced by the final answer
-- `sources` — typed citations: `source_id`, `source_type`, title, evidence excerpt, and either
-  document identifiers or a web URL
+- `sources` — typed citations: `source_id`, `source_type`, title, an internal evidence excerpt,
+  and either document identifiers or a web URL. The Streamlit UI groups document citations by
+  file and page and does not repeat excerpts.
 - `web_search_used` — whether the agent used the web_search tool this query
 - `sources_retrieved_total` — total raw artifacts returned by retrieval and web search; it is
   intentionally distinct from `sources_count`
