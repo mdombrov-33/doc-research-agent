@@ -37,3 +37,19 @@ def test_vector_stores_use_operation_specific_timeouts(monkeypatch):
 
     assert client.call_args_list[0].kwargs["timeout"] == 11
     assert client.call_args_list[1].kwargs["timeout"] == 31
+
+
+def test_embeddings_use_configured_timeout_and_retry_limit(monkeypatch):
+    settings = Settings(
+        OPENAI_API_KEY="test-key",
+        EMBEDDING_TIMEOUT_SECONDS=31,
+        EMBEDDING_MAX_RETRIES=1,
+    )
+    embeddings = MagicMock()
+    monkeypatch.setattr(vectorstore, "get_settings", lambda: settings)
+    monkeypatch.setattr(vectorstore, "OpenAIEmbeddings", embeddings)
+
+    vectorstore.get_embeddings()
+
+    assert embeddings.call_args.kwargs["timeout"] == 31
+    assert embeddings.call_args.kwargs["max_retries"] == 1

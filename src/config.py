@@ -52,6 +52,8 @@ class Settings(BaseSettings):
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIMENSION: int = 1536
+    EMBEDDING_TIMEOUT_SECONDS: float = 30
+    EMBEDDING_MAX_RETRIES: int = 2
 
     # Cross-encoder reranking. Hybrid search pulls a wide candidate pool, then a cross-encoder
     # reorders it and we keep the user's top_k. Pool = top_k * MULTIPLIER, capped at FETCH_CAP.

@@ -94,6 +94,8 @@ list. Keys:
 - `OPENAI_API_KEY` — embeddings (`text-embedding-3-small`) only
 - `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer)
 - `LLM_TIMEOUT_SECONDS` — maximum duration of one chat-model request (default `60`)
+- `EMBEDDING_TIMEOUT_SECONDS` — maximum duration of one OpenAI embedding request (default `30`);
+  transient OpenAI rate-limit/server failures retry up to `EMBEDDING_MAX_RETRIES` (default `2`)
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`);
   Compose sets this to `local` for its Qdrant service.
 - `QDRANT_QUERY_TIMEOUT_SECONDS` — maximum duration of one retrieval request (default `10`);

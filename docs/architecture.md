@@ -29,7 +29,8 @@ Conversations are multi-turn; history is persisted per session (§12).
 - **OpenRouter** — every chat/LLM call (the agent's reasoning and answer, and the eval
   judges). The UI can select from the supported model list. See `src/core/llm.py`.
 - **OpenAI (direct)** — embeddings only (`text-embedding-3-small`), for ingestion and
-  retrieval. See `src/core/vectorstore.py`.
+  retrieval. Each request has a configurable 30-second default deadline and bounded SDK retries
+  for transient rate-limit/server failures. See `src/core/vectorstore.py`.
 
 Safety screening uses **neither** provider: it runs **local** HuggingFace models via
 `llm-guard` (§11).
@@ -604,6 +605,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 | Failure | Handling | Where |
 |---|---|---|
 | Chat-model timeout or transient API error | `ChatOpenAI(timeout=LLM_TIMEOUT_SECONDS, max_retries=LLM_MAX_RETRIES)`; 60 s default | `llm.py` |
+| OpenAI embedding timeout or transient API error | `OpenAIEmbeddings(timeout=EMBEDDING_TIMEOUT_SECONDS, max_retries=EMBEDDING_MAX_RETRIES)`; 30 s and two retries by default. Retrieval follows the fixed-error/web-fallback path; uploads return the existing stable processing error. | `vectorstore.py`, `graph.py`, `handlers/upload.py` |
 | Qdrant retrieval timeout / transient failure | `get_retrieval_vector_store()` uses `QDRANT_QUERY_TIMEOUT_SECONDS`; 10 s default; `hybrid_search` retries once with jitter, then emits a fixed tool error and follows the normal one-shot web fallback | `vectorstore.py`, `search.py`, `graph.py` |
 | Qdrant collection/indexing timeout | `get_ingestion_qdrant_client()` and `get_ingestion_vector_store()` use `QDRANT_INGESTION_TIMEOUT_SECONDS`; 30 s default | `vectorstore.py` |
 | Web search outage | fail soft → empty docs, request continues | `web_search` tool |

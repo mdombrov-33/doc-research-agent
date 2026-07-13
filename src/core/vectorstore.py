@@ -62,6 +62,8 @@ def get_embeddings() -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
         api_key=SecretStr(api_key),
         model=settings.EMBEDDING_MODEL,
+        timeout=settings.EMBEDDING_TIMEOUT_SECONDS,
+        max_retries=settings.EMBEDDING_MAX_RETRIES,
     )
 
 
