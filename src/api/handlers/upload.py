@@ -13,6 +13,16 @@ from src.core.ingestion.pipeline import process_and_store
 from src.utils.logger import logger
 
 
+def _file_size_bucket(size_bytes: int) -> str:
+    if size_bytes <= 1024:
+        return "0-1KiB"
+    if size_bytes <= 1024 * 1024:
+        return "1KiB-1MiB"
+    if size_bytes <= 10 * 1024 * 1024:
+        return "1MiB-10MiB"
+    return "10MiB+"
+
+
 async def handle_upload(
     file: UploadFile,
     settings: Settings,
@@ -50,28 +60,34 @@ async def handle_upload(
                 f.write(content)
 
         result = await process_and_store(str(file_path), file.filename, vector_store, nlp, settings)
-        logger.info("upload_complete", **result)
+        logger.info(
+            "upload_complete",
+            document_id=result["document_id"],
+            file_extension=file_ext,
+            file_size_bucket=_file_size_bucket(bytes_written),
+            chunks_created=result["chunks_created"],
+        )
         return result
 
     except HTTPException:
         raise
     except EmptyDocumentError:
-        logger.info("upload_rejected", filename=file.filename)
+        logger.info("upload_rejected", file_extension=file_ext, reason="empty_document")
         raise HTTPException(
             status_code=400,
             detail="No text could be extracted from this document.",
         )
-    except DocumentLimitError as e:
-        logger.info("upload_rejected", filename=file.filename, reason=str(e))
+    except DocumentLimitError:
+        logger.info("upload_rejected", file_extension=file_ext, reason="processing_limit")
         raise HTTPException(status_code=413, detail="Document exceeds processing limits.")
-    except DocumentProcessingError as e:
-        logger.exception("upload_processing_failed", filename=file.filename, error=str(e))
+    except DocumentProcessingError as error:
+        logger.error("upload_processing_failed", failure_type=type(error).__name__)
         raise HTTPException(
             status_code=500,
             detail="Unable to process the document. Please try again.",
         )
-    except Exception as e:
-        logger.exception("upload_failed", filename=file.filename, error=str(e))
+    except Exception as error:
+        logger.error("upload_failed", failure_type=type(error).__name__)
         raise HTTPException(
             status_code=500,
             detail="Unable to process the document. Please try again.",

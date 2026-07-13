@@ -7,6 +7,33 @@ from src.core.agent import tools
 from src.core.agent.tools import _web_evidence, format_docs
 
 
+class _RecordingSpan:
+    def __init__(self) -> None:
+        self.attributes: dict[str, object] = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def set_attribute(self, name: str, value: object) -> None:
+        self.attributes[name] = value
+
+    def set_status(self, *args) -> None:
+        pass
+
+
+class _RecordingTracer:
+    def __init__(self) -> None:
+        self.spans: list[_RecordingSpan] = []
+
+    def start_as_current_span(self, _name: str) -> _RecordingSpan:
+        span = _RecordingSpan()
+        self.spans.append(span)
+        return span
+
+
 def _ddgs_client(*, text_result=None, text_error=None):
     client = MagicMock()
     client.__enter__.return_value = client
@@ -66,6 +93,32 @@ def test_format_docs_exposes_only_real_source_ids_to_the_model():
 
     assert "[Source ID: document:doc-1:0]" in formatted
     assert "[Source ID: web:https://example.com/release]" in formatted
+
+
+def test_tool_spans_keep_query_text_out_of_telemetry(monkeypatch):
+    tracer = _RecordingTracer()
+    monkeypatch.setattr(tools, "_tracer", tracer)
+    monkeypatch.setattr(tools, "hybrid_search", lambda _query, _top_k: [])
+    monkeypatch.setattr(
+        tools,
+        "get_settings",
+        lambda: Settings(WEB_SEARCH_TIMEOUT_SECONDS=11),
+    )
+    monkeypatch.setattr(
+        tools,
+        "_ddgs_text_results",
+        lambda _query, _timeout: [],
+    )
+
+    secret_query = "private rollout details for Acme"
+    tools.retrieve_documents.func(secret_query, {"configurable": {"top_k": 4}})
+    tools.search_web(secret_query)
+
+    assert tracer.spans[0].attributes == {"tool.top_k": 4, "tool.docs_returned": 0}
+    assert tracer.spans[1].attributes == {
+        "tool.timeout_seconds": 11,
+        "tool.results_returned": 0,
+    }
 
 
 def test_search_web_retries_a_transient_ddgs_timeout_once(monkeypatch):

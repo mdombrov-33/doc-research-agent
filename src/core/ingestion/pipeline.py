@@ -42,7 +42,7 @@ async def process_and_store(
     logger.info(
         "document_processed",
         document_id=document_id,
-        filename=filename,
+        file_extension=Path(filename).suffix.lower(),
         chunks=len(chunks),
     )
 

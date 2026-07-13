@@ -60,7 +60,9 @@ async def test_process_and_store_returns_metadata_and_stores(
     path = tmp_path / "doc.txt"
     body = "Lorem ipsum dolor sit amet. " * 200
     path.write_text(body, encoding="utf-8")
+    logger = MagicMock()
     monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value=body))
+    monkeypatch.setattr(pipeline, "logger", logger)
 
     result = await pipeline.process_and_store(str(path), "doc.txt", vector_store, nlp, Settings())
 
@@ -68,6 +70,11 @@ async def test_process_and_store_returns_metadata_and_stores(
     assert result["chunks_created"] > 0
     assert result["file_size"] == path.stat().st_size
     assert "document_id" in result
+    assert logger.info.call_args.kwargs == {
+        "document_id": result["document_id"],
+        "file_extension": ".txt",
+        "chunks": result["chunks_created"],
+    }
     vector_store.add_documents.assert_called_once()
     stored_documents = vector_store.add_documents.call_args.args[0]
     assert stored_documents[0].metadata["chunk_id"] == (

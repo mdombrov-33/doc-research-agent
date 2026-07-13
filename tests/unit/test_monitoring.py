@@ -17,7 +17,6 @@ def _make_eval(
     outcome: FinalOutcome = "document_answer",
 ) -> QueryMetrics:
     return QueryMetrics(
-        question="test question",
         sources_retrieved=sources_retrieved,
         web_search_triggered=web_search_triggered,
         latency_ms=latency_ms,

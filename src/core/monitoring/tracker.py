@@ -9,7 +9,6 @@ from src.core.monitoring.db import MetricsStore, PostgresMetricsDB, SqliteMetric
 
 @dataclass
 class QueryMetrics:
-    question: str
     sources_retrieved: int
     web_search_triggered: bool
     latency_ms: float

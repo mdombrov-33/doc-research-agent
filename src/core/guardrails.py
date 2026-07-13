@@ -35,12 +35,12 @@ async def check_input(question: str) -> str | None:
         loop = asyncio.get_running_loop()
         try:
             flagged = await loop.run_in_executor(None, _is_flagged, question)
-        except Exception as e:
-            span.set_status(trace.StatusCode.ERROR, str(e))
-            logger.error("guardrails_input_error", error=str(e))
+        except Exception as error:
+            span.set_status(trace.StatusCode.ERROR, "guardrails scan failed")
+            logger.error("guardrails_input_error", failure_type=type(error).__name__)
             return _BLOCK_INPUT
         span.set_attribute("guardrails.flagged", flagged)
         if flagged:
-            logger.info("guardrails_input_blocked", preview=question[:100])
+            logger.info("guardrails_input_blocked")
             return _BLOCK_INPUT
     return None

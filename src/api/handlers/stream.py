@@ -124,8 +124,8 @@ async def _token_generator(
                 outcome = normalize_outcome(output.get("outcome"))
                 stop_reason = normalize_stop_reason(output.get("stop_reason"))
 
-    except Exception as e:
-        logger.error("stream_failed", error=str(e), exc_info=True)
+    except Exception as error:
+        logger.error("stream_failed", failure_type=type(error).__name__)
         error_event = {
             "error": "Unable to complete the request. Please try again.",
             "done": True,
@@ -144,7 +144,6 @@ async def _token_generator(
         yield f"data: {json.dumps({'token': visible_tail})}\n\n"
     tracker.record(
         QueryMetrics(
-            question=request.question,
             sources_retrieved=sources_retrieved_total,
             web_search_triggered=web_search_triggered,
             latency_ms=latency_ms,

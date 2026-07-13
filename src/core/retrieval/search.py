@@ -107,10 +107,9 @@ def hybrid_search(question: str, top_k: int) -> list[dict]:
 
     logger.info(
         "retrieval_start",
-        question=question,
         top_k=top_k,
         fetch_k=fetch_k,
-        query_entities=query_entities or None,
+        query_entity_count=len(query_entities),
         entity_supplement_active=bool(entity_filter) and settings.RERANK_ENABLED,
     )
 
@@ -172,7 +171,7 @@ def hybrid_search(question: str, top_k: int) -> list[dict]:
             count=len(doc_items),
             fetch_k=fetch_k,
             blank_results=blank_results,
-            query_entities=query_entities or None,
+            query_entity_count=len(query_entities),
             entity_supplement_count=len(entity_results),
             **score_stats,
         )

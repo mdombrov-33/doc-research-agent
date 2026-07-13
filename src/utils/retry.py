@@ -15,5 +15,7 @@ def with_retry[T](call: Callable[[], T], *, attempts: int = 2) -> T:
         except Exception as exc:
             if attempt == attempts:
                 raise
-            logger.warning("structured_output_retry", attempt=attempt, error=str(exc))
+            logger.warning(
+                "structured_output_retry", attempt=attempt, failure_type=type(exc).__name__
+            )
     raise AssertionError("unreachable")

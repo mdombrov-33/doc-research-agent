@@ -74,7 +74,6 @@ def retrieve_documents(query: str, config: RunnableConfig) -> tuple[str, list[di
     focused search query (resolve vague follow-ups into standalone terms before calling)."""
     top_k = (config.get("configurable") or {}).get("top_k") or 10
     with _tracer.start_as_current_span("tool.retrieve_documents") as span:
-        span.set_attribute("tool.query", query)
         span.set_attribute("tool.top_k", top_k)
         docs = hybrid_search(query, top_k)
         span.set_attribute("tool.docs_returned", len(docs))
@@ -94,7 +93,7 @@ def search_web(query: str) -> tuple[str, list[dict]]:
     """Search the web and return model context plus independently citable artifacts."""
     timeout_seconds = get_settings().WEB_SEARCH_TIMEOUT_SECONDS
     with _tracer.start_as_current_span("tool.web_search") as span:
-        span.set_attribute("tool.query", query)
+        span.set_attribute("tool.timeout_seconds", timeout_seconds)
         for attempt in range(1, 3):
             try:
                 results = _ddgs_text_results(query, timeout_seconds)

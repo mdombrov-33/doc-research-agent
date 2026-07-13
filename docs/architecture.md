@@ -555,6 +555,14 @@ These are aggregate counters only: the tracker does not persist questions, answe
 evidence excerpts. `web_answer` describes the graph route, so its cited answer may still include
 document evidence retained from the first retrieval.
 
+OpenTelemetry spans and structured request logs complement those aggregates for debugging. The
+request middleware binds `x-request-id` for the lifetime of each HTTP request; async graph,
+retrieval, and provider logs inherit it. They record operational metadata only: route/outcome,
+counts, booleans, configured limits, and exception class. Raw questions, rewritten retrieval
+queries, extracted entities, answers, document chunks, web snippets, and exception messages are
+not attached to normal telemetry. Upload events similarly use a document's extension and
+size bucket instead of its filename.
+
 ---
 
 ## 15. Evaluation — offline quality gate
@@ -611,7 +619,8 @@ module for a short live smoke run; `make eval-graph` runs the full golden set.
 | `GET /ready` | readiness | — | `200 {status: "ready"}` when Qdrant collection is readable; otherwise `503 {status: "unavailable"}` |
 
 Schemas: `src/api/schemas.py`. Every request gets an `x-request-id` (header + bound into
-every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stream` and
+every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`); query-serving logs
+and spans use safe operational fields rather than request or evidence content. `/stream` and
 `/upload` are rate-limited per IP and may return **429** (§17).
 
 ---
@@ -627,7 +636,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 | Qdrant unavailable for readiness | one read-only collection check with the 10 s query deadline; return stable 503, never provider text | `vectorstore.py`, `main.py` |
 | Web-search timeout/rate limit | `DDGS(timeout=WEB_SEARCH_TIMEOUT_SECONDS)`; one short jittered retry, then fail soft → empty docs and the graph abstains | `agent/tools.py` |
 | Imperfect entity tags | add entity matches to, never restrict, the unfiltered hybrid pool | `search.py` |
-| Empty / unsupported upload | safe client message → 400/500; details logged; temp file always cleaned up | `handlers/upload.py` |
+| Empty / unsupported upload | safe client message → 400/500; safe failure class and extension/size bucket logged; temp file always cleaned up | `handlers/upload.py` |
 | Request floods / runaway cost | per-IP rate limit (slowapi) → 429 + `Retry-After` | `api/rate_limit.py` |
 
 ### Rate limiting

@@ -69,7 +69,7 @@ def evidence_assessment_node(
             )
         )
     except Exception as error:
-        logger.warning("evidence_assessment_failed", error=str(error))
+        logger.warning("evidence_assessment_failed", failure_type=type(error).__name__)
         return {"evidence_sufficient": False, "supporting_source_ids": []}
 
     supported = set(assessment.supporting_source_ids)

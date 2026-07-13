@@ -84,6 +84,39 @@ def test_hybrid_search_maps_results_and_skips_blank(monkeypatch):
     assert out[0]["source"] == "document"
 
 
+def test_hybrid_search_logs_counts_not_query_text(monkeypatch):
+    store = MagicMock()
+    store.similarity_search_with_score.return_value = []
+    logger = MagicMock()
+    monkeypatch.setattr(search, "get_retrieval_vector_store", lambda: store)
+    monkeypatch.setattr(search, "extract_entities", lambda _query: ["Acme"])
+    monkeypatch.setattr(
+        search,
+        "get_settings",
+        lambda: SimpleNamespace(RERANK_ENABLED=False, RERANK_MULTIPLIER=4, RERANK_FETCH_CAP=100),
+    )
+    monkeypatch.setattr(search, "logger", logger)
+
+    search.hybrid_search("private rollout details for Acme", top_k=5)
+
+    logged = [call.kwargs for call in logger.info.call_args_list]
+    assert logged == [
+        {
+            "top_k": 5,
+            "fetch_k": 5,
+            "query_entity_count": 1,
+            "entity_supplement_active": False,
+        },
+        {
+            "count": 0,
+            "fetch_k": 5,
+            "blank_results": 0,
+            "query_entity_count": 1,
+            "entity_supplement_count": 0,
+        },
+    ]
+
+
 @pytest.mark.parametrize(
     "transient_error",
     [

@@ -73,6 +73,7 @@ def _override_upload_deps(tmp_path, process_mock, monkeypatch):
 
 
 def test_upload_happy_path(client, monkeypatch, tmp_path):
+    logger = MagicMock()
     process_mock = AsyncMock(
         return_value={
             "document_id": "doc-1",
@@ -82,12 +83,19 @@ def test_upload_happy_path(client, monkeypatch, tmp_path):
         }
     )
     _override_upload_deps(tmp_path, process_mock, monkeypatch)
+    monkeypatch.setattr(upload_module, "logger", logger)
 
     resp = client.post("/api/upload", files={"file": ("note.txt", b"hello world", "text/plain")})
 
     assert resp.status_code == 200
     assert resp.json()["document_id"] == "doc-1"
     assert resp.json()["chunks_created"] == 3
+    assert logger.info.call_args.kwargs == {
+        "document_id": "doc-1",
+        "file_extension": ".txt",
+        "file_size_bucket": "0-1KiB",
+        "chunks_created": 3,
+    }
 
 
 def test_upload_cleans_up_temp_file(client, monkeypatch, tmp_path):
@@ -139,14 +147,17 @@ def test_upload_rejects_processing_limit(client, monkeypatch, tmp_path):
     [DocumentProcessingError("vector database password: leaked"), RuntimeError("api key: leaked")],
 )
 def test_upload_hides_processing_errors(client, monkeypatch, tmp_path, error):
+    logger = MagicMock()
     process_mock = AsyncMock(side_effect=error)
     _override_upload_deps(tmp_path, process_mock, monkeypatch)
+    monkeypatch.setattr(upload_module, "logger", logger)
 
     resp = client.post("/api/upload", files={"file": ("note.txt", b"hello", "text/plain")})
 
     assert resp.status_code == 500
     assert resp.json()["detail"] == "Unable to process the document. Please try again."
     assert "leaked" not in resp.text
+    assert logger.error.call_args.kwargs == {"failure_type": type(error).__name__}
 
 
 def test_monitoring_stats_empty(client):

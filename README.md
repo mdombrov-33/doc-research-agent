@@ -52,6 +52,9 @@ POST /api/stream
   persisted per session.
 - **Disconnects** — a browser that closes its stream stops later graph work; an in-flight async
   graph await receives server cancellation rather than continuing in the background.
+- **Operational telemetry** — request IDs correlate logs and traces using only safe metadata
+  (counts, booleans, route outcomes, and failure classes); it never records query, answer, or
+  evidence text.
 
 See [`docs/architecture.md`](docs/architecture.md) for the agent topology, the tools and state,
 the web-search fallback walkthrough, and memory.

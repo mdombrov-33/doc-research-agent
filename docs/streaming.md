@@ -188,4 +188,6 @@ handler reads everything the monitoring tracker needs:
 - `latency_ms` — full request duration
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see
-`docs/architecture.md` §14).
+`docs/architecture.md` §14). The tracker persists aggregate counters only; the accompanying
+request logs and OpenTelemetry spans use request IDs plus safe operational fields, never the
+question, answer, or retrieved evidence text.
