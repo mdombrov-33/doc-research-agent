@@ -201,6 +201,10 @@ resource "google_cloud_run_service" "app" {
           name  = "PYTHONUNBUFFERED"
           value = "1"
         }
+        env {
+          name  = "GIT_SHA"
+          value = var.git_sha
+        }
 
         ports {
           container_port = 8000
