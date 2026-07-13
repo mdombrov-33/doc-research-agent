@@ -1,4 +1,5 @@
 import uuid
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,6 +8,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from src.core.agent import nodes, tools
 from src.core.agent.graph import build_graph
+from src.core.agent.nodes import EvidenceAssessment
 
 
 @pytest.fixture
@@ -14,13 +16,24 @@ def graph():
     return build_graph(checkpointer=MemorySaver())
 
 
-def _patch_agent_llm(monkeypatch, script):
-    """Script the agent's tool-calling LLM: each invoke returns the next message."""
-    fake = MagicMock()
-    fake.invoke.side_effect = script
-    binder = MagicMock()
-    binder.bind_tools.return_value = fake
-    monkeypatch.setattr(nodes, "get_llm", lambda *a, **k: binder)
+def _patch_llms(monkeypatch, agent_script, assessments):
+    """Script query/synthesis and the independently structured evidence assessor."""
+    agent = MagicMock()
+    agent.bind_tools.return_value = agent
+    agent.invoke.side_effect = agent_script
+    classifier = MagicMock()
+    structured = MagicMock()
+    structured.invoke.side_effect = assessments
+    classifier.with_structured_output.return_value = structured
+
+    def get_llm(model=None, **_):
+        return classifier if model == "classifier" else agent
+
+    monkeypatch.setattr(nodes, "get_llm", get_llm)
+    monkeypatch.setattr(
+        nodes, "get_settings", lambda: SimpleNamespace(CLASSIFIER_MODEL="classifier")
+    )
+    return agent
 
 
 def _run(graph, question, model=None, top_k=None, thread_id=None):
@@ -40,37 +53,48 @@ def _retrieve_call(cid="c1"):
     )
 
 
-def _web_call(cid="c2"):
-    return AIMessage(
-        content="", tool_calls=[{"name": "web_search", "args": {"query": "q"}, "id": cid}]
-    )
-
-
 def test_graph_retrieves_then_answers(graph, monkeypatch):
-    _patch_agent_llm(monkeypatch, [_retrieve_call(), AIMessage(content="final answer")])
+    agent = _patch_llms(
+        monkeypatch,
+        [_retrieve_call(), AIMessage(content="final answer [document:a:0]")],
+        [EvidenceAssessment(sufficient=True, supporting_source_ids=["document:a:0"])],
+    )
     seen = {}
     monkeypatch.setattr(
         tools,
         "hybrid_search",
         lambda q, k: seen.update(top_k=k)
         or [
-            {"content": "one", "filename": "a.pdf", "source": "document"},
-            {"content": "two", "filename": "b.pdf", "source": "document"},
+            {
+                "content": "one",
+                "document_id": "a",
+                "filename": "a.pdf",
+                "source": "document",
+            },
+            {
+                "content": "two",
+                "document_id": "b",
+                "filename": "b.pdf",
+                "source": "document",
+            },
         ],
     )
 
     state = _run(graph, "q", top_k=11)
 
     assert seen["top_k"] == 11
-    assert state["messages"][-1].content == "final answer"
+    assert state["messages"][-1].content == "final answer [document:a:0]"
+    answer_input = agent.invoke.call_args_list[-1].args[0][-1].content
+    assert "one" in answer_input
+    assert "two" not in answer_input
 
 
 def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):
-    _patch_agent_llm(
+    _patch_llms(
         monkeypatch,
         [
             _retrieve_call("initial-retrieval"),
-            AIMessage(content="Rust is covered in Zero to Production in Rust."),
+            AIMessage(content="Rust is covered [document:rust:0]."),
             AIMessage(
                 content="",
                 tool_calls=[
@@ -83,7 +107,11 @@ def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):
                     }
                 ],
             ),
-            AIMessage(content="It covers sqlx and database integration."),
+            AIMessage(content="It covers sqlx [document:rust:0]."),
+        ],
+        [
+            EvidenceAssessment(sufficient=True, supporting_source_ids=["document:rust:0"]),
+            EvidenceAssessment(sufficient=True, supporting_source_ids=["document:rust:0"]),
         ],
     )
     queries = []
@@ -91,7 +119,14 @@ def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):
         tools,
         "hybrid_search",
         lambda query, top_k: queries.append(query)
-        or [{"content": "context", "filename": "rust.pdf", "source": "document"}],
+        or [
+            {
+                "content": "context",
+                "document_id": "rust",
+                "filename": "rust.pdf",
+                "source": "document",
+            }
+        ],
     )
     thread_id = str(uuid.uuid4())
 
@@ -106,25 +141,73 @@ def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):
         "What do we have about Rust?",
         "What about its database chapters?",
     ]
-    assert state["messages"][-1].content == "It covers sqlx and database integration."
+    assert state["messages"][-1].content == "It covers sqlx [document:rust:0]."
 
 
 def test_graph_falls_back_to_web_search(graph, monkeypatch):
-    _patch_agent_llm(
-        monkeypatch, [_retrieve_call(), _web_call(), AIMessage(content="final answer")]
+    _patch_llms(
+        monkeypatch,
+        [_retrieve_call(), AIMessage(content="final answer [web:https://example.com]")],
+        [
+            EvidenceAssessment(sufficient=False),
+            EvidenceAssessment(
+                sufficient=True, supporting_source_ids=["web:https://example.com"]
+            ),
+        ],
     )
     monkeypatch.setattr(
         tools,
         "hybrid_search",
-        lambda q, k: [{"content": "vec", "filename": "a.pdf", "source": "document"}],
+        lambda q, k: [
+            {
+                "content": "irrelevant vec",
+                "document_id": "a",
+                "filename": "a.pdf",
+                "source": "document",
+            }
+        ],
     )
-    web_tool = MagicMock()
-    web_tool.invoke.return_value = [
-        {"title": "Web result", "link": "https://example.com", "snippet": "web result"}
-    ]
-    monkeypatch.setattr(tools, "DuckDuckGoSearchResults", lambda **_: web_tool)
+    web_search = MagicMock(
+        return_value=(
+            "[Source ID: web:https://example.com]\n[Web: Web result]\nweb result",
+            [
+                {
+                    "content": "web result",
+                    "title": "Web result",
+                    "url": "https://example.com",
+                    "source": "web",
+                }
+            ],
+        )
+    )
+    monkeypatch.setattr(nodes, "search_web", web_search)
 
     state = _run(graph, "q")
 
-    web_tool.invoke.assert_called_once()
-    assert state["messages"][-1].content == "final answer"
+    web_search.assert_called_once_with("q")
+    assert state["messages"][-1].content == "final answer [web:https://example.com]"
+
+
+def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
+    _patch_llms(
+        monkeypatch,
+        [_retrieve_call()],
+        [EvidenceAssessment(sufficient=True, supporting_source_ids=["document:not-retrieved:0"])],
+    )
+    monkeypatch.setattr(
+        tools,
+        "hybrid_search",
+        lambda q, k: [
+            {
+                "content": "irrelevant vec",
+                "document_id": "a",
+                "filename": "a.pdf",
+                "source": "document",
+            }
+        ],
+    )
+    monkeypatch.setattr(nodes, "search_web", lambda _: ("No documents found.", []))
+
+    state = _run(graph, "q")
+
+    assert state["messages"][-1].content == nodes.NO_EVIDENCE_RESPONSE

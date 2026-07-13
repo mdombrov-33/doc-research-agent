@@ -56,10 +56,7 @@ async def _token_generator(
         yield f"data: {json.dumps({'token': refusal, 'done': True})}\n\n"
         return
 
-    inputs = {
-        "messages": [HumanMessage(content=request.question)],
-        "tool_call_count": None,
-    }
+    inputs = {"messages": [HumanMessage(content=request.question)]}
     # thread_id keys the persisted conversation; model/top_k are per-request knobs the agent
     # node and retrieve tool read back from config.
     config: RunnableConfig = {
@@ -82,11 +79,11 @@ async def _token_generator(
         async for event in agent.astream_events(inputs, config=config, version="v2"):
             kind = event["event"]
 
-            # The agent node both decides tools and writes the final answer. Tool-deciding
-            # turns carry no content, so only the answer turn yields tokens here.
+            # The query node only calls retrieval. The dedicated answer node is the sole
+            # source of user-visible model text.
             if (
                 kind == "on_chat_model_stream"
-                and event.get("metadata", {}).get("langgraph_node") == "agent"
+                and event.get("metadata", {}).get("langgraph_node") == "answer"
             ):
                 token = event["data"]["chunk"].content
                 if token:

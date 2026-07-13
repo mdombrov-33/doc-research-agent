@@ -125,7 +125,7 @@ async def test_stream_hides_internal_source_ids_from_answer_tokens(monkeypatch):
             for content in ["The rollout is complete [doc", "ument:doc-report:2]."]:
                 yield {
                     "event": "on_chat_model_stream",
-                    "metadata": {"langgraph_node": "agent"},
+                    "metadata": {"langgraph_node": "answer"},
                     "data": {"chunk": SimpleNamespace(content=content)},
                 }
 

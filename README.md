@@ -1,17 +1,17 @@
 # Document Research Agent
 
-An agentic RAG service. Upload documents, ask questions, get streamed answers grounded in your
-files — with the agent reaching for a live web search on its own when your documents don't
-cover the question.
+An evidence-controlled RAG service. Upload documents, ask questions, get streamed answers
+grounded in your files — with one live web-search fallback when the document evidence is not
+sufficient.
 
-Built on a **LangGraph** agent (a **ReAct** tool-calling loop), **hybrid retrieval** (dense +
-BM25), a **cross-encoder reranker**, persistent **conversation memory**, SSE token
+Built on a **LangGraph** evidence workflow, **hybrid retrieval** (dense + BM25), a
+**cross-encoder reranker**, persistent **conversation memory**, SSE token
 **streaming**, local **guardrails**, and per-IP **rate limiting**.
 
 **Frontend:** Streamlit · **Backend:** FastAPI on GCP Cloud Run · **Vector DB:** Qdrant
 
 > **Full reference:** [`docs/architecture.md`](docs/architecture.md) explains every part —
-> ingestion, retrieval, the agent (its tools, state, and the tool-call cap), the web-search
+> ingestion, retrieval, the evidence workflow, its state, the web-search
 > fallback, streaming, guardrails, memory, evaluation, and deployment. Start there to
 > understand how it works.
 
@@ -28,25 +28,25 @@ POST /api/stream
       │
    Guardrails (input: llm-guard Toxicity + PromptInjection, local)
       │
-   ┌─── LangGraph agent (ReAct loop) ───────────────────┐
-   │   agent ──► tools ──► post_tools ──┐                │
-   │     ▲                              │   loop until   │
-   │     └──────────────────────────────┘   cap or done  │
-   │     └──► END (answer)                               │
+   ┌─── LangGraph evidence workflow ────────────────────┐
+   │ query ─► retrieve ─► assess ─► answer               │
+   │                         └──► web ─► assess ─► answer│
+   │                                         └──► abstain│
    └─────────────────────────────────────────────────────┘
       │
    streamed answer tokens → SSE → client   +   telemetry recorded
 ```
 
-- **Agent** — a tool-calling LLM decides each step: search the documents, search the web, or
-  write the answer. Its trajectory isn't fixed — it's chosen per question.
+- **Query** — a tool-calling LLM turns the current conversation into one standalone document
+  query; it cannot answer or call the web.
 - **Tools** — `retrieve_documents` runs hybrid dense + BM25 search in Qdrant (fused with RRF),
   then a cross-encoder reranks a wide candidate pool down to your `top_k`; `web_search` hits
   the live web.
-- **Post-tools** — increments a per-turn tool-call counter; at the hard cap (3 calls) it
-  injects a stop message that forces the agent to write its final answer immediately.
-- **Answer** — once the agent has enough context (or hits the cap) it writes the answer and
-  streams it over SSE. Internal source IDs are removed before the answer reaches the user;
+- **Evidence assessment** — a structured classifier validates whether the returned sources are
+  sufficient. Insufficient document evidence gets one web fallback; still-insufficient evidence
+  produces an honest abstention.
+- **Answer** — only after sufficient evidence is found does the answer model write and stream
+  the response. Internal source IDs are removed before the answer reaches the user;
   the final event includes only the validated citations those IDs selected, with document
   locations or web titles and URLs; conversation history is persisted per session.
 
@@ -116,7 +116,7 @@ push to main.
 
 ## Tech stack
 
-**LangGraph** (ReAct agent + SQLite/Postgres checkpointer) · **LangChain** · **Qdrant** (hybrid dense +
+**LangGraph** (evidence workflow + SQLite/Postgres checkpointer) · **LangChain** · **Qdrant** (hybrid dense +
 BM25) · **FastEmbed** (BM25 sparse + cross-encoder reranker) · **llm-guard** (local input
 guardrails) · **FastAPI** · **slowapi** (rate limiting) · **OpenAI** (embeddings) ·
 **OpenRouter** (LLMs) · **PyMuPDF** · **spaCy** · **Streamlit** · **Docker** · **Terraform**

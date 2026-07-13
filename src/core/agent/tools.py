@@ -53,6 +53,11 @@ def web_search(query: str) -> tuple[str, list[dict]]:
     """Search the live web for current or external information not in the user's documents.
 
     Use only when the documents lack the answer or the question needs up-to-date facts."""
+    return search_web(query)
+
+
+def search_web(query: str) -> tuple[str, list[dict]]:
+    """Search the web and return model context plus independently citable artifacts."""
     with _tracer.start_as_current_span("tool.web_search") as span:
         span.set_attribute("tool.query", query)
         try:
@@ -96,6 +101,3 @@ def _web_evidence(results: Any) -> list[dict]:
         if citation_from_artifact(evidence) is not None:
             documents.append(evidence)
     return documents
-
-
-TOOLS = [retrieve_documents, web_search]

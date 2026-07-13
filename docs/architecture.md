@@ -10,22 +10,20 @@ File paths are given throughout so you can jump from a concept to the code.
 
 ## 1. What it is
 
-An **agentic RAG** service. You upload documents; you ask questions. For each question the
-agent:
+An **evidence-controlled RAG** service. You upload documents; you ask questions. For each
+question the workflow:
 
 1. screens the input for safety,
-2. **decides for itself** which tool to use — search your documents, or search the live web,
+2. turns the current conversation into a standalone document-retrieval query,
 3. retrieves candidate chunks with **hybrid search**, then re-orders them with a
    **cross-encoder reranker**,
-4. loops — reason, act, observe — until it has enough context, then **writes the answer**,
-   streaming it token by token,
-5. records telemetry.
+4. structurally assesses whether the evidence is sufficient; it uses one web fallback only when
+   document evidence is insufficient,
+5. writes a cited answer only after evidence passes, otherwise abstains, and records telemetry.
 
-It is "agentic" because the path through the graph is **not fixed**: a tool-calling LLM picks
-its own trajectory. A question answerable from your files retrieves once and answers. A
-question the files don't cover retrieves, finds nothing useful, and **falls back to web
-search** on its own. This is the **ReAct** loop (reason → act → observe). Conversations are
-multi-turn; history is persisted per session (§12).
+The graph is deliberately **bounded**: document retrieval happens once, live web search can
+happen at most once, and answer generation receives only evidence that the classifier accepted.
+Conversations are multi-turn; history is persisted per session (§12).
 
 **Two LLM providers, by role:**
 - **OpenRouter** — every chat/LLM call (the agent's reasoning and answer, and the eval
@@ -47,15 +45,16 @@ POST /api/stream  (QueryRequest: question, session_id?, model?, top_k?)
 Guardrails — INPUT check        llm-guard Toxicity scanner, local
       │  (flagged → refusal, the graph never runs)
       ▼
-┌──────────────────── LangGraph agent (ReAct loop) ────────────────────┐
+┌────────────────── LangGraph evidence workflow ───────────────────────┐
 │                                                                        │
-│        agent ──tools_condition──► tools ──► post_tools ──┐            │
-│          ▲                                                │            │
-│          └───────────────────────────────────────────────┘            │
-│          │   loop until no tool calls or hard cap reached              │
-│          └─tools_condition─► END  (the agent wrote an answer)         │
+│ query agent ─► document retrieval ─► assess evidence ─► answer        │
+│                                           │                              │
+│                                           └── insufficient ─► web       │
+│                                                                   │      │
+│                                                       assess ─► answer  │
+│                                                           └──► abstain   │
 └────────────────────────────────────────────────────────────────────────┘
-      │  the agent's final-answer tokens stream out as they are produced (SSE)
+      │  answer-node tokens stream out as they are produced (SSE)
       ▼
 MetricsTracker.record(...)      latency, docs retrieved, web-search rate
       │
@@ -196,33 +195,45 @@ directly from the offline eval (§15) — the retrieval layer is the same in bot
 state; `src/core/agent/nodes.py` holds the agent node; `src/core/agent/tools.py` holds the
 tools.
 
-### 6.1 The shape: ReAct loop
+### 6.1 The shape: controlled evidence workflow
 
-A tool-calling LLM (the `agent` node) drives the loop. It either **calls a tool** or **writes
-the final answer**. `tools_condition` (a LangGraph prebuilt) reads the agent's last message:
-if it contains tool calls, route to `tools`; otherwise the agent answered, so route to `END`.
+A tool-calling LLM (`agent`) forms a history-aware standalone query, and can call only
+`retrieve_documents`. The rest of the path is graph-controlled: an evidence classifier returns
+a structured verdict, then the graph either synthesizes an answer, runs one web fallback, or
+abstains.
 
 ```
                      START
                        │
                        ▼
-              ┌──────► agent ──────────────────────┐   (ReAct brain: pick a tool, or answer)
-              │          │                         │
-              │    tools_condition                 │ no tool calls
-              │          │ tool calls              ▼
-              │          ▼                        END
-              │        tools   (ToolNode runs retrieve_documents / web_search)
-              │          │
-              │      post_tools   (increment counter; inject stop if cap reached)
-              └──────────┘
+                   agent (query only)
+                       │
+                       ▼
+            tools (retrieve_documents)
+                       │
+                       ▼
+              assess_evidence
+                 │          │
+            sufficient   insufficient
+                 │          ▼
+                 │     web_fallback
+                 │          │
+                 │          ▼
+                 │   assess_evidence
+                 ▼       │       │
+              answer  sufficient  insufficient
+                 │       │          │
+                 └───────┘       abstain
+                    │               │
+                    └──────► END ◄─┘
 ```
 
 Edges (`graph.py`):
 - entry: `agent`
-- `agent` → **conditional** via `tools_condition`: `tools` if the agent emitted tool calls,
-  else `END`.
-- `tools` → `post_tools` → `agent` (post_tools sits between every tool execution and the
-  next reasoning step)
+- `agent` → `tools` only when it requested document retrieval; a non-tool response abstains.
+- `tools` → `assess_evidence`.
+- sufficient evidence → `answer`; insufficient document evidence → `web_fallback` →
+  `assess_evidence`; still-insufficient evidence → `abstain`.
 
 Each custom node is wrapped by `timed(...)` (`src/utils/node_timer.py`), which logs a
 `node_complete` event with `duration_ms`. (`tools` is the prebuilt `ToolNode`, not wrapped.)
@@ -238,20 +249,21 @@ multi-turn (§12).
 ```python
 class AgentState(TypedDict, total=False):
     messages: Required[Annotated[list[AnyMessage], add_messages]]
-    tool_call_count: Annotated[int, _add_or_reset_int]
+    evidence_sufficient: bool
+    supporting_source_ids: list[str]
 ```
 
-- **`messages`** — the conversation **and** the ReAct scratchpad in one list. The
+- **`messages`** — the conversation and workflow scratchpad in one list. The
   `add_messages` reducer appends each turn (human question, agent tool-call, tool result,
   agent answer…). The checkpointer persists this per `thread_id`, so it doubles as the
   multi-turn history — there is no separate `chat_history` field. `Required[...]` marks it as
   always-present inside the otherwise-optional `TypedDict`.
 
-- **`tool_call_count`** — how many tool calls have been made in the **current question's
-  turn**. The custom `_add_or_reset_int` reducer increments when `post_tools_node` returns
-  `{"tool_call_count": 1}`, and resets to `0` when the stream handler passes
-  `{"tool_call_count": None}` as the input for a new question. This is what the hard tool-call
-  cap (§7) reads.
+- **`evidence_sufficient`** — the latest validated assessment verdict. It is not user input;
+  `assess_evidence` rewrites it after document retrieval and, when needed, after web fallback.
+
+- **`supporting_source_ids`** — the selected, validated source IDs for a sufficient verdict.
+  `answer_node` rebuilds its context from only these artifacts.
 
 > **Per-request knobs are not in state.** `model` and `top_k` ride in the `RunnableConfig`'s
 > `configurable` dict, not in `AgentState`. The agent node reads `model`; the
@@ -274,46 +286,36 @@ against these artifacts (§10).
 | `web_search(query)` | DuckDuckGo live web search | Returns up to five structured title/link/snippet results, each independently citable. **Fails soft**: on any error it logs `web_search_tool_failed` and returns `("Web search failed.", [])`, so a search outage never breaks the request. |
 
 `format_docs` renders docs for the model as `[Source ID: ...]`, followed by `[Document:
-<filename>]` or `[Web: <title>]`. `TOOLS = [retrieve_documents, web_search]` is the list bound
-to the agent and wrapped by `ToolNode`.
+<filename>]` or `[Web: <title>]`. Only `retrieve_documents` is bound to the query agent and
+wrapped by `ToolNode`; `web_fallback` calls the same `search_web` implementation directly.
 
 ---
 
 ## 7. Node by node
 
-### Agent — `agent_node` (`nodes.py`)
-The ReAct brain. It binds the tools to the LLM (`get_llm(model).bind_tools(TOOLS)`), prepends
-the `AGENT_SYSTEM_PROMPT` to the running `messages`, and invokes once. The result is appended
-to `messages`. Two outcomes:
-- the response carries **tool calls** → `tools_condition` routes to `tools`;
-- the response is **plain content** → that *is* the answer; `tools_condition` routes to `END`,
-  and those tokens are what stream to the user (§10).
+### Query — `agent_node` (`nodes.py`)
+The query model binds only `retrieve_documents`, prepends `AGENT_SYSTEM_PROMPT`, and resolves a
+follow-up into a standalone query using persisted `messages`. It cannot write the final answer
+or call the web. A missing retrieval call is an abstention, not an unsupported answer.
 
 The model is per-request: a request may choose one of `SUPPORTED_MODELS` (`src/config.py`),
 otherwise `get_llm(config.configurable.model)` falls back to `LLM_MODEL`. The Streamlit
 selector reads that same list, and the API rejects all other request model IDs with a 422.
 Temperature is `get_llm`'s default of **0**.
 
-The system prompt (`prompts.py:AGENT_SYSTEM_PROMPT`) is what makes the loop behave: it tells
-the agent to (1) call `retrieve_documents` first for almost any question, resolving vague
-follow-ups like *"expand on that"* into standalone queries; (2) call `web_search` only when
-the documents are insufficient or the question needs current/external facts; (3) stop calling
-tools and answer once it has enough context, using only the retrieved context. This is
-prompt-directed query formation, not a separate query-analysis module: the agent sees the
-persisted `messages` and supplies the tool's `query` argument directly.
+This remains prompt-directed query formation, not a separate query-analysis module: the query
+model sees the persisted `messages` and supplies the tool's `query` argument directly.
 
-### Tools — `ToolNode(TOOLS)` (prebuilt)
-LangGraph's prebuilt `ToolNode` executes whatever tool calls the agent emitted (it can run
-more than one), injects the `RunnableConfig` into tools that ask for it, and appends one
-`ToolMessage` per call — content for the model to reason over, `artifact` for the stream
-handler to extract sources from.
+### Evidence assessment, answer, and fallback — `nodes.py`
+`evidence_assessment_node` sends the current question plus this turn's tool evidence to the
+small `CLASSIFIER_MODEL` as `EvidenceAssessment(sufficient, supporting_source_ids)`. A verdict
+is accepted only when it is sufficient, names at least one source ID, and every ID exists in the
+actual artifacts. Malformed evaluator output and evaluator failures fail closed.
 
-### Post-tools — `post_tools_node` (`nodes.py`)
-Sits between every tool execution and the next reasoning step. It increments `tool_call_count`
-and, once the count reaches `MAX_TOOL_CALLS` (3), injects a `HumanMessage` telling the agent
-to stop calling tools and write its final answer immediately. This is a **hard enforcement**
-mechanism — the system prompt does not need to carry advisory "at most N calls" limits, and the
-agent cannot ignore it because the stop message lands in the conversation as a user turn.
+`answer_node` receives the question and only the artifacts named by the validated verdict, then
+writes a cited answer without tools. `web_fallback_node` searches once using the query agent's
+standalone retrieval query. If neither evidence set passes, `abstain_node` emits a fixed honest
+response.
 
 ---
 
@@ -322,18 +324,15 @@ agent cannot ignore it because the stop message lands in the conversation as a u
 **Documents-only (the common case).**
 1. `agent` → calls `retrieve_documents` (query derived from the question).
 2. `tools` → hybrid search returns reranked chunks as a `ToolMessage` + artifact.
-3. `agent` → has what it needs, writes the answer. `tools_condition` → `END`.
+3. `assess_evidence` validates that the artifacts answer the question.
+4. `answer` writes a cited response and the graph ends.
 
 **Web-search fallback.**
 1. `agent` → calls `retrieve_documents`.
-2. `tools` → returns chunks; the agent sees the content and judges it insufficient.
-3. `agent` → **calls `web_search`** on its own.
-4. `tools` → web results appended.
-5. `agent` → answers from the web context.
-
-Nothing routes this — the **agent decides** based on what the retrieved content actually says.
-There is no classifier and no parallel branch; the trajectory emerges from the ReAct loop and
-the system prompt's instructions.
+2. `assess_evidence` marks the document artifacts insufficient.
+3. `web_fallback` searches with the standalone retrieval query and appends web artifacts.
+4. `assess_evidence` checks the combined evidence.
+5. `answer` writes a cited response if sufficient; otherwise `abstain` ends the graph.
 
 ---
 
@@ -366,9 +365,9 @@ is tuned for precision (sharpen the order).
 
 The handler drives the graph with `agent.astream_events(..., version="v2")` and filters two
 event kinds:
-- `on_chat_model_stream` **where `metadata.langgraph_node == "agent"`** → forwards the token.
-  The agent node both *decides tools* and *writes the answer*; tool-deciding turns carry no
-  content, so only the final answer yields tokens here.
+- `on_chat_model_stream` **where `metadata.langgraph_node == "answer"`** → forwards the token.
+  The query node only emits a retrieval call. The answer node runs only after evidence passes,
+  so no planning narration can reach the user.
 - `on_chain_end` with `name == "LangGraph"` → the final graph state. The handler scans
   `messages` for `ToolMessage`s that appeared after the last `HumanMessage` in this turn,
   collects their `.artifact` lists, and normalizes them through `SourceCitation`. It then parses
@@ -406,12 +405,6 @@ data: {"error": "...", "done": true}                                         # o
 ```
 Headers disable proxy buffering (`X-Accel-Buffering: no`, `Cache-Control: no-cache`). After
 the stream closes the handler records metrics (§14).
-
-> **Known edge — preamble tokens.** Because the agent node *can* emit content alongside a tool
-> call (e.g. *"Let me search the web for you!"* right before a `web_search` call), that
-> narration is on the `agent` node and therefore streams to the user ahead of the real answer.
-> It's harmless but mixes process-narration into the output. The system prompt can be tuned to
-> suppress it if undesired.
 
 ---
 
@@ -476,7 +469,8 @@ Model roles:
 
 | Role | Setting / value | Provider | Temp | Where |
 |---|---|---|---|---|
-| Agent (reason + answer) | `LLM_MODEL` (overridable from `SUPPORTED_MODELS`) | OpenRouter | 0 | `agent_node` |
+| Query + answer | `LLM_MODEL` (overridable from `SUPPORTED_MODELS`) | OpenRouter | 0 | `agent_node`, `answer_node` |
+| Evidence assessment | `CLASSIFIER_MODEL` | OpenRouter | 0 | `evidence_assessment_node` |
 | Embeddings | `EMBEDDING_MODEL` (`text-embedding-3-small`) | OpenAI | — | ingestion + retrieval |
 | Reranker | `RERANK_MODEL` (MiniLM cross-encoder) | local ONNX | — | `rerank` |
 | Guardrails | Toxicity | local (HF, via llm-guard) | — | `guardrails` |
@@ -488,7 +482,7 @@ Model roles:
   only needs the per-environment values (secrets, deployment URLs, toggles). Unset fields use
   their code default.
 - Genuine code-fixed invariants live next to their use (e.g. `SPARSE_VECTOR_NAME` in
-  `vectorstore.py`, `MAX_TOOL_CALLS` in `nodes.py`, the OpenRouter base URL in `llm.py`).
+  `vectorstore.py`, the abstention text in `nodes.py`, the OpenRouter base URL in `llm.py`).
 - Eval-only values (thresholds, `K`, `JUDGE_MODEL`, judge prompts) live in `evals/`, never in
   the app package.
 
@@ -607,11 +601,11 @@ shared `Limiter` decorates those two routes (`@limiter.limit(rate_limit)`), so
 src/
   api/            delivery layer: routes, handlers (stream/upload), middleware, DI, schemas, rate_limit
   core/
-    agent/        the LangGraph agent
-      graph.py    builds + compiles the graph (agent ⇄ tools ⇄ post_tools), owns the checkpointer
-      state.py    AgentState (messages + tool_call_count)
-      nodes.py    agent_node, post_tools_node (hard tool-call cap)
-      tools.py    retrieve_documents + web_search (@tool, content_and_artifact)
+    agent/        the LangGraph evidence workflow
+      graph.py    builds + compiles query → evidence assessment → answer/fallback, owns checkpointing
+      state.py    AgentState (messages + evidence verdict and source IDs)
+      nodes.py    query, assessment, answer, fallback, and abstention nodes
+      tools.py    retrieve_documents + reusable web search (content_and_artifact)
       prompts.py  agent system prompt + eval-only generation prompts
     retrieval/    hybrid search (search.py) + cross-encoder reranker (rerank.py)
     ingestion/    extract, chunk, enrich (spaCy), index, pipeline

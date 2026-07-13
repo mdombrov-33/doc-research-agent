@@ -43,9 +43,9 @@ POST /api/stream
       ↓
 Guardrails input check → flagged? send refusal and close stream
       ↓ (if safe)
-LangGraph agent starts running (agent ⇄ tools → post_tools loop)
+LangGraph workflow runs (query → retrieval → evidence assessment → answer)
       ↓
-on_chat_model_stream events from the "agent" node → each token → SSE line → client renders it
+on_chat_model_stream events from the "answer" node → each token → SSE line → client renders it
       ↓
 on_chain_end event → grab sources metadata from the final state
       ↓
@@ -65,7 +65,7 @@ generator, which is the key piece:
 async for event in agent.astream_events(inputs, config=config, version="v2"):
     if (
         event["event"] == "on_chat_model_stream"
-        and event.get("metadata", {}).get("langgraph_node") == "agent"
+        and event.get("metadata", {}).get("langgraph_node") == "answer"
     ):
         token = event["data"]["chunk"].content
         if token:
@@ -82,24 +82,17 @@ Each `yield` sends one SSE line to the client immediately. The format is always
 streaming. `astream_events` gives us low-level events including `on_chat_model_stream`, which
 fires for every single token the LLM produces.
 
-**Why filter on the `agent` node?**
+**Why filter on the `answer` node?**
 
-The **agent** node both decides tools and writes the answer. We filter on
-`langgraph_node == "agent"` so tool events never reach the client. In the normal case,
-tool-deciding agent turns carry no content, so the only tokens that stream are the final
-answer's.
-
-> **Known edge — preamble tokens.** The agent node *can* emit content alongside a tool call —
-> e.g. *"Let me search the web for you!"* immediately before a `web_search` call. That text is
-> on the `agent` node, so it streams to the user ahead of the real answer. It's harmless (the
-> final answer is still complete and correct), just a bit of process-narration leaking in. Tune
-> the system prompt if you want to suppress it.
+The query node only forms a standalone document-retrieval query; it never writes user-visible
+text. The dedicated **answer** node runs only after evidence assessment passes, so filtering on
+`langgraph_node == "answer"` guarantees that process narration cannot leak into the stream.
 
 **What events we actually care about:**
 
 | Event                                       | When it fires  | What we do with it                          |
 | ------------------------------------------- | -------------- | ------------------------------------------- |
-| `on_chat_model_stream` from `agent` node    | Every token    | Yield it to client, append to `accumulated` |
+| `on_chat_model_stream` from `answer` node   | Every token    | Yield it to client, append to `accumulated` |
 | `on_chain_end` from `LangGraph`             | Graph finishes | Pull sources metadata out of the final state |
 
 Everything else (tool events, graph lifecycle events, etc.) is ignored.

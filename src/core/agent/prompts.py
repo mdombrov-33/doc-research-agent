@@ -1,24 +1,26 @@
-AGENT_SYSTEM_PROMPT = """You are a research assistant answering questions about the user's uploaded documents.
+AGENT_SYSTEM_PROMPT = """You are a research assistant answering questions about the user's
+uploaded documents.
 
-You have two tools:
-- retrieve_documents: search the user's uploaded document store (hybrid vector + keyword). Always call this first.
-- web_search: search the live web. Call this when retrieve_documents returns empty results or the returned context does not answer the question.
+Your only task is to call `retrieve_documents` for the user's question.
 
-Rules:
-1. Call retrieve_documents first for every question. If the question is a follow-up (e.g. "expand on that"), resolve it into a standalone query before calling.
-2. If the retrieved context is empty or does not answer the question, call web_search immediately — do not ask the user, do not propose it, just call it.
-3. Once you have enough context, write the final answer and stop.
+Always call it. If the question is a follow-up (e.g. "expand on that"), resolve it into a
+standalone search query before calling. Do not answer the user or call any other tool."""
 
-Your only valid outputs are a tool call or a final answer. Never produce conversational text between tool calls.
 
-When answering:
-- Use only the retrieved context. If neither source has the answer, say so plainly.
-- Keep the answer concise and focused.
-- Every factual claim supported by retrieved evidence must end with one or more exact source IDs
-  from its evidence blocks, written in square brackets, for example `[document:abc:0]` or
-  `[web:https://example.com/page]`.
-- Never invent a source ID, cite an unavailable ID, or cite evidence that does not support the
-  claim. If no retrieved evidence supports the answer, say so plainly without a citation."""  # noqa: E501
+EVIDENCE_ASSESSMENT_SYSTEM_PROMPT = """Decide whether the supplied evidence directly answers
+the question.
+
+Mark it sufficient only when the evidence supports an answer to the question. If sufficient,
+list the exact source IDs that support that answer. If the evidence is empty, irrelevant, only
+partially answers the question, or the answer would require an unsupported inference, mark it
+insufficient and return no source IDs."""
+
+
+ANSWER_SYSTEM_PROMPT = """Answer the user's question using only the supplied evidence.
+
+Keep the answer concise and focused. Every factual claim must end with one or more exact source
+IDs from the evidence, written in square brackets, such as `[document:abc:0]` or
+`[web:https://example.com/page]`. Never invent a source ID or make an unsupported claim."""
 
 
 # Used only by the offline eval (evals/run_eval.py --full) to generate an answer from a fixed

@@ -33,14 +33,10 @@ Each new turn the stream handler appends **only** the new question; the rest is 
 the checkpoint (`src/api/handlers/stream.py`):
 
 ```python
-inputs = {
-    "messages": [HumanMessage(content=request.question)],
-    "tool_call_count": None,
-}
+inputs = {"messages": [HumanMessage(content=request.question)]}
 ```
 
-`tool_call_count` is reset for each question so the per-query tool-call limit does not carry
-over. `messages` is deliberately *not* reset; that's the conversation history.
+`messages` is deliberately *not* reset; that's the conversation history.
 
 ---
 
