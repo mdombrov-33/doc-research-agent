@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -7,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 SourceType = Literal["document", "web"]
 
 MAX_CITATION_EXCERPT_CHARS = 280
+_SOURCE_ID_MARKER = re.compile(r"\[(?P<source_id>(?:document|web):[^\]\s]+)\]")
 
 
 class SourceCitation(BaseModel):
@@ -50,6 +52,28 @@ def citations_from_artifacts(artifacts: Iterable[Mapping[str, Any]]) -> list[Sou
             seen_source_ids.add(citation.source_id)
             citations.append(citation)
     return citations
+
+
+def citations_referenced_by_answer(
+    artifacts: Iterable[Mapping[str, Any]], answer: str
+) -> list[SourceCitation]:
+    """Return only real evidence explicitly referenced by the final answer, in answer order."""
+    citations_by_id = {
+        citation.source_id: citation for citation in citations_from_artifacts(artifacts)
+    }
+    selected: list[SourceCitation] = []
+    seen_source_ids: set[str] = set()
+    for source_id in source_ids_from_answer(answer):
+        citation = citations_by_id.get(source_id)
+        if citation is not None and source_id not in seen_source_ids:
+            seen_source_ids.add(source_id)
+            selected.append(citation)
+    return selected
+
+
+def source_ids_from_answer(answer: str) -> list[str]:
+    """Extract square-bracket source IDs in their first-mentioned order."""
+    return [match.group("source_id") for match in _SOURCE_ID_MARKER.finditer(answer)]
 
 
 def citation_from_artifact(artifact: Mapping[str, Any]) -> SourceCitation | None:

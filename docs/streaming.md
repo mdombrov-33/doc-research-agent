@@ -126,8 +126,9 @@ Three kinds of messages the frontend can receive:
 
 Each `sources` item is a validated `SourceCitation`. Documents provide `document_id` and
 `chunk_id` (and optionally `page`); web sources provide a real `title` and HTTP(S) `url`.
-Both include a short `excerpt` copied from the evidence used by the model. The server removes
-invalid and duplicate citations before sending the event, preserving the first evidence order.
+Both include a short `excerpt` copied from the evidence. The answer must reference a source ID
+in square brackets for it to appear here; the server drops invalid, unknown, duplicate, and
+retrieved-but-unreferenced citations, preserving the answer's first-reference order.
 
 **Error:**
 
@@ -171,11 +172,12 @@ separately after the stream closes.
 When the graph finishes, the `on_chain_end` event carries the final state, from which the
 handler reads everything the monitoring tracker needs:
 
-- `sources_count` — sources returned by the agent's tool calls for this question
+- `sources_count` — validated evidence citations referenced by the final answer
 - `sources` — typed citations: `source_id`, `source_type`, title, evidence excerpt, and either
   document identifiers or a web URL
 - `web_search_used` — whether the agent used the web_search tool this query
-- `sources_retrieved_total` — total sources returned by retrieval and web search
+- `sources_retrieved_total` — total raw artifacts returned by retrieval and web search; it is
+  intentionally distinct from `sources_count`
 - `latency_ms` — full request duration
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see

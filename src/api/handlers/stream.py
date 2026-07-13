@@ -4,12 +4,12 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
 from src.core import guardrails
-from src.core.citations import citations_from_artifacts
+from src.core.citations import citations_referenced_by_answer
 from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 from src.utils.logger import logger
 
@@ -21,15 +21,23 @@ def _turn_sources(messages: list[Any]) -> tuple[list[dict], int, bool]:
     )
     artifacts: list[dict] = []
     web_search_triggered = False
-    for message in messages[last_human_idx + 1 :]:
+    turn_messages = messages[last_human_idx + 1 :]
+    for message in turn_messages:
         if not isinstance(message, ToolMessage) or not message.artifact:
             continue
         artifacts.extend(artifact for artifact in message.artifact if isinstance(artifact, dict))
         web_search_triggered |= message.name == "web_search"
 
-    citations = citations_from_artifacts(artifacts)
+    citations = citations_referenced_by_answer(artifacts, _final_answer(turn_messages))
     sources = [citation.model_dump(exclude_none=True) for citation in citations]
     return sources, len(artifacts), web_search_triggered
+
+
+def _final_answer(messages: list[Any]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, AIMessage) and not message.tool_calls:
+            return message.content if isinstance(message.content, str) else ""
+    return ""
 
 
 async def _token_generator(

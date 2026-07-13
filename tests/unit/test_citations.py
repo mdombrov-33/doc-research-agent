@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from src.core.citations import SourceCitation, citation_from_artifact, citations_from_artifacts
+from src.core.citations import (
+    SourceCitation,
+    citation_from_artifact,
+    citations_from_artifacts,
+    citations_referenced_by_answer,
+)
 
 
 def test_document_artifact_becomes_citation_with_short_evidence_excerpt():
@@ -78,6 +83,33 @@ def test_citations_deduplicate_by_source_id_and_preserve_evidence_order():
         "web:https://example.com/first",
         "document:doc-1:0",
     ]
+
+
+def test_citations_referenced_by_answer_ignores_unreferenced_and_unknown_evidence():
+    artifacts = [
+        {
+            "source": "document",
+            "document_id": "doc-1",
+            "chunk_index": 0,
+            "filename": "notes.txt",
+            "content": "Document result",
+        },
+        {
+            "source": "web",
+            "title": "Official source",
+            "url": "https://example.com/release",
+            "content": "Web result",
+        },
+    ]
+    answer = (
+        "The release is available now [web:https://example.com/release]. "
+        "Unknown evidence [document:not-real:9]. "
+        "The release remains available [web:https://example.com/release]."
+    )
+
+    citations = citations_referenced_by_answer(artifacts, answer)
+
+    assert [citation.source_id for citation in citations] == ["web:https://example.com/release"]
 
 
 def test_source_citation_rejects_source_type_specific_fields():

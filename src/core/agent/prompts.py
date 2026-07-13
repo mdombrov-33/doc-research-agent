@@ -14,7 +14,11 @@ Your only valid outputs are a tool call or a final answer. Never produce convers
 When answering:
 - Use only the retrieved context. If neither source has the answer, say so plainly.
 - Keep the answer concise and focused.
-- Reference filenames or note when information came from the web where relevant."""  # noqa: E501
+- Every factual claim supported by retrieved evidence must end with one or more exact source IDs
+  from its evidence blocks, written in square brackets, for example `[document:abc:0]` or
+  `[web:https://example.com/page]`.
+- Never invent a source ID, cite an unavailable ID, or cite evidence that does not support the
+  claim. If no retrieved evidence supports the answer, say so plainly without a citation."""  # noqa: E501
 
 
 # Used only by the offline eval (evals/run_eval.py --full) to generate an answer from a fixed

@@ -14,17 +14,19 @@ _tracer = trace.get_tracer(__name__)
 
 
 def format_docs(docs: list[dict]) -> str:
-    """Render docs for the model, labelling each by its source (file vs web)."""
+    """Render evidence for the model with the stable source IDs it may cite in its answer."""
     if not docs:
         return "No documents found."
     parts = []
     for doc in docs:
+        citation = citation_from_artifact(doc)
         label = (
             f"[Web: {doc.get('title', 'unknown')}]"
             if doc.get("source") == "web"
             else f"[Document: {doc.get('filename', 'unknown')}]"
         )
-        parts.append(f"{label}\n{doc['content']}")
+        source_id = f"[Source ID: {citation.source_id}]" if citation else "[Source ID: unavailable]"
+        parts.append(f"{source_id}\n{label}\n{doc['content']}")
     return "\n\n".join(parts)
 
 

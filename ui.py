@@ -124,7 +124,7 @@ def main():
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if "sources" in message:
-                st.caption(f"Sources: {message['sources']}")
+                st.caption(f"Citations: {message['sources']}")
 
     if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -137,7 +137,7 @@ def main():
             sources = meta.get("sources_count", 0)
             sources_meta = meta.get("sources", [])
             if sources_meta:
-                with st.expander(f"Sources ({sources})"):
+                with st.expander(f"Cited evidence ({sources})"):
                     for s in sources_meta:
                         if s["source_type"] == "web":
                             st.markdown(f"🌐 [{s['title']}]({s['url']})")

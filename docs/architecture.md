@@ -264,17 +264,18 @@ class AgentState(TypedDict, total=False):
 `@tool(response_format="content_and_artifact")`. That response format is the key trick: each
 tool returns a **`(string, list[dict])`** pair — the **string** becomes the `ToolMessage`
 content the model reads, and the **list of doc dicts** rides along as the `ToolMessage`'s
-**`artifact`**. The stream handler pulls the artifacts from `ToolMessage`s after the graph
-finishes to build source metadata (§10).
+**`artifact`**. `format_docs` includes each valid artifact's stable source ID in the model
+context. The stream handler later validates only source IDs referenced by the final answer
+against these artifacts (§10).
 
 | Tool | What it does | Notes |
 |---|---|---|
 | `retrieve_documents(query, config)` | hybrid search over the user's uploaded docs (§5) | `top_k` is read from the injected `config` (`configurable.top_k`), defaulting to `10`. `config` is injected by `ToolNode`; the model never sees it. |
 | `web_search(query)` | DuckDuckGo live web search | Returns up to five structured title/link/snippet results, each independently citable. **Fails soft**: on any error it logs `web_search_tool_failed` and returns `("Web search failed.", [])`, so a search outage never breaks the request. |
 
-`format_docs` renders docs for the model, labelling each `[Document: <filename>]` or
-`[Web: <title>]`. `TOOLS = [retrieve_documents, web_search]` is the list bound to the agent
-and wrapped by `ToolNode`.
+`format_docs` renders docs for the model as `[Source ID: ...]`, followed by `[Document:
+<filename>]` or `[Web: <title>]`. `TOOLS = [retrieve_documents, web_search]` is the list bound
+to the agent and wrapped by `ToolNode`.
 
 ---
 
@@ -368,9 +369,11 @@ event kinds:
   content, so only the final answer yields tokens here.
 - `on_chain_end` with `name == "LangGraph"` → the final graph state. The handler scans
   `messages` for `ToolMessage`s that appeared after the last `HumanMessage` in this turn,
-  collects their `.artifact` lists, normalizes them through `SourceCitation`, and flags
-  `web_search_triggered` if any came from the `web_search` tool. Invalid or untraceable
-  evidence is never shown as a citation; duplicate source IDs preserve first-seen order.
+  collects their `.artifact` lists, and normalizes them through `SourceCitation`. It then parses
+  square-bracket source IDs from the final `AIMessage` and emits only matching artifacts, in
+  answer-reference order. Unknown IDs, untraceable evidence, duplicate IDs, and retrieved but
+  unreferenced evidence are never shown as citations. It also flags `web_search_triggered` if
+  any artifact came from the `web_search` tool.
 
 `SourceCitation` is the public evidence contract:
 
@@ -386,6 +389,10 @@ event kinds:
   "excerpt": "short text actually supplied as evidence"
 }
 ```
+
+The serving prompt requires factual claims to cite these exact IDs, e.g.
+`[document:<chunk_id>]` or `[web:<url>]`. The backend is the authority: a marker is displayed
+only when it exactly identifies evidence from the same turn.
 
 Event shapes the client sees:
 ```

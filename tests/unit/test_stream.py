@@ -1,4 +1,4 @@
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from src.api.handlers.stream import _turn_sources
 
@@ -21,6 +21,12 @@ def test_turn_sources_preserves_document_and_web_evidence():
                 }
             ],
         ),
+        AIMessage(
+            content=(
+                "The announcement confirms it [web:https://example.com/announcement]. "
+                "The rollout is complete [document:doc-report:2]."
+            )
+        ),
         ToolMessage(
             content="web result",
             tool_call_id="web-1",
@@ -40,6 +46,13 @@ def test_turn_sources_preserves_document_and_web_evidence():
 
     assert sources == [
         {
+            "source_id": "web:https://example.com/announcement",
+            "source_type": "web",
+            "title": "Official announcement",
+            "url": "https://example.com/announcement",
+            "excerpt": "The official announcement confirms it.",
+        },
+        {
             "source_id": "document:doc-report:2",
             "source_type": "document",
             "title": "report.pdf",
@@ -47,13 +60,6 @@ def test_turn_sources_preserves_document_and_web_evidence():
             "chunk_id": "doc-report:2",
             "page": 3,
             "excerpt": "The document says the rollout is complete.",
-        },
-        {
-            "source_id": "web:https://example.com/announcement",
-            "source_type": "web",
-            "title": "Official announcement",
-            "url": "https://example.com/announcement",
-            "excerpt": "The official announcement confirms it.",
         },
     ]
     assert retrieved_total == 2
@@ -75,6 +81,9 @@ def test_turn_sources_deduplicates_repeated_artifacts():
             tool_call_id="retrieve-1",
             name="retrieve_documents",
             artifact=[artifact],
+        ),
+        AIMessage(
+            content="The evidence is repeated [document:doc-report:2] [document:doc-report:2]."
         ),
         ToolMessage(
             content="same document result",
