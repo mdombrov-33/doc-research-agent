@@ -176,6 +176,8 @@ handler reads everything the monitoring tracker needs:
   intentionally distinct from `sources_count`
 - `outcome` — `document_answer` when document evidence passed directly, `web_answer` when the
   one web fallback ran before an answer, or `abstained` when no evidence passed
+- `stop_reason` — the terminal cause: document or web evidence passed, evidence stayed
+  insufficient after web fallback, or the query model never requested retrieval
 - `latency_ms` — full request duration
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see

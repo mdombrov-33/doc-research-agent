@@ -48,7 +48,8 @@ POST /api/stream
 - **Answer** — only after sufficient evidence is found does the answer model write and stream
   the response. Internal source IDs are removed before the answer reaches the user;
   the final event includes only the validated citations those IDs selected, with document
-  locations or web titles and URLs; conversation history is persisted per session.
+  locations or web titles and URLs, plus a terminal stop reason; conversation history is
+  persisted per session.
 
 See [`docs/architecture.md`](docs/architecture.md) for the agent topology, the tools and state,
 the web-search fallback walkthrough, and memory.

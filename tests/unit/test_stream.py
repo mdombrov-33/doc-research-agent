@@ -159,6 +159,7 @@ async def test_stream_reports_graph_outcome_and_records_it(monkeypatch):
                     "output": {
                         "messages": [HumanMessage(content="What is the status?")],
                         "outcome": "abstained",
+                        "stop_reason": "insufficient_evidence_after_web",
                     }
                 },
             }
@@ -174,4 +175,5 @@ async def test_stream_reports_graph_outcome_and_records_it(monkeypatch):
 
     final = json.loads(events[-1].removeprefix("data: ").strip())
     assert final["outcome"] == "abstained"
+    assert final["stop_reason"] == "insufficient_evidence_after_web"
     assert tracker.get_stats()["abstention_rate"] == 1.0

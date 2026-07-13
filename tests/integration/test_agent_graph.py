@@ -93,6 +93,7 @@ def test_graph_retrieves_then_answers(graph, monkeypatch):
     assert seen["top_k"] == 11
     assert state["messages"][-1].content == "final answer [document:photosynthesis:0]"
     assert state["outcome"] == "document_answer"
+    assert state["stop_reason"] == "document_evidence_sufficient"
     answer_input = agent.invoke.call_args_list[-1].args[0][-1].content
     assert "photosynthesis" in answer_input.lower()
     assert "UNSELECTED_ARTIFACT_MARKER" not in answer_input
@@ -191,6 +192,7 @@ def test_graph_falls_back_to_web_search(graph, monkeypatch):
     web_search.assert_called_once_with("q")
     assert state["messages"][-1].content == "final answer [web:https://example.com]"
     assert state["outcome"] == "web_answer"
+    assert state["stop_reason"] == "web_evidence_sufficient"
 
 
 def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
@@ -212,3 +214,14 @@ def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
 
     assert state["messages"][-1].content == nodes.NO_EVIDENCE_RESPONSE
     assert state["outcome"] == "abstained"
+    assert state["stop_reason"] == "insufficient_evidence_after_web"
+
+
+def test_graph_abstains_when_query_model_does_not_request_retrieval(graph, monkeypatch):
+    _patch_llms(monkeypatch, [AIMessage(content="I can answer without searching.")], [])
+
+    state = _run(graph, "q")
+
+    assert state["messages"][-1].content == nodes.NO_EVIDENCE_RESPONSE
+    assert state["outcome"] == "abstained"
+    assert state["stop_reason"] == "retrieval_not_requested"

@@ -95,7 +95,10 @@ def answer_node(
         ]
     )
     outcome = "web_answer" if _used_web_fallback(state) else "document_answer"
-    return {"messages": [response], "outcome": outcome}
+    stop_reason = (
+        "web_evidence_sufficient" if outcome == "web_answer" else "document_evidence_sufficient"
+    )
+    return {"messages": [response], "outcome": outcome, "stop_reason": stop_reason}
 
 
 def web_fallback_node(
@@ -117,10 +120,19 @@ def web_fallback_node(
 
 
 def abstain_node(
-    _: AgentState, config: RunnableConfig | None = None
+    state: AgentState, config: RunnableConfig | None = None
 ) -> dict[str, Any]:
     """Return the safe final response when no evidence passed assessment."""
-    return {"messages": [AIMessage(content=NO_EVIDENCE_RESPONSE)], "outcome": "abstained"}
+    stop_reason = (
+        "insufficient_evidence_after_web"
+        if _used_web_fallback(state)
+        else "retrieval_not_requested"
+    )
+    return {
+        "messages": [AIMessage(content=NO_EVIDENCE_RESPONSE)],
+        "outcome": "abstained",
+        "stop_reason": stop_reason,
+    }
 
 
 def _current_question(state: AgentState) -> str:

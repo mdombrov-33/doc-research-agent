@@ -254,6 +254,7 @@ class AgentState(TypedDict, total=False):
     evidence_sufficient: bool
     supporting_source_ids: list[str]
     outcome: FinalOutcome
+    stop_reason: FinalStopReason
 ```
 
 - **`messages`** — the conversation and workflow scratchpad in one list. The
@@ -271,6 +272,12 @@ class AgentState(TypedDict, total=False):
 - **`outcome`** — the final route result: `document_answer`, `web_answer`, or `abstained`.
   It is written only by the terminal `answer` and `abstain` nodes, then reported in the final
   SSE event and aggregated by monitoring.
+
+- **`stop_reason`** — the precise terminal cause: `document_evidence_sufficient`,
+  `web_evidence_sufficient`, `insufficient_evidence_after_web`, or
+  `retrieval_not_requested`. It is per-request diagnostic metadata, not an aggregate metric.
+  The graph topology is the execution budget: it permits one document retrieval and, only after
+  insufficient evidence, one web fallback—there is no retry loop to count or configure.
 
 > **Per-request knobs are not in state.** `model` and `top_k` ride in the `RunnableConfig`'s
 > `configurable` dict, not in `AgentState`. The agent node reads `model`; the

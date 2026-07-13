@@ -9,7 +9,12 @@ from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
 from src.core import guardrails
-from src.core.agent.outcomes import FinalOutcome, normalize_outcome
+from src.core.agent.outcomes import (
+    FinalOutcome,
+    FinalStopReason,
+    normalize_outcome,
+    normalize_stop_reason,
+)
 from src.core.citations import CitationMarkerRedactor, citations_referenced_by_answer
 from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 from src.utils.logger import logger
@@ -75,6 +80,7 @@ async def _token_generator(
     web_search_triggered = False
     sources_retrieved_total = 0
     outcome: FinalOutcome = "abstained"
+    stop_reason: FinalStopReason = "unknown"
     start_ms = time.monotonic() * 1000
 
     try:
@@ -101,6 +107,7 @@ async def _token_generator(
                 )
                 sources_count = len(sources_meta)
                 outcome = normalize_outcome(output.get("outcome"))
+                stop_reason = normalize_stop_reason(output.get("stop_reason"))
 
     except Exception as e:
         logger.error("stream_failed", error=str(e), exc_info=True)
@@ -126,7 +133,7 @@ async def _token_generator(
         )
     )
 
-    yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'sources': sources_meta, 'session_id': request.session_id, 'outcome': outcome})}\n\n"  # noqa: E501
+    yield f"data: {json.dumps({'done': True, 'sources_count': sources_count, 'sources': sources_meta, 'session_id': request.session_id, 'outcome': outcome, 'stop_reason': stop_reason})}\n\n"  # noqa: E501
 
 
 async def handle_stream(

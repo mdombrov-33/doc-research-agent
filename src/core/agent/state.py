@@ -3,7 +3,7 @@ from typing import Annotated, Required, TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
-from src.core.agent.outcomes import FinalOutcome
+from src.core.agent.outcomes import FinalOutcome, FinalStopReason
 
 
 class AgentState(TypedDict, total=False):
@@ -11,3 +11,4 @@ class AgentState(TypedDict, total=False):
     evidence_sufficient: bool
     supporting_source_ids: list[str]
     outcome: FinalOutcome
+    stop_reason: FinalStopReason
