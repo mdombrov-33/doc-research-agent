@@ -622,8 +622,9 @@ tooling (excluded from the Docker image via `.dockerignore`).
   corpus or models.
 - **CI**: `.github/workflows/ci.yml` (ruff, format, mypy, pytest, docker build) and
   `eval.yml` (retrieval eval gate on push to main; needs `OPENAI_API_KEY`).
-- **Config**: see `.env.example`. Secrets (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, Qdrant
-  cloud creds) and deployment values go in the environment; everything else has a default.
+- **Config**: see `.env.example`. Local secrets (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, Qdrant
+  cloud credentials) go in the environment. Cloud Run reads those credentials from Secret
+  Manager; its Terraform configuration never accepts their plaintext values.
 
 ```
 make up             # boot Qdrant + API via docker compose

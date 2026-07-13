@@ -33,30 +33,8 @@ variable "app_version" {
   default     = "unknown"
 }
 
-variable "openai_api_key" {
-  description = "OpenAI API key"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "openrouter_api_key" {
-  description = "OpenRouter API key"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
 variable "qdrant_cloud_url" {
   description = "Qdrant Cloud cluster URL"
   type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "qdrant_api_key" {
-  description = "Qdrant Cloud API key"
-  type        = string
-  sensitive   = true
   default     = ""
 }

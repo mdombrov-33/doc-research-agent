@@ -43,6 +43,43 @@ resource "google_project_service" "cloudbuild" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "secretmanager" {
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
+locals {
+  runtime_secret_ids = {
+    openai_api_key     = "${var.service_name}-openai-api-key"
+    openrouter_api_key = "${var.service_name}-openrouter-api-key"
+    qdrant_api_key     = "${var.service_name}-qdrant-api-key"
+  }
+}
+
+resource "google_service_account" "runtime" {
+  account_id   = "${var.service_name}-runtime"
+  display_name = "${var.service_name} Cloud Run runtime"
+}
+
+resource "google_secret_manager_secret" "runtime" {
+  for_each  = local.runtime_secret_ids
+  secret_id = each.value
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_iam_member" "runtime" {
+  for_each  = google_secret_manager_secret.runtime
+  project   = var.project_id
+  secret_id = each.value.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_artifact_registry_repository" "app" {
   location      = var.region
   repository_id = var.service_name
@@ -85,6 +122,8 @@ resource "google_cloud_run_service" "app" {
 
   template {
     spec {
+      service_account_name = google_service_account.runtime.email
+
       containers {
         image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.service_name}/${var.service_name}@${docker_registry_image.app.sha256_digest}"
 
@@ -96,12 +135,22 @@ resource "google_cloud_run_service" "app" {
         }
 
         env {
-          name  = "OPENAI_API_KEY"
-          value = var.openai_api_key
+          name = "OPENAI_API_KEY"
+          value_from {
+            secret_key_ref {
+              name = google_secret_manager_secret.runtime["openai_api_key"].secret_id
+              key  = "latest"
+            }
+          }
         }
         env {
-          name  = "OPENROUTER_API_KEY"
-          value = var.openrouter_api_key
+          name = "OPENROUTER_API_KEY"
+          value_from {
+            secret_key_ref {
+              name = google_secret_manager_secret.runtime["openrouter_api_key"].secret_id
+              key  = "latest"
+            }
+          }
         }
         env {
           name  = "QDRANT_MODE"
@@ -112,8 +161,13 @@ resource "google_cloud_run_service" "app" {
           value = var.qdrant_cloud_url
         }
         env {
-          name  = "QDRANT_API_KEY"
-          value = var.qdrant_api_key
+          name = "QDRANT_API_KEY"
+          value_from {
+            secret_key_ref {
+              name = google_secret_manager_secret.runtime["qdrant_api_key"].secret_id
+              key  = "latest"
+            }
+          }
         }
         env {
           name  = "QDRANT_COLLECTION_NAME"
@@ -169,7 +223,8 @@ resource "google_cloud_run_service" "app" {
 
   depends_on = [
     google_project_service.cloudrun,
-    docker_registry_image.app
+    docker_registry_image.app,
+    google_secret_manager_secret_iam_member.runtime,
   ]
 }
 
