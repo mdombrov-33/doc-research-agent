@@ -88,8 +88,9 @@ make install             # uv sync
 make dev                 # uvicorn with reload
 ```
 
-Useful targets: `make test`, `make eval` (full offline eval), `make eval-retrieval` (the
-CI retrieval gate), `make lint`, `make format`.
+Useful targets: `make test`, `make eval-graph-contract` (deterministic workflow gate), `make
+eval` (full offline eval), `make eval-retrieval` (the CI retrieval gate), `make lint`, `make
+format`.
 
 ## Configuration
 
@@ -134,10 +135,11 @@ when durable, shared state is needed.
 `evals/` holds an offline quality gate that runs the real retrieval pipeline against a labelled
 golden set and scores retrieval, generation, and embeddings (details in
 [`evals/README.md`](evals/README.md)). The deterministic retrieval tier runs in CI on every
-push to main. The graph's document-answer, web-fallback, and abstention routes are covered by
-corpus-backed integration tests; `make eval-graph` manually checks live graph outcomes and
-citations against the same corpus. Use `uv run python -m evals.run_graph_eval --limit 3` for a
-short live smoke run. Live telemetry reports aggregate outcome rates.
+push to main. `make eval-graph-contract` runs the graph's document-answer, web-fallback, and
+abstention contracts with corpus artifacts and scripted models—no services, API keys, or model
+calls—and is a separate CI step on every PR. `make eval-graph` manually checks live graph
+outcomes and citations against the same corpus. Use `uv run python -m evals.run_graph_eval
+--limit 3` for a short live smoke run. Live telemetry reports aggregate outcome rates.
 
 ## Tech stack
 

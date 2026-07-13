@@ -58,6 +58,7 @@ it's capped at 1/k, so it reflects the question mix, not a regression).
 | `embeddings_check.py` | Cosine separation guard for the embedding model |
 | `run_eval.py` | Orchestrator: ingest → score all three levels → report → gate |
 | `run_graph_eval.py` | Manual live graph path/citation evaluation against the same corpus |
+| `tests/integration/test_agent_graph.py` | Deterministic compiled-graph route and citation contracts |
 
 The pure pieces (`ranking`, `judges`, `embeddings_check`) are unit-tested with no infra in
 `tests/unit/` and run on every PR for free. The full `run_eval.py` needs live services.
@@ -78,6 +79,10 @@ The checks split by what's stable vs noisy, and they run in different places:
 `document_answer` and cite all its labelled filenames. Web fallback is deliberately disabled:
 needing it for a question whose evidence is in the fixed corpus is a failure signal. This is a
 manual check, never a CI gate. Pass `--limit N` to run a shorter live smoke check.
+- **Graph contract (`make eval-graph-contract`).** Runs the compiled graph with corpus artifacts
+  and scripted model outputs. It verifies document-answer, web-fallback, and abstention routes,
+  evidence-source validation, and selected-evidence isolation. It has no service, API-key, or
+  model dependency and runs as its own CI step on every PR.
 
 ## Running it
 
@@ -88,12 +93,15 @@ Needs Qdrant up. Retrieval needs `OPENAI_API_KEY` (embeddings); `--full` also ne
 make up              # boot Qdrant
 make eval-retrieval  # retrieval + embeddings only (what CI runs on push to main)
 make eval            # the full thing: + generation + judges (local)
+make eval-graph-contract  # deterministic compiled-graph contracts (CI)
 make eval-graph      # compiled graph: expected document outcome + cited filenames (local)
 uv run python -m evals.run_graph_eval --limit 3  # quick live-graph smoke check
 ```
 
 CI's `rag eval gate` job runs `make eval-retrieval`'s command on every push to main, using
-`OPENAI_API_KEY` from repository secrets. Generation quality is never run in CI.
+`OPENAI_API_KEY` from repository secrets. Its normal check workflow also runs
+`make eval-graph-contract` on every PR without any external service. Generation quality is
+never run in CI.
 
 ## Adding a golden question
 

@@ -37,9 +37,7 @@ def agent_node(state: AgentState, config: RunnableConfig | None = None) -> dict[
     """Form a history-aware standalone query and call document retrieval."""
     model = _configurable(config).get("model")
     llm = get_llm(model).bind_tools([retrieve_documents])
-    history = _conversation_messages(
-        state["messages"], get_settings().CONVERSATION_HISTORY_TURNS
-    )
+    history = _conversation_messages(state["messages"], get_settings().CONVERSATION_HISTORY_TURNS)
     messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT), *history]
     with _tracer.start_as_current_span("agent.llm_call") as span:
         span.set_attribute("agent.model", model or "default")
@@ -85,9 +83,7 @@ def evidence_assessment_node(
     }
 
 
-def answer_node(
-    state: AgentState, config: RunnableConfig | None = None
-) -> dict[str, Any]:
+def answer_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """Synthesize a cited answer from evidence already judged sufficient."""
     model = _configurable(config).get("model")
     evidence = format_docs(_supporting_artifacts(state))
@@ -122,9 +118,7 @@ def web_fallback_node(
     }
 
 
-def abstain_node(
-    state: AgentState, config: RunnableConfig | None = None
-) -> dict[str, Any]:
+def abstain_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """Return the safe final response when no evidence passed assessment."""
     stop_reason = (
         "insufficient_evidence_after_web"

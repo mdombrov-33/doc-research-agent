@@ -55,9 +55,7 @@ def test_legacy_database_migrates_source_total(tmp_path):
             "web_search_triggered INTEGER, total_docs_retrieved INTEGER, "
             "total_docs_relevant INTEGER, total_latency_ms REAL)"
         )
-        conn.execute(
-            "INSERT INTO monitoring_stats VALUES (1, 2, 1, 6, 5, 3000.0)"
-        )
+        conn.execute("INSERT INTO monitoring_stats VALUES (1, 2, 1, 6, 5, 3000.0)")
 
     stats = MetricsTracker(SqliteMetricsDB(str(db_path))).get_stats()
 

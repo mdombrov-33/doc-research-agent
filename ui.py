@@ -105,11 +105,7 @@ def render_cited_evidence(sources: list[dict]) -> None:
         page = source.get("page")
         document = documents.setdefault(key, {"pages": [], "cited_count": 0})
         document["cited_count"] += 1
-        if (
-            isinstance(page, int)
-            and not isinstance(page, bool)
-            and page not in document["pages"]
-        ):
+        if isinstance(page, int) and not isinstance(page, bool) and page not in document["pages"]:
             document["pages"].append(page)
 
     if documents:

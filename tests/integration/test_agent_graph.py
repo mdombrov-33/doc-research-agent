@@ -112,9 +112,7 @@ def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):
                 tool_calls=[
                     {
                         "name": "retrieve_documents",
-                        "args": {
-                            "query": "Zero to Production in Rust database chapters"
-                        },
+                        "args": {"query": "Zero to Production in Rust database chapters"},
                         "id": "follow-up-retrieval",
                     }
                 ],
@@ -162,17 +160,13 @@ def test_graph_falls_back_to_web_search(graph, monkeypatch):
         [_retrieve_call(), AIMessage(content="final answer [web:https://example.com]")],
         [
             EvidenceAssessment(sufficient=False),
-            EvidenceAssessment(
-                sufficient=True, supporting_source_ids=["web:https://example.com"]
-            ),
+            EvidenceAssessment(sufficient=True, supporting_source_ids=["web:https://example.com"]),
         ],
     )
     monkeypatch.setattr(
         tools,
         "hybrid_search",
-        lambda q, k: [
-            _corpus_artifact("photosynthesis.txt", "photosynthesis:0")
-        ],
+        lambda q, k: [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")],
     )
     web_search = MagicMock(
         return_value=(
@@ -206,9 +200,7 @@ def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
     monkeypatch.setattr(
         tools,
         "hybrid_search",
-        lambda q, k: [
-            _corpus_artifact("photosynthesis.txt", "photosynthesis:0")
-        ],
+        lambda q, k: [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")],
     )
     monkeypatch.setattr(nodes, "search_web", lambda _: ("No documents found.", []))
 

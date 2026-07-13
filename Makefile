@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-compose build up down restart logs shell test eval eval-retrieval eval-graph lint format clean deploy destroy
+.PHONY: help install dev dev-compose build up down restart logs shell test eval eval-retrieval eval-graph eval-graph-contract lint format clean deploy destroy
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 APP_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
@@ -53,6 +53,9 @@ eval-retrieval: ## Run retrieval + embedding checks only, no LLM (what CI runs o
 
 eval-graph: ## Manually evaluate live graph outcomes and citations against the eval corpus
 	uv run python -m evals.run_graph_eval
+
+eval-graph-contract: ## Run deterministic graph workflow contracts (no services or API keys)
+	uv run pytest tests/integration/test_agent_graph.py
 
 lint: ## Run linter
 	uv run ruff check .

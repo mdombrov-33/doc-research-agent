@@ -98,8 +98,7 @@ class SqliteMetricsDB:
                 )
                 if "total_docs_retrieved" in columns:
                     conn.execute(
-                        "UPDATE monitoring_stats "
-                        "SET total_sources_retrieved = total_docs_retrieved"
+                        "UPDATE monitoring_stats SET total_sources_retrieved = total_docs_retrieved"
                     )
             for column, sql_type in (
                 ("total_time_to_first_token_ms", "REAL"),

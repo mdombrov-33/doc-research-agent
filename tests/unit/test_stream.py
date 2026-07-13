@@ -255,9 +255,7 @@ async def test_stream_logs_safe_completion_metadata(monkeypatch):
                                     }
                                 ],
                             ),
-                            AIMessage(
-                                content=f"{answer} [document:rollout-plan:1]"
-                            ),
+                            AIMessage(content=f"{answer} [document:rollout-plan:1]"),
                         ],
                         "outcome": "document_answer",
                         "stop_reason": "document_evidence_sufficient",

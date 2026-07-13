@@ -9,9 +9,7 @@ SourceType = Literal["document", "web"]
 
 MAX_CITATION_EXCERPT_CHARS = 280
 _SOURCE_ID_MARKER = re.compile(r"\[(?P<source_id>(?:document|web):[^\]\s]+)\]")
-_SOURCE_ID_WITH_LEADING_SPACE_MARKER = re.compile(
-    r"[ \t]*\[(?:document|web):[^\]\s]+\]"
-)
+_SOURCE_ID_WITH_LEADING_SPACE_MARKER = re.compile(r"[ \t]*\[(?:document|web):[^\]\s]+\]")
 
 
 class SourceCitation(BaseModel):

@@ -60,8 +60,6 @@ def _retrieval_requested(state: AgentState) -> str:
 def _after_assessment(state: AgentState) -> str:
     if state.get("evidence_sufficient"):
         return "answer"
-    if any(
-        getattr(message, "name", None) == "web_search" for message in state["messages"]
-    ):
+    if any(getattr(message, "name", None) == "web_search" for message in state["messages"]):
         return "abstain"
     return "web"

@@ -627,10 +627,11 @@ This is the offline counterpart to §14: monitoring measures live traffic; evals
 quality against known-correct answers.
 
 The graph itself has a separate deterministic route contract in
-`tests/integration/test_agent_graph.py`. It runs the compiled graph with corpus artifacts from
-`evals/corpus/` and scripted model verdicts to cover document answer, web fallback, and
-abstention. It verifies graph control and outcome reporting, not semantic model quality, so it
-runs with the normal test suite rather than as an LLM evaluation gate.
+`tests/integration/test_agent_graph.py`, exposed as `make eval-graph-contract`. It runs the
+compiled graph with corpus artifacts from `evals/corpus/` and scripted model verdicts to cover
+document answer, web fallback, and abstention. It verifies graph control, evidence-source
+validation, selected-evidence isolation, and outcome reporting—not semantic model quality. It
+needs no service, API key, or live model, so CI runs it as a named check on every PR.
 
 `make eval-graph` adds the complementary **manual live-graph check**. It re-ingests that same
 corpus into the isolated `documents_eval` collection, then invokes the compiled graph with the
@@ -765,4 +766,5 @@ make ui             # run the Streamlit UI
 make test           # pytest
 make eval           # full offline eval (local)
 make eval-retrieval # retrieval+embeddings eval (what CI runs)
+make eval-graph-contract # deterministic graph workflow gate (what CI runs)
 ```
