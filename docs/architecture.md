@@ -345,7 +345,10 @@ directly.
 small `CLASSIFIER_MODEL` as `EvidenceAssessment(sufficient, supporting_source_ids)`. A verdict
 is accepted only when it is sufficient, names at least one source ID, and every ID exists in the
 actual artifacts. The evidence is explicitly labelled untrusted source data before the model sees
-it; malformed evaluator output and evaluator failures fail closed.
+it; malformed evaluator output and evaluator failures fail closed. This is the relevance gate:
+retrieval and its cross-encoder optimize the candidate order, while the assessor decides whether
+the supplied corpus evidence supports an answer at all. We deliberately do not turn raw reranker
+scores into a minimum relevance cutoff without a calibrated labelled set.
 
 `answer_node` receives the question and only the artifacts named by the validated verdict, then
 writes a cited answer without tools. Its system prompt separately repeats that those artifacts are

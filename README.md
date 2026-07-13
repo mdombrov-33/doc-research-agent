@@ -42,10 +42,12 @@ POST /api/stream
 - **Tools** — `retrieve_documents` runs hybrid dense + BM25 search in Qdrant (fused with RRF),
   then a cross-encoder reranks a wide candidate pool down to your `top_k`; `web_search` hits
   the live web.
-- **Evidence assessment** — a structured classifier validates whether the returned sources are
-  sufficient. Insufficient document evidence gets one web fallback; still-insufficient evidence
-  produces an honest abstention. Retrieved document chunks and web snippets are explicitly
-  treated as untrusted data, never instructions for either model.
+- **Evidence assessment** — a structured classifier is the relevance gate: it must find the
+  returned sources sufficient and name the exact supporting source IDs before an answer can run.
+  It does not turn reranker scores into an uncalibrated numeric cutoff. Insufficient document
+  evidence gets one web fallback; still-insufficient evidence produces an honest abstention.
+  Retrieved document chunks and web snippets are explicitly treated as untrusted data, never
+  instructions for either model.
 - **Answer** — only after sufficient evidence is found does the answer model write and stream
   the response. Internal source IDs are removed before the answer reaches the user;
   the final event includes only the validated citations those IDs selected, with document
