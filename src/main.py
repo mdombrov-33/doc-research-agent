@@ -38,11 +38,14 @@ async def lifespan(app: FastAPI):
         app.state.agent = build_graph(checkpointer)
         guardrails.warmup()
         rerank.warmup()
-        app.state.metrics_tracker = MetricsTracker(db_path=settings.metrics_db_path)
+        app.state.metrics_tracker = MetricsTracker.from_settings(settings)
 
         logger.info("startup_complete")
-        yield
-        logger.info("shutdown")
+        try:
+            yield
+        finally:
+            app.state.metrics_tracker.close()
+            logger.info("shutdown")
 
 
 app = FastAPI(

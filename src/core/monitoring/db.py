@@ -1,7 +1,24 @@
 import sqlite3
 from pathlib import Path
+from typing import Protocol
 
-_CREATE_TABLE = """
+import psycopg
+
+
+class MetricsStore(Protocol):
+    def load(self) -> dict | None: ...
+
+    def record(
+        self,
+        sources_retrieved: int,
+        web_search_triggered: bool,
+        latency_ms: float,
+    ) -> None: ...
+
+    def close(self) -> None: ...
+
+
+_SQLITE_CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS monitoring_stats (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     total_queries INTEGER DEFAULT 0,
@@ -11,17 +28,30 @@ CREATE TABLE IF NOT EXISTS monitoring_stats (
 )
 """
 
-_UPSERT = """
+_POSTGRES_CREATE_TABLE = """
+CREATE TABLE IF NOT EXISTS monitoring_stats (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    total_queries BIGINT DEFAULT 0,
+    web_search_triggered BIGINT DEFAULT 0,
+    total_sources_retrieved BIGINT DEFAULT 0,
+    total_latency_ms DOUBLE PRECISION DEFAULT 0.0
+)
+"""
+
+_RECORD_SQLITE = """
 INSERT INTO monitoring_stats (
     id, total_queries, web_search_triggered,
     total_sources_retrieved, total_latency_ms
-) VALUES (1, ?, ?, ?, ?)
+) VALUES (1, 1, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
-    total_queries = excluded.total_queries,
-    web_search_triggered = excluded.web_search_triggered,
-    total_sources_retrieved = excluded.total_sources_retrieved,
-    total_latency_ms = excluded.total_latency_ms
+    total_queries = monitoring_stats.total_queries + excluded.total_queries,
+    web_search_triggered = monitoring_stats.web_search_triggered + excluded.web_search_triggered,
+    total_sources_retrieved = monitoring_stats.total_sources_retrieved
+        + excluded.total_sources_retrieved,
+    total_latency_ms = monitoring_stats.total_latency_ms + excluded.total_latency_ms
 """
+
+_RECORD_POSTGRES = _RECORD_SQLITE.replace("?", "%s")
 
 _SELECT = """
 SELECT total_queries, web_search_triggered, total_sources_retrieved,
@@ -30,12 +60,12 @@ FROM monitoring_stats WHERE id = 1
 """
 
 
-class MetricsDB:
+class SqliteMetricsDB:
     def __init__(self, db_path: str) -> None:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db_path = db_path
         with self._connect() as conn:
-            conn.execute(_CREATE_TABLE)
+            conn.execute(_SQLITE_CREATE_TABLE)
             columns = {row[1] for row in conn.execute("PRAGMA table_info(monitoring_stats)")}
             if "total_sources_retrieved" not in columns:
                 conn.execute(
@@ -54,30 +84,54 @@ class MetricsDB:
     def load(self) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(_SELECT).fetchone()
-        if not row:
-            return None
-        tq, ws, tsr, tlat = row
-        return {
-            "total_queries": tq,
-            "web_search_triggered": ws,
-            "total_sources_retrieved": tsr,
-            "total_latency_ms": tlat,
-        }
+        return _row_to_totals(row)
 
-    def flush(
+    def record(
         self,
-        total_queries: int,
-        web_search_triggered: int,
-        total_sources_retrieved: int,
-        total_latency_ms: float,
+        sources_retrieved: int,
+        web_search_triggered: bool,
+        latency_ms: float,
     ) -> None:
         with self._connect() as conn:
-            conn.execute(
-                _UPSERT,
-                (
-                    total_queries,
-                    web_search_triggered,
-                    total_sources_retrieved,
-                    total_latency_ms,
-                ),
-            )
+            conn.execute(_RECORD_SQLITE, (web_search_triggered, sources_retrieved, latency_ms))
+
+    def close(self) -> None:
+        pass
+
+
+class PostgresMetricsDB:
+    def __init__(self, database_url: str) -> None:
+        self._connection = psycopg.connect(database_url, autocommit=True)
+        with self._connection.cursor() as cursor:
+            cursor.execute(_POSTGRES_CREATE_TABLE)
+
+    def load(self) -> dict | None:
+        with self._connection.cursor() as cursor:
+            cursor.execute(_SELECT)
+            row = cursor.fetchone()
+        return _row_to_totals(row)
+
+    def record(
+        self,
+        sources_retrieved: int,
+        web_search_triggered: bool,
+        latency_ms: float,
+    ) -> None:
+        with self._connection.cursor() as cursor:
+            cursor.execute(_RECORD_POSTGRES, (web_search_triggered, sources_retrieved, latency_ms))
+
+    def close(self) -> None:
+        self._connection.close()
+
+
+def _row_to_totals(row: tuple[int, int, int, float] | None) -> dict | None:
+    if not row:
+        return None
+
+    total_queries, web_search_triggered, total_sources_retrieved, total_latency_ms = row
+    return {
+        "total_queries": total_queries,
+        "web_search_triggered": web_search_triggered,
+        "total_sources_retrieved": total_sources_retrieved,
+        "total_latency_ms": total_latency_ms,
+    }

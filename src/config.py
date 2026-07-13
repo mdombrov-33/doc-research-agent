@@ -60,6 +60,7 @@ class Settings(BaseSettings):
 
     DATA_DIR: str = "./data"
     CHECKPOINT_BACKEND: Literal["sqlite", "postgres"] = "sqlite"
+    METRICS_BACKEND: Literal["sqlite", "postgres"] = "sqlite"
     DATABASE_URL: str = ""
 
     @property

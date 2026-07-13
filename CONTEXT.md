@@ -19,7 +19,7 @@ when the document corpus is insufficient.
 - `src/core/agent/` — LangGraph workflow, nodes, tools, prompts, and state.
 - `src/core/ingestion/` — document extraction, chunking, enrichment, and indexing.
 - `src/core/retrieval/` — hybrid retrieval and reranking.
-- `src/core/monitoring/` — query metrics and local SQLite storage.
+- `src/core/monitoring/` — query metrics with SQLite local storage or shared Postgres storage.
 - `evals/` — offline retrieval and generation evaluation harness.
 - `tests/` — unit and integration tests.
 - `terraform/gcp/` — GCP infrastructure.

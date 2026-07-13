@@ -82,7 +82,7 @@ per-request work cheap and makes everything trivially mockable in tests.
   - `guardrails.warmup()` — primes the llm-guard scanners so the first request doesn't pay
     their cold start (§11).
   - `rerank.warmup()` — primes the cross-encoder for the same reason (§9).
-  - `app.state.metrics_tracker` — the online telemetry tracker (loads prior totals from SQLite).
+  - `app.state.metrics_tracker` — the online telemetry tracker using the configured store (§14).
 - `src/api/dependencies.py` — `get_vector_store`, `get_nlp`, `get_agent`,
   `get_metrics_tracker` just return the corresponding `app.state` object via FastAPI `Depends`.
 - `src/api/routes.py` — the routes wire those dependencies into the handlers.
@@ -463,8 +463,8 @@ Model roles:
   the app package.
 
 **`DATA_DIR`.** A single `DATA_DIR` (default `./data`) is the home for local SQLite state;
-`metrics_db_path` holds telemetry and `checkpoints_db_path` is used only when
-`CHECKPOINT_BACKEND=sqlite`. Mounting one directory persists both locally.
+`metrics_db_path` is used only when `METRICS_BACKEND=sqlite` and `checkpoints_db_path` only
+when `CHECKPOINT_BACKEND=sqlite`. Mounting one directory persists both locally.
 
 Other key settings: `RERANK_*` (§9), `QDRANT_MODE` (`local`|`cloud`, picks the URL/credentials),
 `LLM_MAX_RETRIES` (§17), `RATE_LIMIT*` (§17). See `.env.example` for the full annotated list.
@@ -476,10 +476,11 @@ Other key settings: `RERANK_*` (§9), `QDRANT_MODE` (`local`|`cloud`, picks the 
 `src/core/monitoring/tracker.py` + `db.py`. This is **live production telemetry**, distinct
 from offline evaluation (§15).
 
-After each query the stream handler calls `MetricsTracker.record(QueryMetrics(...))`. The
-tracker keeps running totals (thread-safe via a `Lock`) and **persists them to SQLite**
-(`metrics_db_path`, under `DATA_DIR`), reloading on startup so stats survive restarts.
-`GET /api/monitoring/stats` returns the aggregates, which the Streamlit UI shows:
+After each query the stream handler calls `MetricsTracker.record(QueryMetrics(...))`.
+`METRICS_BACKEND=sqlite` is the local default and writes to `metrics_db_path` under `DATA_DIR`.
+Production sets `METRICS_BACKEND=postgres` with `DATABASE_URL`; each record is an atomic
+database increment and `/api/monitoring/stats` reads the shared aggregate across instances.
+`GET /api/monitoring/stats` returns:
 
 | Stat | Meaning |
 |---|---|
@@ -561,7 +562,8 @@ shared `Limiter` decorates those two routes (`@limiter.limit(rate_limit)`), so
   CDN/WAF and the load balancer would shed coarse IP floods *before* they reach the app, and
   OpenRouter/OpenAI already rate-limit us upstream (their 429s are absorbed by `max_retries`).
 - **Single-instance vs scale:** the limiter's `RATE_LIMIT_STORAGE_URI` defaults to `memory://`
-  — correct on one instance, like the SQLite monitoring (§14) and conversation memory (§12).
+  — correct on one instance, like the SQLite local modes for monitoring (§14) and conversation
+  memory (§12).
   Cloud Run autoscales, so in-memory counters aren't shared and a client spread across N
   instances effectively gets N× the limit. The fix is **one config change**: point the URI at
   `redis://…` and slowapi shares counters across instances. Keyed on IP rather than user
@@ -583,7 +585,7 @@ src/
       prompts.py  agent system prompt + eval-only generation prompts
     retrieval/    hybrid search (search.py) + cross-encoder reranker (rerank.py)
     ingestion/    extract, chunk, enrich (spaCy), index, pipeline
-    monitoring/   online telemetry (tracker + SQLite)
+    monitoring/   online telemetry (tracker + SQLite/Postgres store)
     guardrails.py llm-guard input scanners
     vectorstore.py  Qdrant setup + the hybrid store
     nlp.py, llm.py, exceptions.py
@@ -612,9 +614,9 @@ tooling (excluded from the Docker image via `.dockerignore`).
 - **Why not `/tmp`**: fastembed's default cache is `/tmp/fastembed_cache`, but Cloud Run mounts
   a fresh in-memory tmpfs over `/tmp` per instance — a model baked there would vanish at
   runtime. The persistent `/app/.model_cache` and `/app/.hf_cache` paths are the fix.
-- **Runtime state**: `DATA_DIR` (`/app/data`) holds `metrics.db` and the local
+- **Runtime state**: `DATA_DIR` (`/app/data`) holds the local `metrics.db` and
   `checkpoints.db`. docker-compose mounts `./data:/app/data` so both persist locally; on
-  Cloud Run the disk is ephemeral (see the §12 caveat).
+  Cloud Run the disk is ephemeral, so production uses Postgres (§12, §14).
 - **Target**: GCP Cloud Run (Terraform in `terraform/gcp`). spaCy + onnxruntime + the
   reranker + llm-guard's models must fit in the instance memory; watch for OOM if you scale the
   corpus or models.

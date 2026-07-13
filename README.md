@@ -80,8 +80,8 @@ list. Keys:
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`)
 
 Guardrails run locally (llm-guard) and need no API key. Local conversation memory and live
-telemetry persist to SQLite under `DATA_DIR` (default `./data`); production conversation memory
-uses the configured Postgres checkpointer.
+telemetry persist to SQLite under `DATA_DIR` (default `./data`); production uses the configured
+Postgres backends for both.
 
 ## API
 

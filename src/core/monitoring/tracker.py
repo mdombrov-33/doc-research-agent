@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
-from src.core.monitoring.db import MetricsDB
+from src.config import Settings
+from src.core.monitoring.db import MetricsStore, PostgresMetricsDB, SqliteMetricsDB
 
 
 @dataclass
@@ -20,17 +21,16 @@ class MetricsTracker:
     retrieval quality against a golden set.
     """
 
-    def __init__(self, db_path: str | None = None):
+    def __init__(self, store: MetricsStore | None = None):
         self.total_queries = 0
         self.web_search_triggered = 0
         self.total_sources_retrieved = 0
         self.total_latency_ms = 0.0
         self._lock = Lock()
-        self._db: Any = None
+        self._store = store
 
-        if db_path:
-            self._db = MetricsDB(db_path)
-            saved = self._db.load()
+        if self._store:
+            saved = self._store.load()
             if saved:
                 self.total_queries = saved["total_queries"]
                 self.web_search_triggered = saved["web_search_triggered"]
@@ -39,6 +39,14 @@ class MetricsTracker:
 
     def record(self, evaluation: QueryMetrics) -> None:
         with self._lock:
+            if self._store:
+                self._store.record(
+                    evaluation.sources_retrieved,
+                    evaluation.web_search_triggered,
+                    evaluation.latency_ms,
+                )
+                return
+
             self.total_queries += 1
 
             if evaluation.web_search_triggered:
@@ -47,27 +55,53 @@ class MetricsTracker:
             self.total_sources_retrieved += evaluation.sources_retrieved
             self.total_latency_ms += evaluation.latency_ms
 
-            if self._db:
-                self._db.flush(
-                    self.total_queries,
-                    self.web_search_triggered,
-                    self.total_sources_retrieved,
-                    self.total_latency_ms,
-                )
-
     def get_stats(self) -> dict[str, Any]:
         with self._lock:
-            if self.total_queries == 0:
-                return {
-                    "total_queries": 0,
-                    "web_search_rate": 0.0,
-                    "avg_sources_retrieved": 0.0,
-                    "avg_latency_ms": 0.0,
-                }
+            if self._store:
+                saved = self._store.load()
+                if saved:
+                    return _stats_from_totals(saved)
+                return _empty_stats()
 
-            return {
-                "total_queries": self.total_queries,
-                "web_search_rate": self.web_search_triggered / self.total_queries,
-                "avg_sources_retrieved": self.total_sources_retrieved / self.total_queries,
-                "avg_latency_ms": self.total_latency_ms / self.total_queries,
-            }
+            return _stats_from_totals(
+                {
+                    "total_queries": self.total_queries,
+                    "web_search_triggered": self.web_search_triggered,
+                    "total_sources_retrieved": self.total_sources_retrieved,
+                    "total_latency_ms": self.total_latency_ms,
+                }
+            )
+
+    def close(self) -> None:
+        if self._store:
+            self._store.close()
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> "MetricsTracker":
+        if settings.METRICS_BACKEND == "postgres":
+            if not settings.DATABASE_URL:
+                raise ValueError("DATABASE_URL is required for Postgres metrics")
+            return cls(PostgresMetricsDB(settings.DATABASE_URL))
+        return cls(SqliteMetricsDB(settings.metrics_db_path))
+
+
+def _stats_from_totals(totals: dict[str, int | float]) -> dict[str, Any]:
+    total_queries = totals["total_queries"]
+    if total_queries == 0:
+        return _empty_stats()
+
+    return {
+        "total_queries": total_queries,
+        "web_search_rate": totals["web_search_triggered"] / total_queries,
+        "avg_sources_retrieved": totals["total_sources_retrieved"] / total_queries,
+        "avg_latency_ms": totals["total_latency_ms"] / total_queries,
+    }
+
+
+def _empty_stats() -> dict[str, float | int]:
+    return {
+        "total_queries": 0,
+        "web_search_rate": 0.0,
+        "avg_sources_retrieved": 0.0,
+        "avg_latency_ms": 0.0,
+    }
