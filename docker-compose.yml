@@ -16,6 +16,7 @@ services:
       - qdrant
       - jaeger
     environment:
+      QDRANT_MODE: local
       QDRANT_LOCAL_URL: http://qdrant:6333
       OTEL_ENDPOINT: http://jaeger:4317
 

@@ -61,6 +61,18 @@ make up                  # boot Qdrant + the API via docker compose
 make ui                  # run the Streamlit UI (separate terminal)
 ```
 
+### Containerized development with hot reload
+
+```bash
+make dev-compose
+```
+
+This one command starts Qdrant, Jaeger, the FastAPI service, and Streamlit. Open the UI at
+`http://localhost:8501`; the API remains at `http://localhost:8000`. `src/` and `ui.py` are
+bind-mounted into their containers: Uvicorn reloads on backend edits and Streamlit reloads on
+frontend edits. The first run builds the image; rebuild only after changing `Dockerfile`,
+`pyproject.toml`, or `uv.lock`.
+
 Local dev without Docker:
 
 ```bash
@@ -79,7 +91,8 @@ list. Keys:
 
 - `OPENAI_API_KEY` — embeddings (`text-embedding-3-small`) only
 - `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer)
-- `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`)
+- `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`);
+  Compose sets this to `local` for its Qdrant service.
 
 Guardrails run locally (llm-guard) and need no API key. Conversation memory and live telemetry
 use SQLite under `DATA_DIR` (default `./data`). The app also supports optional Postgres backends

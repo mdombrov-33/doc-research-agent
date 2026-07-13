@@ -656,6 +656,7 @@ tooling (excluded from the Docker image via `.dockerignore`).
 
 ```
 make up             # boot Qdrant + API via docker compose
+make dev-compose    # API + Streamlit + Qdrant + Jaeger, with container hot reload
 make dev            # run the API locally (uvicorn --reload)
 make ui             # run the Streamlit UI
 make test           # pytest

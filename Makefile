@@ -1,4 +1,4 @@
-.PHONY: help install dev build up down restart logs shell test eval eval-retrieval lint format clean deploy destroy
+.PHONY: help install dev dev-compose build up down restart logs shell test eval eval-retrieval lint format clean deploy destroy
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 APP_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
@@ -13,6 +13,9 @@ install: ## Install dependencies with uv
 
 dev: ## Run development server locally
 	uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+
+dev-compose: ## Run API, UI, Qdrant, and Jaeger with container hot reload
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 ui: ## Run Streamlit UI
 	uv run streamlit run ui.py
