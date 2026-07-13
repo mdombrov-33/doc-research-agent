@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.config import Settings
 from src.core.exceptions import EmptyDocumentError
 from src.core.ingestion import pipeline
 
@@ -31,7 +32,7 @@ async def test_process_and_store_rejects_empty_document(vector_store, nlp, tmp_p
     path.write_text("   \n\t ", encoding="utf-8")
     monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value="   \n\t "))
     with pytest.raises(EmptyDocumentError):
-        await pipeline.process_and_store(str(path), "empty.txt", vector_store, nlp)
+        await pipeline.process_and_store(str(path), "empty.txt", vector_store, nlp, Settings())
     vector_store.add_documents.assert_not_called()
 
 
@@ -43,7 +44,7 @@ async def test_process_and_store_returns_metadata_and_stores(
     path.write_text(body, encoding="utf-8")
     monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value=body))
 
-    result = await pipeline.process_and_store(str(path), "doc.txt", vector_store, nlp)
+    result = await pipeline.process_and_store(str(path), "doc.txt", vector_store, nlp, Settings())
 
     assert result["filename"] == "doc.txt"
     assert result["chunks_created"] > 0

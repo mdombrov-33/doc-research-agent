@@ -104,7 +104,8 @@ upload file (pdf / docx / txt)
    │  MAX_UPLOAD_BYTES (25 MiB by default) and deletes the temp file in a finally-block
    ▼
 extract text            extract.py  (extract_from_file)
-   │   .pdf → PyMuPDF per page   .docx → python-docx paragraphs   .txt → aiofiles
+   │   .pdf → PyMuPDF (200-page cap)   .docx → python-docx paragraphs   .txt → aiofiles
+   │   reject extracted text over MAX_EXTRACTED_CHARACTERS (1,000,000 by default)
    ▼
 chunk                   chunk.py  (chunk_text → RecursiveCharacterTextSplitter)
    │   chunk_size=1200 chars, chunk_overlap=240, split on ¶ → line → sentence → … 

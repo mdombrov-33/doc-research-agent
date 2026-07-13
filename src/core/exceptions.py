@@ -14,6 +14,10 @@ class EmptyDocumentError(DocumentProcessingError):
     pass
 
 
+class DocumentLimitError(DocumentProcessingError):
+    pass
+
+
 class ModelLoadError(DocResearchError):
     pass
 

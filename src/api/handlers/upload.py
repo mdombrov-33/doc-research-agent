@@ -8,7 +8,7 @@ from langchain_qdrant import QdrantVectorStore
 from spacy.language import Language
 
 from src.config import Settings
-from src.core.exceptions import DocumentProcessingError, EmptyDocumentError
+from src.core.exceptions import DocumentLimitError, DocumentProcessingError, EmptyDocumentError
 from src.core.ingestion.pipeline import process_and_store
 from src.utils.logger import logger
 
@@ -49,7 +49,7 @@ async def handle_upload(
                     )
                 f.write(content)
 
-        result = await process_and_store(str(file_path), file.filename, vector_store, nlp)
+        result = await process_and_store(str(file_path), file.filename, vector_store, nlp, settings)
         logger.info("upload_complete", **result)
         return result
 
@@ -61,6 +61,9 @@ async def handle_upload(
             status_code=400,
             detail="No text could be extracted from this document.",
         )
+    except DocumentLimitError as e:
+        logger.info("upload_rejected", filename=file.filename, reason=str(e))
+        raise HTTPException(status_code=413, detail="Document exceeds processing limits.")
     except DocumentProcessingError as e:
         logger.exception("upload_processing_failed", filename=file.filename, error=str(e))
         raise HTTPException(

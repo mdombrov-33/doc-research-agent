@@ -15,7 +15,7 @@ from src.api.handlers import upload as upload_module
 from src.api.rate_limit import limiter
 from src.config import Settings
 from src.core import guardrails
-from src.core.exceptions import DocumentProcessingError
+from src.core.exceptions import DocumentLimitError, DocumentProcessingError
 from src.core.monitoring.tracker import MetricsTracker
 from src.main import app
 
@@ -96,6 +96,16 @@ def test_upload_rejects_file_over_size_limit(client, monkeypatch, tmp_path):
     assert resp.json()["detail"] == "File exceeds the upload size limit."
     process_mock.assert_not_awaited()
     assert list(Path(tmp_path).iterdir()) == []
+
+
+def test_upload_rejects_processing_limit(client, monkeypatch, tmp_path):
+    process_mock = AsyncMock(side_effect=DocumentLimitError("Extracted text limit exceeded"))
+    _override_upload_deps(tmp_path, process_mock, monkeypatch)
+
+    resp = client.post("/api/upload", files={"file": ("note.txt", b"hello", "text/plain")})
+
+    assert resp.status_code == 413
+    assert resp.json()["detail"] == "Document exceeds processing limits."
 
 
 @pytest.mark.parametrize(

@@ -5,6 +5,7 @@ from pathlib import Path
 from langchain_qdrant import QdrantVectorStore
 from spacy.language import Language
 
+from src.config import Settings
 from src.core.exceptions import EmptyDocumentError
 from src.core.ingestion.chunk import chunk_text
 from src.core.ingestion.enrich import enrich_chunks
@@ -18,10 +19,16 @@ async def process_and_store(
     filename: str,
     vector_store: QdrantVectorStore,
     nlp: Language,
+    settings: Settings,
 ) -> dict:
     document_id = str(uuid.uuid4())
 
-    raw_text = await extract_from_file(file_path, filename)
+    raw_text = await extract_from_file(
+        file_path,
+        filename,
+        max_pdf_pages=settings.MAX_PDF_PAGES,
+        max_extracted_characters=settings.MAX_EXTRACTED_CHARACTERS,
+    )
     if not raw_text.strip():
         raise EmptyDocumentError("No text extracted from document")
 
