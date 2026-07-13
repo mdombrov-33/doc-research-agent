@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -9,6 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
+from src.config import get_settings
 from src.core import guardrails
 from src.core.agent.outcomes import (
     FinalOutcome,
@@ -61,8 +63,20 @@ async def _token_generator(
         logger.info("stream_cancelled", stage="before_guardrails")
         return
 
+    timeout_seconds = get_settings().QUERY_TIMEOUT_SECONDS
+    deadline_at = asyncio.get_running_loop().time() + timeout_seconds
     _t = time.monotonic()
-    refusal = await guardrails.check_input(request.question)
+    try:
+        async with asyncio.timeout_at(deadline_at):
+            refusal = await guardrails.check_input(request.question)
+    except TimeoutError:
+        logger.warning("stream_timed_out", timeout_seconds=timeout_seconds)
+        error_event = {
+            "error": "The request timed out. Please try again.",
+            "done": True,
+        }
+        yield f"data: {json.dumps(error_event)}\n\n"
+        return
     logger.info(
         "node_complete",
         node="guardrails_input",
@@ -101,7 +115,8 @@ async def _token_generator(
                 logger.info("stream_cancelled", stage="before_graph_event")
                 return
             try:
-                event = await anext(event_stream)
+                async with asyncio.timeout_at(deadline_at):
+                    event = await anext(event_stream)
             except StopAsyncIteration:
                 break
 
@@ -131,6 +146,14 @@ async def _token_generator(
                 outcome = normalize_outcome(output.get("outcome"))
                 stop_reason = normalize_stop_reason(output.get("stop_reason"))
 
+    except TimeoutError:
+        logger.warning("stream_timed_out", timeout_seconds=timeout_seconds)
+        error_event = {
+            "error": "The request timed out. Please try again.",
+            "done": True,
+        }
+        yield f"data: {json.dumps(error_event)}\n\n"
+        return
     except Exception as error:
         logger.error("stream_failed", failure_type=type(error).__name__)
         error_event = {

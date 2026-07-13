@@ -83,6 +83,12 @@ completed query. Starlette also propagates server disconnect cancellation into a
 graph await. That cannot undo a provider request that has already reached the provider, but it
 prevents subsequent graph work from starting.
 
+**What if the request takes too long?** `QUERY_TIMEOUT_SECONDS` is one wall-clock deadline for
+the input guardrail and every later graph-event await (120 seconds by default). It prevents the
+separate LLM, retrieval, and web-search timeouts from adding up without a cap. When it expires,
+the current await is cancelled, the graph iterator closes, and the client gets the stable timeout
+error event. It is not counted as a completed query.
+
 **Why `astream_events` and not `astream`?**
 
 `astream` gives us full state snapshots after each node completes — too coarse for token-level

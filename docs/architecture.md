@@ -433,6 +433,12 @@ data: {"error": "...", "done": true}                                         # o
 Headers disable proxy buffering (`X-Accel-Buffering: no`, `Cache-Control: no-cache`). After
 the stream closes the handler records metrics (§14).
 
+**Whole-query deadline.** `QUERY_TIMEOUT_SECONDS` (120 seconds by default) starts before the
+input guardrail and is shared by every subsequent graph-event await. It prevents otherwise
+bounded dependency calls from accumulating into an unbounded request. On expiration, the handler
+cancels the in-flight work, closes the event iterator, logs only the configured timeout, sends
+the stable timeout SSE error, and does not record a completed-query outcome.
+
 **Client disconnects.** The handler checks `Request.is_disconnected()` before the input
 guardrail and before requesting every next LangGraph event. Once disconnected, it logs only the
 stage, closes the graph event iterator, and sends no more tokens, final event, or metrics.

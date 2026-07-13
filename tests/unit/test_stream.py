@@ -405,3 +405,82 @@ async def test_stream_propagates_cancellation_to_an_in_flight_graph(monkeypatch)
         await next_event
 
     assert agent.cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_stream_stops_at_whole_query_deadline_before_graph(monkeypatch):
+    cancelled = asyncio.Event()
+
+    async def slow_guardrail(_: str) -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    agent = MagicMock()
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", slow_guardrail)
+    monkeypatch.setattr(
+        "src.api.handlers.stream.get_settings",
+        lambda: SimpleNamespace(QUERY_TIMEOUT_SECONDS=0.01),
+    )
+
+    events = [
+        event
+        async for event in _token_generator(
+            QueryRequest(question="What is the rollout status?"),
+            agent,
+            MetricsTracker(),
+            ConnectedRequest(),
+        )
+    ]
+
+    assert cancelled.is_set()
+    assert json.loads(events[-1].removeprefix("data: ").strip()) == {
+        "error": "The request timed out. Please try again.",
+        "done": True,
+    }
+    agent.astream_events.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stream_stops_at_whole_query_deadline_during_graph(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    class Agent:
+        def __init__(self):
+            self.cancelled = asyncio.Event()
+
+        async def astream_events(self, *_args, **_kwargs):
+            try:
+                await asyncio.Event().wait()
+                yield {}
+            except asyncio.CancelledError:
+                self.cancelled.set()
+                raise
+
+    agent = Agent()
+    tracker = MetricsTracker()
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    monkeypatch.setattr(
+        "src.api.handlers.stream.get_settings",
+        lambda: SimpleNamespace(QUERY_TIMEOUT_SECONDS=0.01),
+    )
+
+    events = [
+        event
+        async for event in _token_generator(
+            QueryRequest(question="What is the rollout status?"),
+            agent,
+            tracker,
+            ConnectedRequest(),
+        )
+    ]
+
+    assert agent.cancelled.is_set()
+    assert json.loads(events[-1].removeprefix("data: ").strip()) == {
+        "error": "The request timed out. Please try again.",
+        "done": True,
+    }
+    assert tracker.get_stats()["total_queries"] == 0
