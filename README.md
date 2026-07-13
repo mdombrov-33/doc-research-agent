@@ -50,6 +50,8 @@ POST /api/stream
   the final event includes only the validated citations those IDs selected, with document
   locations or web titles and URLs, plus a terminal stop reason; conversation history is
   persisted per session.
+- **Disconnects** — a browser that closes its stream stops later graph work; an in-flight async
+  graph await receives server cancellation rather than continuing in the background.
 
 See [`docs/architecture.md`](docs/architecture.md) for the agent topology, the tools and state,
 the web-search fallback walkthrough, and memory.

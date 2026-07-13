@@ -76,6 +76,13 @@ async for event in agent.astream_events(inputs, config=config, version="v2"):
 Each `yield` sends one SSE line to the client immediately. The format is always
 `data: {...}\n\n` — that's the SSE spec.
 
+**What if the client leaves?** Before guardrails and before each next LangGraph event, the
+handler checks FastAPI's `Request.is_disconnected()`. A disconnected browser receives no more
+tokens or final event; the graph event iterator is closed and the request is not recorded as a
+completed query. Starlette also propagates server disconnect cancellation into an in-flight async
+graph await. That cannot undo a provider request that has already reached the provider, but it
+prevents subsequent graph work from starting.
+
 **Why `astream_events` and not `astream`?**
 
 `astream` gives us full state snapshots after each node completes — too coarse for token-level

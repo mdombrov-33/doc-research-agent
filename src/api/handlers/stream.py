@@ -3,6 +3,7 @@ import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from fastapi import Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -50,7 +51,12 @@ async def _token_generator(
     request: QueryRequest,
     agent: Any,
     tracker: MetricsTracker,
+    client_request: Request,
 ) -> AsyncGenerator[str, None]:
+    if await client_request.is_disconnected():
+        logger.info("stream_cancelled", stage="before_guardrails")
+        return
+
     _t = time.monotonic()
     refusal = await guardrails.check_input(request.question)
     logger.info(
@@ -83,8 +89,17 @@ async def _token_generator(
     stop_reason: FinalStopReason = "unknown"
     start_ms = time.monotonic() * 1000
 
+    event_stream = agent.astream_events(inputs, config=config, version="v2")
     try:
-        async for event in agent.astream_events(inputs, config=config, version="v2"):
+        while True:
+            if await client_request.is_disconnected():
+                logger.info("stream_cancelled", stage="before_graph_event")
+                return
+            try:
+                event = await anext(event_stream)
+            except StopAsyncIteration:
+                break
+
             kind = event["event"]
 
             # The query node only calls retrieval. The dedicated answer node is the sole
@@ -117,6 +132,10 @@ async def _token_generator(
         }
         yield f"data: {json.dumps(error_event)}\n\n"
         return
+    finally:
+        aclose = getattr(event_stream, "aclose", None)
+        if aclose is not None:
+            await aclose()
 
     latency_ms = time.monotonic() * 1000 - start_ms
     visible_tail = citation_redactor.flush()
@@ -140,9 +159,10 @@ async def handle_stream(
     request: QueryRequest,
     agent: Any,
     tracker: MetricsTracker,
+    client_request: Request,
 ) -> StreamingResponse:
     return StreamingResponse(
-        _token_generator(request, agent, tracker),
+        _token_generator(request, agent, tracker, client_request),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

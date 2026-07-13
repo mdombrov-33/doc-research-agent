@@ -1,5 +1,7 @@
+import asyncio
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -7,6 +9,11 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from src.api.handlers.stream import _token_generator, _turn_sources
 from src.api.schemas import QueryRequest
 from src.core.monitoring.tracker import MetricsTracker
+
+
+class ConnectedRequest:
+    async def is_disconnected(self) -> bool:
+        return False
 
 
 def test_turn_sources_preserves_document_and_web_evidence():
@@ -133,7 +140,10 @@ async def test_stream_hides_internal_source_ids_from_answer_tokens(monkeypatch):
     events = [
         event
         async for event in _token_generator(
-            QueryRequest(question="What is the rollout status?"), Agent(), MetricsTracker()
+            QueryRequest(question="What is the rollout status?"),
+            Agent(),
+            MetricsTracker(),
+            ConnectedRequest(),
         )
     ]
     visible_answer = "".join(
@@ -169,7 +179,7 @@ async def test_stream_reports_graph_outcome_and_records_it(monkeypatch):
     events = [
         event
         async for event in _token_generator(
-            QueryRequest(question="What is the status?"), Agent(), tracker
+            QueryRequest(question="What is the status?"), Agent(), tracker, ConnectedRequest()
         )
     ]
 
@@ -177,3 +187,112 @@ async def test_stream_reports_graph_outcome_and_records_it(monkeypatch):
     assert final["outcome"] == "abstained"
     assert final["stop_reason"] == "insufficient_evidence_after_web"
     assert tracker.get_stats()["abstention_rate"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_stream_stops_before_guardrails_when_client_is_disconnected(monkeypatch):
+    class DisconnectedRequest:
+        async def is_disconnected(self) -> bool:
+            return True
+
+    check_input = AsyncMock()
+    agent = MagicMock()
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", check_input)
+
+    events = [
+        event
+        async for event in _token_generator(
+            QueryRequest(question="What is the rollout status?"),
+            agent,
+            MetricsTracker(),
+            DisconnectedRequest(),
+        )
+    ]
+
+    assert events == []
+    check_input.assert_not_awaited()
+    agent.astream_events.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stream_stops_before_next_graph_event_after_client_disconnect(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    class DisconnectAfterFirstEvent:
+        def __init__(self):
+            self.checks = 0
+
+        async def is_disconnected(self) -> bool:
+            self.checks += 1
+            return self.checks >= 3
+
+    class Agent:
+        def __init__(self):
+            self.events_consumed = 0
+            self.closed = False
+
+        async def astream_events(self, *_args, **_kwargs):
+            try:
+                for token in ["First", " second"]:
+                    self.events_consumed += 1
+                    yield {
+                        "event": "on_chat_model_stream",
+                        "metadata": {"langgraph_node": "answer"},
+                        "data": {"chunk": SimpleNamespace(content=token)},
+                    }
+            finally:
+                self.closed = True
+
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    agent = Agent()
+    events = [
+        event
+        async for event in _token_generator(
+            QueryRequest(question="What is the rollout status?"),
+            agent,
+            MetricsTracker(),
+            DisconnectAfterFirstEvent(),
+        )
+    ]
+
+    assert agent.events_consumed == 1
+    assert agent.closed is True
+    assert all('"done": true' not in event for event in events)
+
+
+@pytest.mark.asyncio
+async def test_stream_propagates_cancellation_to_an_in_flight_graph(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    class Agent:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.cancelled = asyncio.Event()
+
+        async def astream_events(self, *_args, **_kwargs):
+            try:
+                self.started.set()
+                await asyncio.Event().wait()
+                yield {}
+            except asyncio.CancelledError:
+                self.cancelled.set()
+                raise
+
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    agent = Agent()
+    generator = _token_generator(
+        QueryRequest(question="What is the rollout status?"),
+        agent,
+        MetricsTracker(),
+        ConnectedRequest(),
+    )
+    next_event = asyncio.create_task(anext(generator))
+    await agent.started.wait()
+
+    next_event.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await next_event
+
+    assert agent.cancelled.is_set()

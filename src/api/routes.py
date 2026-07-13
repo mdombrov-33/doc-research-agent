@@ -42,7 +42,7 @@ async def stream_query(
     agent: Any = Depends(get_agent),
     tracker: MetricsTracker = Depends(get_metrics_tracker),
 ):
-    return await handle_stream(payload, agent, tracker)
+    return await handle_stream(payload, agent, tracker, request)
 
 
 @router.get("/monitoring/stats")

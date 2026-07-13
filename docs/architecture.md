@@ -433,6 +433,14 @@ data: {"error": "...", "done": true}                                         # o
 Headers disable proxy buffering (`X-Accel-Buffering: no`, `Cache-Control: no-cache`). After
 the stream closes the handler records metrics (§14).
 
+**Client disconnects.** The handler checks `Request.is_disconnected()` before the input
+guardrail and before requesting every next LangGraph event. Once disconnected, it logs only the
+stage, closes the graph event iterator, and sends no more tokens, final event, or metrics.
+Starlette also cancels the streaming generator when the ASGI server reports a disconnect; that
+`CancelledError` intentionally propagates into a currently awaited graph/provider operation.
+Cancellation cannot retract a provider request already sent, but it prevents later graph work
+from starting.
+
 ---
 
 ## 11. Guardrails
