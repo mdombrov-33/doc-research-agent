@@ -43,7 +43,7 @@ POST /api/stream
 - **Tools** — `retrieve_documents` runs hybrid dense + BM25 search in Qdrant (fused with RRF),
   then a cross-encoder reranks a wide candidate pool down to your `top_k`; `web_search` hits
   the live web.
-- **Post-tools** — increments a per-turn tool-call counter; at the hard cap (4 calls) it
+- **Post-tools** — increments a per-turn tool-call counter; at the hard cap (3 calls) it
   injects a stop message that forces the agent to write its final answer immediately.
 - **Answer** — once the agent has enough context (or hits the cap) it writes the answer and
   streams it over SSE. Internal source IDs are removed before the answer reaches the user;

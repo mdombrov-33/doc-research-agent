@@ -298,7 +298,9 @@ The system prompt (`prompts.py:AGENT_SYSTEM_PROMPT`) is what makes the loop beha
 the agent to (1) call `retrieve_documents` first for almost any question, resolving vague
 follow-ups like *"expand on that"* into standalone queries; (2) call `web_search` only when
 the documents are insufficient or the question needs current/external facts; (3) stop calling
-tools and answer once it has enough context, using only the retrieved context.
+tools and answer once it has enough context, using only the retrieved context. This is
+prompt-directed query formation, not a separate query-analysis module: the agent sees the
+persisted `messages` and supplies the tool's `query` argument directly.
 
 ### Tools — `ToolNode(TOOLS)` (prebuilt)
 LangGraph's prebuilt `ToolNode` executes whatever tool calls the agent emitted (it can run
@@ -308,7 +310,7 @@ handler to extract sources from.
 
 ### Post-tools — `post_tools_node` (`nodes.py`)
 Sits between every tool execution and the next reasoning step. It increments `tool_call_count`
-and, once the count reaches `MAX_TOOL_CALLS` (4), injects a `HumanMessage` telling the agent
+and, once the count reaches `MAX_TOOL_CALLS` (3), injects a `HumanMessage` telling the agent
 to stop calling tools and write its final answer immediately. This is a **hard enforcement**
 mechanism — the system prompt does not need to carry advisory "at most N calls" limits, and the
 agent cannot ignore it because the stop message lands in the conversation as a user turn.
