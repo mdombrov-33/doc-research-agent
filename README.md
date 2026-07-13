@@ -34,7 +34,7 @@ POST /api/stream
    │                                         └──► abstain│
    └─────────────────────────────────────────────────────┘
       │
-   streamed answer tokens → SSE → client   +   telemetry recorded
+   streamed answer tokens → SSE → client   +   outcome telemetry recorded
 ```
 
 - **Query** — a tool-calling LLM turns the current conversation into one standalone document
@@ -109,10 +109,11 @@ when durable, shared state is needed.
 
 ## Evaluation
 
-`evals/` holds an offline quality gate that runs the real pipeline against a labelled golden
-set and scores retrieval, generation, and embeddings (details in
+`evals/` holds an offline quality gate that runs the real retrieval pipeline against a labelled
+golden set and scores retrieval, generation, and embeddings (details in
 [`evals/README.md`](evals/README.md)). The deterministic retrieval tier runs in CI on every
-push to main.
+push to main. The graph's document-answer, web-fallback, and abstention routes are covered by
+corpus-backed integration tests; live telemetry reports their aggregate rates.
 
 ## Tech stack
 

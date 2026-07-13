@@ -174,6 +174,8 @@ handler reads everything the monitoring tracker needs:
 - `web_search_used` — whether the agent used the web_search tool this query
 - `sources_retrieved_total` — total raw artifacts returned by retrieval and web search; it is
   intentionally distinct from `sources_count`
+- `outcome` — `document_answer` when document evidence passed directly, `web_answer` when the
+  one web fallback ran before an answer, or `abstained` when no evidence passed
 - `latency_ms` — full request duration
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see

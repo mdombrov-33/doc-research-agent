@@ -56,7 +56,7 @@ Guardrails — INPUT check        llm-guard Toxicity scanner, local
 └────────────────────────────────────────────────────────────────────────┘
       │  answer-node tokens stream out as they are produced (SSE)
       ▼
-MetricsTracker.record(...)      latency, docs retrieved, web-search rate
+MetricsTracker.record(...)      latency, sources retrieved, route outcome
       │
       ▼
 SSE stream closes  ({"done": true, "sources": [...]})
@@ -251,6 +251,7 @@ class AgentState(TypedDict, total=False):
     messages: Required[Annotated[list[AnyMessage], add_messages]]
     evidence_sufficient: bool
     supporting_source_ids: list[str]
+    outcome: FinalOutcome
 ```
 
 - **`messages`** — the conversation and workflow scratchpad in one list. The
@@ -264,6 +265,10 @@ class AgentState(TypedDict, total=False):
 
 - **`supporting_source_ids`** — the selected, validated source IDs for a sufficient verdict.
   `answer_node` rebuilds its context from only these artifacts.
+
+- **`outcome`** — the final route result: `document_answer`, `web_answer`, or `abstained`.
+  It is written only by the terminal `answer` and `abstain` nodes, then reported in the final
+  SSE event and aggregated by monitoring.
 
 > **Per-request knobs are not in state.** `model` and `top_k` ride in the `RunnableConfig`'s
 > `configurable` dict, not in `AgentState`. The agent node reads `model`; the
@@ -313,9 +318,10 @@ is accepted only when it is sufficient, names at least one source ID, and every 
 actual artifacts. Malformed evaluator output and evaluator failures fail closed.
 
 `answer_node` receives the question and only the artifacts named by the validated verdict, then
-writes a cited answer without tools. `web_fallback_node` searches once using the query agent's
-standalone retrieval query. If neither evidence set passes, `abstain_node` emits a fixed honest
-response.
+writes a cited answer without tools. It records `document_answer` when document evidence passed
+directly, or `web_answer` when the bounded web fallback ran before evidence passed.
+`web_fallback_node` searches once using the query agent's standalone retrieval query. If neither
+evidence set passes, `abstain_node` emits a fixed honest response and records `abstained`.
 
 ---
 
@@ -400,7 +406,7 @@ only when it exactly identifies evidence from the same turn.
 Event shapes the client sees:
 ```
 data: {"token": "partial text"}                                              # during the answer
-data: {"done": true, "sources_count": N, "sources": [...], "session_id": "..."}  # success
+data: {"done": true, "sources_count": N, "sources": [...], "session_id": "...", "outcome": "document_answer"}  # success
 data: {"error": "...", "done": true}                                         # on error
 ```
 Headers disable proxy buffering (`X-Accel-Buffering: no`, `Cache-Control: no-cache`). After
@@ -512,6 +518,13 @@ After each query the stream handler calls `MetricsTracker.record(QueryMetrics(..
 | `web_search_rate` | fraction of queries where the agent used `web_search` |
 | `avg_sources_retrieved` | mean sources returned per query (all tool calls combined) |
 | `avg_latency_ms` | mean end-to-end latency |
+| `document_answer_rate` | fraction answered from sufficient document evidence |
+| `web_answer_rate` | fraction answered after the one web-fallback route ran |
+| `abstention_rate` | fraction where no evidence passed assessment |
+
+These are aggregate counters only: the tracker does not persist questions, answer text, or
+evidence excerpts. `web_answer` describes the graph route, so its cited answer may still include
+document evidence retained from the first retrieval.
 
 ---
 
@@ -541,6 +554,12 @@ Each aggregate is compared to a threshold; below it, the run exits non-zero. **T
 
 This is the offline counterpart to §14: monitoring measures live traffic; evals measure
 quality against known-correct answers.
+
+The graph itself has a separate deterministic route contract in
+`tests/integration/test_agent_graph.py`. It runs the compiled graph with corpus artifacts from
+`evals/corpus/` and scripted model verdicts to cover document answer, web fallback, and
+abstention. It verifies graph control and outcome reporting, not semantic model quality, so it
+runs with the normal test suite rather than as an LLM evaluation gate.
 
 ---
 

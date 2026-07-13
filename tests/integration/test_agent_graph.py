@@ -1,4 +1,5 @@
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -9,6 +10,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.core.agent import nodes, tools
 from src.core.agent.graph import build_graph
 from src.core.agent.nodes import EvidenceAssessment
+
+CORPUS_DIR = Path(__file__).parents[2] / "evals" / "corpus"
 
 
 @pytest.fixture
@@ -53,11 +56,21 @@ def _retrieve_call(cid="c1"):
     )
 
 
+def _corpus_artifact(filename: str, chunk_id: str) -> dict:
+    return {
+        "content": (CORPUS_DIR / filename).read_text(),
+        "document_id": filename.removesuffix(".txt"),
+        "chunk_id": chunk_id,
+        "filename": filename,
+        "source": "document",
+    }
+
+
 def test_graph_retrieves_then_answers(graph, monkeypatch):
     agent = _patch_llms(
         monkeypatch,
-        [_retrieve_call(), AIMessage(content="final answer [document:a:0]")],
-        [EvidenceAssessment(sufficient=True, supporting_source_ids=["document:a:0"])],
+        [_retrieve_call(), AIMessage(content="final answer [document:photosynthesis:0]")],
+        [EvidenceAssessment(sufficient=True, supporting_source_ids=["document:photosynthesis:0"])],
     )
     seen = {}
     monkeypatch.setattr(
@@ -65,14 +78,9 @@ def test_graph_retrieves_then_answers(graph, monkeypatch):
         "hybrid_search",
         lambda q, k: seen.update(top_k=k)
         or [
+            _corpus_artifact("photosynthesis.txt", "photosynthesis:0"),
             {
-                "content": "one",
-                "document_id": "a",
-                "filename": "a.pdf",
-                "source": "document",
-            },
-            {
-                "content": "two",
+                "content": "UNSELECTED_ARTIFACT_MARKER",
                 "document_id": "b",
                 "filename": "b.pdf",
                 "source": "document",
@@ -80,13 +88,14 @@ def test_graph_retrieves_then_answers(graph, monkeypatch):
         ],
     )
 
-    state = _run(graph, "q", top_k=11)
+    state = _run(graph, "How do plants convert sunlight into chemical energy?", top_k=11)
 
     assert seen["top_k"] == 11
-    assert state["messages"][-1].content == "final answer [document:a:0]"
+    assert state["messages"][-1].content == "final answer [document:photosynthesis:0]"
+    assert state["outcome"] == "document_answer"
     answer_input = agent.invoke.call_args_list[-1].args[0][-1].content
-    assert "one" in answer_input
-    assert "two" not in answer_input
+    assert "photosynthesis" in answer_input.lower()
+    assert "UNSELECTED_ARTIFACT_MARKER" not in answer_input
 
 
 def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):
@@ -159,12 +168,7 @@ def test_graph_falls_back_to_web_search(graph, monkeypatch):
         tools,
         "hybrid_search",
         lambda q, k: [
-            {
-                "content": "irrelevant vec",
-                "document_id": "a",
-                "filename": "a.pdf",
-                "source": "document",
-            }
+            _corpus_artifact("photosynthesis.txt", "photosynthesis:0")
         ],
     )
     web_search = MagicMock(
@@ -186,6 +190,7 @@ def test_graph_falls_back_to_web_search(graph, monkeypatch):
 
     web_search.assert_called_once_with("q")
     assert state["messages"][-1].content == "final answer [web:https://example.com]"
+    assert state["outcome"] == "web_answer"
 
 
 def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
@@ -198,12 +203,7 @@ def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
         tools,
         "hybrid_search",
         lambda q, k: [
-            {
-                "content": "irrelevant vec",
-                "document_id": "a",
-                "filename": "a.pdf",
-                "source": "document",
-            }
+            _corpus_artifact("photosynthesis.txt", "photosynthesis:0")
         ],
     )
     monkeypatch.setattr(nodes, "search_web", lambda _: ("No documents found.", []))
@@ -211,3 +211,4 @@ def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
     state = _run(graph, "q")
 
     assert state["messages"][-1].content == nodes.NO_EVIDENCE_RESPONSE
+    assert state["outcome"] == "abstained"

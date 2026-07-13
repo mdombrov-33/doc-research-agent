@@ -143,3 +143,35 @@ async def test_stream_hides_internal_source_ids_from_answer_tokens(monkeypatch):
     )
 
     assert visible_answer == "The rollout is complete."
+
+
+@pytest.mark.asyncio
+async def test_stream_reports_graph_outcome_and_records_it(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    class Agent:
+        async def astream_events(self, *_args, **_kwargs):
+            yield {
+                "event": "on_chain_end",
+                "name": "LangGraph",
+                "data": {
+                    "output": {
+                        "messages": [HumanMessage(content="What is the status?")],
+                        "outcome": "abstained",
+                    }
+                },
+            }
+
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    tracker = MetricsTracker()
+    events = [
+        event
+        async for event in _token_generator(
+            QueryRequest(question="What is the status?"), Agent(), tracker
+        )
+    ]
+
+    final = json.loads(events[-1].removeprefix("data: ").strip())
+    assert final["outcome"] == "abstained"
+    assert tracker.get_stats()["abstention_rate"] == 1.0

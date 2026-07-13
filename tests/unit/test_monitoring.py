@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.config import Settings
+from src.core.agent.outcomes import FinalOutcome
 from src.core.monitoring import db
 from src.core.monitoring.db import SqliteMetricsDB
 from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
@@ -13,12 +14,14 @@ def _make_eval(
     sources_retrieved: int = 5,
     web_search_triggered: bool = False,
     latency_ms: float = 1000.0,
+    outcome: FinalOutcome = "document_answer",
 ) -> QueryMetrics:
     return QueryMetrics(
         question="test question",
         sources_retrieved=sources_retrieved,
         web_search_triggered=web_search_triggered,
         latency_ms=latency_ms,
+        outcome=outcome,
     )
 
 
@@ -37,6 +40,7 @@ def test_single_query_stats():
     assert stats["total_queries"] == 1
     assert stats["avg_sources_retrieved"] == 5.0
     assert stats["avg_latency_ms"] == 2000.0
+    assert stats["document_answer_rate"] == 1.0
     assert "avg_retrieval_precision" not in stats
 
 
@@ -60,6 +64,9 @@ def test_legacy_database_migrates_source_total(tmp_path):
         "web_search_rate": 0.5,
         "avg_sources_retrieved": 3.0,
         "avg_latency_ms": 1500.0,
+        "document_answer_rate": 0.0,
+        "web_answer_rate": 0.0,
+        "abstention_rate": 0.0,
     }
 
 
@@ -75,6 +82,9 @@ def test_sqlite_metrics_persist_recorded_totals(tmp_path):
         "web_search_rate": 1.0,
         "avg_sources_retrieved": 4.0,
         "avg_latency_ms": 500.0,
+        "document_answer_rate": 1.0,
+        "web_answer_rate": 0.0,
+        "abstention_rate": 0.0,
     }
 
 
@@ -95,6 +105,17 @@ def test_web_search_rate():
     assert stats["web_search_rate"] == 2 / 3
 
 
+def test_outcome_rates():
+    tracker = MetricsTracker()
+    tracker.record(_make_eval(outcome="document_answer"))
+    tracker.record(_make_eval(outcome="web_answer"))
+    tracker.record(_make_eval(outcome="abstained"))
+
+    assert tracker.get_stats()["document_answer_rate"] == 1 / 3
+    assert tracker.get_stats()["web_answer_rate"] == 1 / 3
+    assert tracker.get_stats()["abstention_rate"] == 1 / 3
+
+
 def test_avg_latency():
     tracker = MetricsTracker()
     tracker.record(_make_eval(latency_ms=1000.0))
@@ -109,12 +130,16 @@ def test_postgres_metrics_record_uses_atomic_increment(monkeypatch):
     monkeypatch.setattr(db.psycopg, "connect", lambda url, autocommit: connection)
 
     store = db.PostgresMetricsDB("postgresql://example")
-    store.record(sources_retrieved=3, web_search_triggered=True, latency_ms=250.0)
-
-    assert cursor.execute.call_args_list[1].args[1] == (True, 3, 250.0)
-    assert "total_queries = monitoring_stats.total_queries + excluded.total_queries" in (
-        cursor.execute.call_args_list[1].args[0]
+    store.record(
+        sources_retrieved=3,
+        web_search_triggered=True,
+        latency_ms=250.0,
+        outcome="document_answer",
     )
+
+    assert cursor.execute.call_args_list[-1].args[1] == (True, 3, 250.0, True, False, False)
+    record_sql = cursor.execute.call_args_list[-1].args[0]
+    assert "total_queries = monitoring_stats.total_queries + excluded.total_queries" in record_sql
 
 
 def test_postgres_metrics_configuration_requires_database_url():

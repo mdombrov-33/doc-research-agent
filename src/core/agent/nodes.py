@@ -84,7 +84,7 @@ def evidence_assessment_node(
 
 def answer_node(
     state: AgentState, config: RunnableConfig | None = None
-) -> dict[str, list[AIMessage]]:
+) -> dict[str, Any]:
     """Synthesize a cited answer from evidence already judged sufficient."""
     model = _configurable(config).get("model")
     evidence = format_docs(_supporting_artifacts(state))
@@ -94,7 +94,8 @@ def answer_node(
             HumanMessage(content=f"Question:\n{_current_question(state)}\n\nEvidence:\n{evidence}"),
         ]
     )
-    return {"messages": [response]}
+    outcome = "web_answer" if _used_web_fallback(state) else "document_answer"
+    return {"messages": [response], "outcome": outcome}
 
 
 def web_fallback_node(
@@ -117,9 +118,9 @@ def web_fallback_node(
 
 def abstain_node(
     _: AgentState, config: RunnableConfig | None = None
-) -> dict[str, list[AIMessage]]:
+) -> dict[str, Any]:
     """Return the safe final response when no evidence passed assessment."""
-    return {"messages": [AIMessage(content=NO_EVIDENCE_RESPONSE)]}
+    return {"messages": [AIMessage(content=NO_EVIDENCE_RESPONSE)], "outcome": "abstained"}
 
 
 def _current_question(state: AgentState) -> str:
@@ -164,6 +165,13 @@ def _supporting_artifacts(state: AgentState) -> list[dict]:
         if (citation := citation_from_artifact(artifact)) is not None
         and citation.source_id in source_ids
     ]
+
+
+def _used_web_fallback(state: AgentState) -> bool:
+    return any(
+        isinstance(message, ToolMessage) and message.name == "web_search"
+        for message in _turn_messages(state)
+    )
 
 
 def _retrieval_query(state: AgentState) -> str:
