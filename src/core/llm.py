@@ -18,4 +18,5 @@ def get_llm(model_override: str | None = None, temperature: float = 0) -> ChatOp
         model=model,
         temperature=temperature,
         max_retries=settings.LLM_MAX_RETRIES,
+        timeout=settings.LLM_TIMEOUT_SECONDS,
     )

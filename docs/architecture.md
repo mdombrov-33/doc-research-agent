@@ -599,7 +599,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 
 | Failure | Handling | Where |
 |---|---|---|
-| Transient LLM API errors | `ChatOpenAI(max_retries=LLM_MAX_RETRIES)` | `llm.py` |
+| Chat-model timeout or transient API error | `ChatOpenAI(timeout=LLM_TIMEOUT_SECONDS, max_retries=LLM_MAX_RETRIES)`; 60 s default | `llm.py` |
 | Web search outage | fail soft → empty docs, request continues | `web_search` tool |
 | Imperfect entity tags | add entity matches to, never restrict, the unfiltered hybrid pool | `search.py` |
 | Empty / unsupported upload | safe client message → 400/500; details logged; temp file always cleaned up | `handlers/upload.py` |

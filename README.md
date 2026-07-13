@@ -93,6 +93,7 @@ list. Keys:
 
 - `OPENAI_API_KEY` — embeddings (`text-embedding-3-small`) only
 - `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer)
+- `LLM_TIMEOUT_SECONDS` — maximum duration of one chat-model request (default `60`)
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`);
   Compose sets this to `local` for its Qdrant service.
 
