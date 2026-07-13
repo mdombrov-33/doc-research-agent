@@ -45,5 +45,10 @@ def test_model_openrouter_format():
 
 
 def test_model_openai_format():
-    req = QueryRequest(question="q", model="gpt-4o")
-    assert req.model == "gpt-4o"
+    req = QueryRequest(question="q", model="openai/gpt-5.6-luna")
+    assert req.model == "openai/gpt-5.6-luna"
+
+
+def test_unsupported_model_rejected():
+    with pytest.raises(ValidationError, match="Unsupported model"):
+        QueryRequest(question="q", model="openai/gpt-4o")

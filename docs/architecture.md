@@ -29,7 +29,7 @@ multi-turn; history is persisted per session (§12).
 
 **Two LLM providers, by role:**
 - **OpenRouter** — every chat/LLM call (the agent's reasoning and answer, and the eval
-  judges). Lets the UI swap models freely. See `src/core/llm.py`.
+  judges). The UI can select from the supported model list. See `src/core/llm.py`.
 - **OpenAI (direct)** — embeddings only (`text-embedding-3-small`), for ingestion and
   retrieval. See `src/core/vectorstore.py`.
 
@@ -284,7 +284,9 @@ to `messages`. Two outcomes:
 - the response is **plain content** → that *is* the answer; `tools_condition` routes to `END`,
   and those tokens are what stream to the user (§10).
 
-The model is per-request: `get_llm(config.configurable.model)`, falling back to `LLM_MODEL`.
+The model is per-request: a request may choose one of `SUPPORTED_MODELS` (`src/config.py`),
+otherwise `get_llm(config.configurable.model)` falls back to `LLM_MODEL`. The Streamlit
+selector reads that same list, and the API rejects all other request model IDs with a 422.
 Temperature is `get_llm`'s default of **0**.
 
 The system prompt (`prompts.py:AGENT_SYSTEM_PROMPT`) is what makes the loop behave: it tells
@@ -444,7 +446,7 @@ Model roles:
 
 | Role | Setting / value | Provider | Temp | Where |
 |---|---|---|---|---|
-| Agent (reason + answer) | `LLM_MODEL` (UI-overridable) | OpenRouter | 0 | `agent_node` |
+| Agent (reason + answer) | `LLM_MODEL` (overridable from `SUPPORTED_MODELS`) | OpenRouter | 0 | `agent_node` |
 | Embeddings | `EMBEDDING_MODEL` (`text-embedding-3-small`) | OpenAI | — | ingestion + retrieval |
 | Reranker | `RERANK_MODEL` (MiniLM cross-encoder) | local ONNX | — | `rerank` |
 | Guardrails | Toxicity | local (HF, via llm-guard) | — | `guardrails` |

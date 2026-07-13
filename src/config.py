@@ -3,6 +3,22 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+SUPPORTED_MODELS: dict[str, str] = {
+    "anthropic/claude-fable-5": "Claude Fable 5",
+    "anthropic/claude-opus-4.8": "Claude Opus 4.8",
+    "anthropic/claude-opus-4.7": "Claude Opus 4.7",
+    "anthropic/claude-sonnet-5": "Claude Sonnet 5",
+    "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
+    "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
+    "openai/gpt-5.6-sol": "GPT-5.6 Sol",
+    "openai/gpt-5.6-terra": "GPT-5.6 Terra",
+    "openai/gpt-5.6-luna": "GPT-5.6 Luna",
+    "openai/gpt-5.5": "GPT 5.5",
+    "openai/gpt-5.4-mini": "GPT 5.4 Mini",
+    "x-ai/grok-4.5": "Grok 4.5",
+    "deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(

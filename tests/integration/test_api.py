@@ -120,6 +120,20 @@ def test_stream_returns_guardrail_refusal(client, monkeypatch):
     check_input.assert_awaited_once()
 
 
+def test_stream_rejects_unsupported_model(client):
+    app.dependency_overrides[get_agent] = lambda: MagicMock()
+    app.dependency_overrides[get_metrics_tracker] = lambda: MagicMock()
+
+    resp = client.post(
+        "/api/stream",
+        json={"question": "hello", "model": "openai/gpt-4o"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["loc"] == ["body", "model"]
+    assert "Unsupported model" in resp.json()["detail"][0]["msg"]
+
+
 def test_stream_hides_internal_errors(client, monkeypatch):
     class FailingAgent:
         async def astream_events(self, *args, **kwargs):

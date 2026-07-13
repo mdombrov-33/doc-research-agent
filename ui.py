@@ -4,27 +4,9 @@ import uuid
 import requests
 import streamlit as st
 
-from src.config import get_settings
+from src.config import SUPPORTED_MODELS, get_settings
 
 settings = get_settings()
-
-MODELS: dict[str, str] = {
-    "anthropic/claude-fable-5": "Claude Fable 5",
-    "anthropic/claude-opus-4.8": "Claude Opus 4.8",
-    "anthropic/claude-opus-4.7": "Claude Opus 4.7",
-    "anthropic/claude-sonnet-5": "Claude Sonnet 5",
-    "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
-    "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
-    "openai/gpt-5.6-sol": "GPT-5.6 Sol",
-    "openai/gpt-5.6-terra": "GPT-5.6 Terra",
-    "openai/gpt-5.6-luna": "GPT-5.6 Luna",
-    "openai/gpt-5.5": "GPT 5.5",
-    "openai/gpt-5.4-mini": "GPT 5.4 Mini",
-    "google/gemini-3-flash-preview": "Gemini 3 Flash Preview",
-    "x-ai/grok-4.5": "Grok 4.5",
-    "deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
-}
-
 
 def init_session_state():
     if "messages" not in st.session_state:
@@ -123,13 +105,13 @@ def main():
         st.subheader("Configuration")
 
         default_model = settings.LLM_MODEL
-        model_keys = list(MODELS.keys())
+        model_keys = list(SUPPORTED_MODELS)
         default_index = model_keys.index(default_model) if default_model in model_keys else 0
         selected_model = st.selectbox(
             "Model",
             options=model_keys,
             index=default_index,
-            format_func=lambda x: MODELS[x],
+            format_func=lambda x: SUPPORTED_MODELS[x],
         )
 
         top_k = st.slider("Top-K results", min_value=3, max_value=15, value=10, step=1)
