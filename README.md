@@ -79,9 +79,9 @@ list. Keys:
 - `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer)
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`)
 
-Guardrails run locally (llm-guard) and need no API key. Local conversation memory and live
-telemetry persist to SQLite under `DATA_DIR` (default `./data`); production uses the configured
-Postgres backends for both.
+Guardrails run locally (llm-guard) and need no API key. Conversation memory and live telemetry
+use SQLite under `DATA_DIR` (default `./data`). The app also supports optional Postgres backends
+when durable, shared state is needed.
 
 ## API
 

@@ -226,8 +226,9 @@ Edges (`graph.py`):
 Each custom node is wrapped by `timed(...)` (`src/utils/node_timer.py`), which logs a
 `node_complete` event with `duration_ms`. (`tools` is the prebuilt `ToolNode`, not wrapped.)
 
-The graph is compiled with a checkpointer (`AsyncSqliteSaver` locally, `AsyncPostgresSaver` in
-production, and a `MemorySaver` in tests) — that's what makes it multi-turn (§12).
+The graph is compiled with a checkpointer (`AsyncSqliteSaver` by default,
+`AsyncPostgresSaver` when configured, and a `MemorySaver` in tests) — that's what makes it
+multi-turn (§12).
 
 ### 6.2 State
 
@@ -427,17 +428,17 @@ feeds both:
   query before searching.
 
 **Persistent checkpointer.** `CHECKPOINT_BACKEND=sqlite` is the local default and uses
-`AsyncSqliteSaver` under `DATA_DIR` (§13). Production receives `CHECKPOINT_BACKEND=postgres`
-and `DATABASE_URL` from Cloud SQL and Secret Manager, then uses `AsyncPostgresSaver` with tables
-initialized at startup. The serving
+`AsyncSqliteSaver` under `DATA_DIR` (§13). Setting `CHECKPOINT_BACKEND=postgres` with a
+`DATABASE_URL` uses `AsyncPostgresSaver` with tables initialized at startup. The serving
 path is async (`astream_events`), so both are async checkpointers. The FastAPI lifespan owns
 the connection and closes it at shutdown. Tests inject a sync `MemorySaver` via
 `build_graph(checkpointer=...)`, which works with the sync `.invoke` API they drive.
 
 > **Durability caveat.** SQLite makes history survive a process restart *when the database
 > file persists* — true under docker-compose (the `./data` volume, §19) but **not** on Cloud
-> Run, whose local disk is ephemeral and not shared across instances. Cloud Run must use the
-> Postgres configuration above.
+> Run, whose local disk is ephemeral and not shared across instances. The current Cloud Run
+> deployment is limited to one instance; its state still resets when that instance is replaced.
+> Use the Postgres configuration above when durable or shared state is required.
 
 ---
 
@@ -478,10 +479,9 @@ Other key settings: `RERANK_*` (§9), `QDRANT_MODE` (`local`|`cloud`, picks the 
 from offline evaluation (§15).
 
 After each query the stream handler calls `MetricsTracker.record(QueryMetrics(...))`.
-`METRICS_BACKEND=sqlite` is the local default and writes to `metrics_db_path` under `DATA_DIR`.
-Production receives `METRICS_BACKEND=postgres` with `DATABASE_URL` from Cloud SQL and Secret
-Manager; each record is an atomic
-database increment and `/api/monitoring/stats` reads the shared aggregate across instances.
+`METRICS_BACKEND=sqlite` is the default and writes to `metrics_db_path` under `DATA_DIR`.
+`METRICS_BACKEND=postgres` with `DATABASE_URL` records atomic database increments and
+`/api/monitoring/stats` reads the shared aggregate across instances.
 `GET /api/monitoring/stats` returns:
 
 | Stat | Meaning |
@@ -618,7 +618,7 @@ tooling (excluded from the Docker image via `.dockerignore`).
   runtime. The persistent `/app/.model_cache` and `/app/.hf_cache` paths are the fix.
 - **Runtime state**: `DATA_DIR` (`/app/data`) holds the local `metrics.db` and
   `checkpoints.db`. docker-compose mounts `./data:/app/data` so both persist locally; on
-  Cloud Run the disk is ephemeral, so production uses Postgres (§12, §14).
+  Cloud Run the disk is ephemeral, so state resets when an instance is replaced.
 - **Target**: GCP Cloud Run (Terraform in `terraform/gcp`). spaCy + onnxruntime + the
   reranker + llm-guard's models must fit in the instance memory; watch for OOM if you scale the
   corpus or models.
