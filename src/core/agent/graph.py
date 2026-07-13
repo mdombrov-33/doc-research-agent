@@ -19,7 +19,13 @@ def build_graph(checkpointer: BaseCheckpointSaver):
     workflow = StateGraph(AgentState)
 
     workflow.add_node("agent", timed("agent", agent_node))
-    workflow.add_node("tools", ToolNode([retrieve_documents]))
+    workflow.add_node(
+        "tools",
+        ToolNode(
+            [retrieve_documents],
+            handle_tool_errors="Document retrieval is temporarily unavailable.",
+        ),
+    )
     workflow.add_node("assess_evidence", timed("assess_evidence", evidence_assessment_node))
     workflow.add_node("web_fallback", timed("web_fallback", web_fallback_node))
     workflow.add_node("answer", timed("answer", answer_node))

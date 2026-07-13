@@ -177,7 +177,8 @@ scales robust. `RetrievalMode.HYBRID` turns this on; it's a single Qdrant query.
    entities exist, fetch up to `top_k` additional entity-matching chunks, de-duplicate them, and
    add them to the rerank pool. With reranking off, the raw hybrid path remains one query. Each
    Qdrant request uses `QDRANT_QUERY_TIMEOUT_SECONDS` (10 seconds by default), independent of
-   indexing.
+   indexing. A transient timeout, network error, Qdrant rate limit, or retriable HTTP status
+   gets one short jittered retry; permanent errors are not retried.
 4. Map results to dicts (`content`, `document_id`, `filename`, `chunk_id`, `chunk_index`,
    `chunk_length`, `source="document"`), skipping blanks. Log `docs_retrieved` with score
    stats.
@@ -603,7 +604,7 @@ every log line) via `RequestLoggingMiddleware` (`src/api/middleware.py`). `/stre
 | Failure | Handling | Where |
 |---|---|---|
 | Chat-model timeout or transient API error | `ChatOpenAI(timeout=LLM_TIMEOUT_SECONDS, max_retries=LLM_MAX_RETRIES)`; 60 s default | `llm.py` |
-| Qdrant retrieval timeout | `get_retrieval_vector_store()` uses `QDRANT_QUERY_TIMEOUT_SECONDS`; 10 s default | `vectorstore.py` |
+| Qdrant retrieval timeout / transient failure | `get_retrieval_vector_store()` uses `QDRANT_QUERY_TIMEOUT_SECONDS`; 10 s default; `hybrid_search` retries once with jitter, then emits a fixed tool error and follows the normal one-shot web fallback | `vectorstore.py`, `search.py`, `graph.py` |
 | Qdrant collection/indexing timeout | `get_ingestion_qdrant_client()` and `get_ingestion_vector_store()` use `QDRANT_INGESTION_TIMEOUT_SECONDS`; 30 s default | `vectorstore.py` |
 | Web search outage | fail soft → empty docs, request continues | `web_search` tool |
 | Imperfect entity tags | add entity matches to, never restrict, the unfiltered hybrid pool | `search.py` |

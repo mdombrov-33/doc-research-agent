@@ -1,8 +1,13 @@
+import random
+import time
 from collections.abc import Sequence
 from typing import Any
 
+import httpx
 from opentelemetry import trace
 from qdrant_client import models
+from qdrant_client.common.client_exceptions import ResourceExhaustedResponse
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from src.config import Settings, get_settings
 from src.core.nlp import extract_entities
@@ -11,6 +16,7 @@ from src.core.vectorstore import get_retrieval_vector_store
 from src.utils.logger import logger
 
 _tracer = trace.get_tracer(__name__)
+_TRANSIENT_QDRANT_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 
 def _entity_filter(entities: list[str]) -> models.Filter | None:
@@ -52,6 +58,38 @@ def _fetch_k(top_k: int, settings: Settings) -> int:
     return max(top_k, min(top_k * settings.RERANK_MULTIPLIER, settings.RERANK_FETCH_CAP))
 
 
+def _is_transient_qdrant_error(error: Exception) -> bool:
+    if isinstance(error, ResourceExhaustedResponse):
+        return True
+    if isinstance(error, ResponseHandlingException):
+        return isinstance(
+            error.source,
+            (httpx.TimeoutException, httpx.NetworkError, httpx.ProxyError),
+        )
+    return (
+        isinstance(error, UnexpectedResponse)
+        and error.status_code in _TRANSIENT_QDRANT_STATUS_CODES
+    )
+
+
+def _qdrant_search(vector_store: Any, question: str, **kwargs: Any) -> list[tuple[Any, float]]:
+    for attempt in range(1, 3):
+        try:
+            return vector_store.similarity_search_with_score(question, **kwargs)
+        except Exception as error:
+            if attempt == 2 or not _is_transient_qdrant_error(error):
+                raise
+            status_code = error.status_code if isinstance(error, UnexpectedResponse) else None
+            logger.warning(
+                "qdrant_query_retry",
+                attempt=attempt,
+                failure_type=type(error).__name__,
+                status_code=status_code,
+            )
+            time.sleep(random.uniform(0.05, 0.25))
+    raise AssertionError("unreachable")
+
+
 def hybrid_search(question: str, top_k: int) -> list[dict]:
     """Retrieve documents for a query: hybrid candidates plus entity matches, then rerank.
 
@@ -84,13 +122,13 @@ def hybrid_search(question: str, top_k: int) -> list[dict]:
         )
 
         with _tracer.start_as_current_span("retrieval.qdrant_query"):
-            primary_results = vector_store.similarity_search_with_score(question, k=fetch_k)
+            primary_results = _qdrant_search(vector_store, question, k=fetch_k)
 
         entity_results = []
         if entity_filter and settings.RERANK_ENABLED:
             with _tracer.start_as_current_span("retrieval.qdrant_entity_supplement"):
-                entity_results = vector_store.similarity_search_with_score(
-                    question, k=top_k, filter=entity_filter
+                entity_results = _qdrant_search(
+                    vector_store, question, k=top_k, filter=entity_filter
                 )
         results = _merge_results(primary_results, entity_results)
 

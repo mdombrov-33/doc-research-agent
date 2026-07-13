@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.core.agent import nodes, tools
@@ -225,3 +225,25 @@ def test_graph_abstains_when_query_model_does_not_request_retrieval(graph, monke
     assert state["messages"][-1].content == nodes.NO_EVIDENCE_RESPONSE
     assert state["outcome"] == "abstained"
     assert state["stop_reason"] == "retrieval_not_requested"
+
+
+def test_graph_handles_retrieval_failure_without_exposing_provider_error(graph, monkeypatch):
+    _patch_llms(monkeypatch, [_retrieve_call()], [])
+
+    def unavailable(_query, _top_k):
+        raise RuntimeError("qdrant connection details")
+
+    monkeypatch.setattr(tools, "hybrid_search", unavailable)
+    monkeypatch.setattr(nodes, "search_web", lambda _: ("Web search failed.", []))
+
+    state = _run(graph, "q")
+
+    retrieval_message = next(
+        message
+        for message in state["messages"]
+        if isinstance(message, ToolMessage) and message.name == "retrieve_documents"
+    )
+    assert retrieval_message.content == "Document retrieval is temporarily unavailable."
+    assert "qdrant connection details" not in retrieval_message.content
+    assert state["outcome"] == "abstained"
+    assert state["stop_reason"] == "insufficient_evidence_after_web"

@@ -96,7 +96,8 @@ list. Keys:
 - `LLM_TIMEOUT_SECONDS` — maximum duration of one chat-model request (default `60`)
 - `QDRANT_MODE` — `local` (Docker) or `cloud` (uses `QDRANT_CLOUD_URL` + `QDRANT_API_KEY`);
   Compose sets this to `local` for its Qdrant service.
-- `QDRANT_QUERY_TIMEOUT_SECONDS` — maximum duration of one retrieval request (default `10`)
+- `QDRANT_QUERY_TIMEOUT_SECONDS` — maximum duration of one retrieval request (default `10`);
+  transient Qdrant failures retry once before the normal web-fallback path
 - `QDRANT_INGESTION_TIMEOUT_SECONDS` — maximum duration of a collection/indexing request
   (default `30`)
 

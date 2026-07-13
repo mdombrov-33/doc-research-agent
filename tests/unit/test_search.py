@@ -1,8 +1,11 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from qdrant_client import models
+from qdrant_client.common.client_exceptions import ResourceExhaustedResponse
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 from src.core.retrieval import search
 
@@ -79,6 +82,33 @@ def test_hybrid_search_maps_results_and_skips_blank(monkeypatch):
     assert out[0]["document_id"] == "doc-a"
     assert out[0]["chunk_id"] == "doc-a:2"
     assert out[0]["source"] == "document"
+
+
+@pytest.mark.parametrize(
+    "transient_error",
+    [
+        ResponseHandlingException(httpx.ReadTimeout("timed out")),
+        ResourceExhaustedResponse("rate limited", retry_after_s=1),
+    ],
+)
+def test_hybrid_search_retries_a_transient_qdrant_failure_once(monkeypatch, transient_error):
+    store = MagicMock()
+    store.similarity_search_with_score.side_effect = [
+        transient_error,
+        [(_Doc("recovered", {"filename": "recovered.txt"}), 0.9)],
+    ]
+    monkeypatch.setattr(search, "get_retrieval_vector_store", lambda: store)
+    monkeypatch.setattr(search, "extract_entities", lambda q: [])
+    monkeypatch.setattr(
+        search,
+        "get_settings",
+        lambda: SimpleNamespace(RERANK_ENABLED=False, RERANK_MULTIPLIER=4, RERANK_FETCH_CAP=100),
+    )
+
+    out = search.hybrid_search("q", top_k=1)
+
+    assert [doc["content"] for doc in out] == ["recovered"]
+    assert store.similarity_search_with_score.call_count == 2
 
 
 @pytest.mark.parametrize(
