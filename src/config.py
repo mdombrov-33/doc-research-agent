@@ -69,6 +69,8 @@ class Settings(BaseSettings):
         return f"{self.DATA_DIR}/checkpoints.db"
 
     UPLOAD_DIR: str = "./uploads"
+    MAX_UPLOAD_BYTES: int = 25 * 1024 * 1024
+    UPLOAD_READ_CHUNK_BYTES: int = 1024 * 1024
 
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT: str = "30/minute"

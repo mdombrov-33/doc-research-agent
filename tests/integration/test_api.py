@@ -81,6 +81,23 @@ def test_upload_cleans_up_temp_file(client, monkeypatch, tmp_path):
     assert list(Path(tmp_path).iterdir()) == []
 
 
+def test_upload_rejects_file_over_size_limit(client, monkeypatch, tmp_path):
+    process_mock = AsyncMock()
+    _override_upload_deps(tmp_path, process_mock, monkeypatch)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        UPLOAD_DIR=str(tmp_path),
+        MAX_UPLOAD_BYTES=4,
+        UPLOAD_READ_CHUNK_BYTES=2,
+    )
+
+    resp = client.post("/api/upload", files={"file": ("note.txt", b"hello", "text/plain")})
+
+    assert resp.status_code == 413
+    assert resp.json()["detail"] == "File exceeds the upload size limit."
+    process_mock.assert_not_awaited()
+    assert list(Path(tmp_path).iterdir()) == []
+
+
 @pytest.mark.parametrize(
     "error",
     [DocumentProcessingError("vector database password: leaked"), RuntimeError("api key: leaked")],

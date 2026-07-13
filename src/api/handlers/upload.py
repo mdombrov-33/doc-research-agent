@@ -38,14 +38,23 @@ async def handle_upload(
     file_path = upload_dir / temp_filename
 
     try:
-        content = await file.read()
         with open(file_path, "wb") as f:
-            f.write(content)
+            bytes_written = 0
+            while content := await file.read(settings.UPLOAD_READ_CHUNK_BYTES):
+                bytes_written += len(content)
+                if bytes_written > settings.MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="File exceeds the upload size limit.",
+                    )
+                f.write(content)
 
         result = await process_and_store(str(file_path), file.filename, vector_store, nlp)
         logger.info("upload_complete", **result)
         return result
 
+    except HTTPException:
+        raise
     except EmptyDocumentError:
         logger.info("upload_rejected", filename=file.filename)
         raise HTTPException(

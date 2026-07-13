@@ -100,7 +100,8 @@ the llm-guard scanners.
 
 ```
 upload file (pdf / docx / txt)
-   │  written to a temp path under UPLOAD_DIR, deleted in a finally-block
+   │  streamed to a temp path under UPLOAD_DIR in bounded chunks; rejects files over
+   │  MAX_UPLOAD_BYTES (25 MiB by default) and deletes the temp file in a finally-block
    ▼
 extract text            extract.py  (extract_from_file)
    │   .pdf → PyMuPDF per page   .docx → python-docx paragraphs   .txt → aiofiles
@@ -525,7 +526,7 @@ quality against known-correct answers.
 | Endpoint | Purpose | Request | Response |
 |---|---|---|---|
 | `POST /api/stream` | RAG query, streamed | `{question, session_id?, model?, top_k?}` (`top_k` 1–20, default 10) | `text/event-stream` (§10) |
-| `POST /api/upload` | ingest a document | multipart file (`.pdf`/`.docx`/`.txt`) | `{document_id, filename, chunks_created, file_size}` |
+| `POST /api/upload` | ingest a document | multipart file (`.pdf`/`.docx`/`.txt`, 25 MiB default cap) | `{document_id, filename, chunks_created, file_size}` |
 | `GET /api/monitoring/stats` | live telemetry | — | aggregates (§14) |
 | `GET /health` | liveness | — | `{status, environment, llm_model}` |
 
