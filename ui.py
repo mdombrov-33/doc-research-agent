@@ -29,7 +29,13 @@ def upload_file(uploaded_file):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"Upload failed: {e}")
+        detail = None
+        if e.response is not None:
+            try:
+                detail = e.response.json().get("detail")
+            except ValueError:
+                pass
+        st.error(f"Upload failed: {detail or e}")
         return None
 
 
