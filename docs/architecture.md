@@ -115,7 +115,12 @@ cost.
 ```
 upload file (pdf / docx / txt)
    │  streamed to a temp path under UPLOAD_DIR in bounded chunks; rejects files over
-   │  MAX_UPLOAD_BYTES (25 MiB by default) and deletes the temp file in a finally-block
+   │  MAX_UPLOAD_BYTES (25 MiB by default) and deletes the temp file in a finally-block;
+   │  SHA-256 of the bytes is computed during the same stream
+   ▼
+dedupe check            dedupe.py  (find_duplicate → filtered Qdrant scroll on file_sha256)
+   │   already-indexed bytes → return the existing document_id with duplicate:true,
+   │   skipping extract/chunk/enrich/embed and leaving corpus_version untouched
    ▼
 extract text            extract.py  (extract_from_file)
    │   .pdf → PyMuPDF (200-page cap)   .docx → python-docx paragraphs   .txt → aiofiles
@@ -135,7 +140,7 @@ store in Qdrant         index.py  (index_chunks → vector_store.add_documents, 
        computes BOTH vectors per chunk:
          • dense  = OpenAI text-embedding-3-small (1536-d)
          • sparse = BM25 (FastEmbed "Qdrant/bm25")
-       payload = {document_id, filename, chunk_id, chunk_index, chunk_length,
+       payload = {document_id, filename, file_sha256, chunk_id, chunk_index, chunk_length,
                   entities, entity_types, keywords, file_extension}
 ```
 
@@ -147,7 +152,14 @@ match the stored ones without excluding ordinary hybrid results.
 request. It is offloaded to a thread pool via `asyncio.to_thread` so the event loop stays free
 during the upload.
 
-A successful upload then bumps the answer cache's `corpus_version` (§4a): a new document can
+**File-level dedupe.** Before extraction, the SHA-256 of the uploaded bytes is looked up
+against the `file_sha256` stored in existing chunk payloads. Identical bytes short-circuit the
+whole pipeline: the handler returns the existing `document_id` with `duplicate: true` and does
+not re-embed. Dedupe is file-level only (the corpus is append-only — there is no update
+workflow that would need chunk-level caching). A deduped upload leaves `corpus_version`
+untouched, so a no-op re-upload never flushes the answer cache.
+
+A successful *new* upload then bumps the answer cache's `corpus_version` (§4a): a new document can
 invalidate any previously cached answer, so bumping the version retires the whole cache in one
 integer comparison. The bump is best-effort — it never fails an already-indexed upload.
 
@@ -719,7 +731,7 @@ module for a short live smoke run; `make eval-graph` runs the full golden set.
 | Endpoint | Purpose | Request | Response |
 |---|---|---|---|
 | `POST /api/stream` | RAG query, streamed | `{question, session_id?, model?, top_k?}` (`top_k` 1–20, default 10) | `text/event-stream` (§10) |
-| `POST /api/upload` | ingest a document | multipart file (`.pdf`/`.docx`/`.txt`, 25 MiB default cap) | `{document_id, filename, chunks_created, file_size}` |
+| `POST /api/upload` | ingest a document | multipart file (`.pdf`/`.docx`/`.txt`, 25 MiB default cap) | `{document_id, filename, chunks_created, file_size, duplicate}` (`duplicate:true` + `chunks_created:0` when the same bytes were already indexed) |
 | `GET /api/monitoring/stats` | live telemetry | — | aggregates (§14) |
 | `GET /health` | liveness | — | `{status, environment, llm_model}` without a dependency probe |
 | `GET /ready` | readiness | — | `200 {status: "ready"}` when Qdrant collection is readable; otherwise `503 {status: "unavailable"}` |

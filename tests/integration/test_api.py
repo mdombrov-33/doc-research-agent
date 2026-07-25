@@ -70,6 +70,7 @@ def _override_upload_deps(tmp_path, process_mock, monkeypatch):
     app.dependency_overrides[get_vector_store] = lambda: MagicMock()
     app.dependency_overrides[get_nlp] = lambda: MagicMock()
     monkeypatch.setattr(upload_module, "process_and_store", process_mock)
+    monkeypatch.setattr(upload_module, "find_duplicate", lambda *args: None)
 
 
 def test_upload_happy_path(client, monkeypatch, tmp_path):
@@ -96,6 +97,25 @@ def test_upload_happy_path(client, monkeypatch, tmp_path):
         "file_size_bucket": "0-1KiB",
         "chunks_created": 3,
     }
+
+
+def test_upload_returns_existing_document_for_duplicate(client, monkeypatch, tmp_path):
+    process_mock = AsyncMock()
+    _override_upload_deps(tmp_path, process_mock, monkeypatch)
+    monkeypatch.setattr(upload_module, "find_duplicate", lambda *args: "doc-existing")
+    bump = MagicMock()
+    monkeypatch.setattr(upload_module.answer_cache, "bump_corpus_version", bump)
+
+    resp = client.post("/api/upload", files={"file": ("note.txt", b"hello world", "text/plain")})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["document_id"] == "doc-existing"
+    assert body["duplicate"] is True
+    assert body["chunks_created"] == 0
+    process_mock.assert_not_awaited()
+    bump.assert_not_called()
+    assert list(Path(tmp_path).iterdir()) == []
 
 
 def test_upload_cleans_up_temp_file(client, monkeypatch, tmp_path):

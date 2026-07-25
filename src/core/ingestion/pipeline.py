@@ -17,6 +17,7 @@ from src.utils.logger import logger
 async def process_and_store(
     file_path: str,
     filename: str,
+    file_sha256: str,
     vector_store: QdrantVectorStore,
     nlp: Language,
     settings: Settings,
@@ -37,7 +38,9 @@ async def process_and_store(
         raise DocumentLimitError("Chunk limit exceeded")
 
     enriched_chunks = enrich_chunks(chunks, filename, nlp)
-    await asyncio.to_thread(index_chunks, vector_store, document_id, filename, enriched_chunks)
+    await asyncio.to_thread(
+        index_chunks, vector_store, document_id, filename, file_sha256, enriched_chunks
+    )
 
     logger.info(
         "document_processed",

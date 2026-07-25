@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import os
 import uuid
 from pathlib import Path
@@ -11,6 +12,7 @@ from spacy.language import Language
 from src.config import Settings
 from src.core import answer_cache
 from src.core.exceptions import DocumentLimitError, DocumentProcessingError, EmptyDocumentError
+from src.core.ingestion.dedupe import find_duplicate
 from src.core.ingestion.pipeline import process_and_store
 from src.utils.logger import logger
 
@@ -50,6 +52,7 @@ async def handle_upload(
     file_path = upload_dir / temp_filename
 
     try:
+        hasher = hashlib.sha256()
         with open(file_path, "wb") as f:
             bytes_written = 0
             while content := await file.read(settings.UPLOAD_READ_CHUNK_BYTES):
@@ -59,9 +62,31 @@ async def handle_upload(
                         status_code=413,
                         detail="File exceeds the upload size limit.",
                     )
+                hasher.update(content)
                 f.write(content)
+        file_sha256 = hasher.hexdigest()
 
-        result = await process_and_store(str(file_path), file.filename, vector_store, nlp, settings)
+        # Identical bytes are already indexed: return the existing document without re-embedding,
+        # and leave the corpus version untouched so the answer cache is not needlessly flushed.
+        duplicate_id = await asyncio.to_thread(find_duplicate, vector_store, file_sha256)
+        if duplicate_id:
+            logger.info(
+                "upload_duplicate",
+                document_id=duplicate_id,
+                file_extension=file_ext,
+                file_size_bucket=_file_size_bucket(bytes_written),
+            )
+            return {
+                "document_id": duplicate_id,
+                "filename": file.filename,
+                "chunks_created": 0,
+                "file_size": bytes_written,
+                "duplicate": True,
+            }
+
+        result = await process_and_store(
+            str(file_path), file.filename, file_sha256, vector_store, nlp, settings
+        )
         # A new document can invalidate any cached answer; bump the corpus version so only
         # answers formed after this upload are served. Never fail an indexed upload over this.
         if settings.ANSWER_CACHE_ENABLED:

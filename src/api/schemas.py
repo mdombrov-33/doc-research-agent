@@ -25,6 +25,7 @@ class UploadResponse(BaseModel):
     filename: str
     chunks_created: int
     file_size: int
+    duplicate: bool = False
 
 
 class HealthResponse(BaseModel):

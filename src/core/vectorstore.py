@@ -113,6 +113,11 @@ def ensure_collection_exists() -> None:
         field_name="metadata.document_id",
         field_schema=PayloadSchemaType.UUID,
     )
+    client.create_payload_index(
+        collection_name=settings.QDRANT_COLLECTION_NAME,
+        field_name="metadata.file_sha256",
+        field_schema=PayloadSchemaType.KEYWORD,
+    )
     logger.info("qdrant_collection_created", collection=settings.QDRANT_COLLECTION_NAME)
 
 

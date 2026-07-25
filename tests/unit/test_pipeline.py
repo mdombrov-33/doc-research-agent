@@ -32,7 +32,9 @@ async def test_process_and_store_rejects_empty_document(vector_store, nlp, tmp_p
     path.write_text("   \n\t ", encoding="utf-8")
     monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value="   \n\t "))
     with pytest.raises(EmptyDocumentError):
-        await pipeline.process_and_store(str(path), "empty.txt", vector_store, nlp, Settings())
+        await pipeline.process_and_store(
+            str(path), "empty.txt", "sha", vector_store, nlp, Settings()
+        )
     vector_store.add_documents.assert_not_called()
 
 
@@ -46,6 +48,7 @@ async def test_process_and_store_rejects_too_many_chunks(vector_store, nlp, tmp_
         await pipeline.process_and_store(
             str(path),
             "doc.txt",
+            "sha",
             vector_store,
             nlp,
             Settings(MAX_CHUNKS_PER_DOCUMENT=2),
@@ -64,7 +67,9 @@ async def test_process_and_store_returns_metadata_and_stores(
     monkeypatch.setattr(pipeline, "extract_from_file", AsyncMock(return_value=body))
     monkeypatch.setattr(pipeline, "logger", logger)
 
-    result = await pipeline.process_and_store(str(path), "doc.txt", vector_store, nlp, Settings())
+    result = await pipeline.process_and_store(
+        str(path), "doc.txt", "sha-256-digest", vector_store, nlp, Settings()
+    )
 
     assert result["filename"] == "doc.txt"
     assert result["chunks_created"] > 0
@@ -80,3 +85,4 @@ async def test_process_and_store_returns_metadata_and_stores(
     assert stored_documents[0].metadata["chunk_id"] == (
         f"{result['document_id']}:{stored_documents[0].metadata['chunk_index']}"
     )
+    assert stored_documents[0].metadata["file_sha256"] == "sha-256-digest"
