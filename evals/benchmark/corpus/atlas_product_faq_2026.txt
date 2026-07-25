@@ -1,0 +1,27 @@
+Atlas Product FAQ 2026
+
+Published: 2026-04-16
+
+What are the current Atlas Core limits?
+
+Atlas Core 3.0 supports 500 active workspaces per organization and keeps searchable activity history for 90 days. The 200-workspace and 30-day figures belong to the archived Atlas Core 2.4 specification.
+
+Which runtime does Atlas Core 3.0 need?
+
+Atlas Core 3.0 requires Northstar Runtime 8.4 or later. Runtime 7.9 is the old Atlas Core 2.4 requirement and is not sufficient for a 3.0 installation.
+
+Is Atlas Edge another Core edition?
+
+No. Atlas Edge 3.0 is a gateway that supports 40 registered edge nodes and buffers 72 hours of events while disconnected. It synchronizes with Atlas Core 3.0 or later but does not contain Core workspaces.
+
+When must integrations move to API v2?
+
+New integrations should use /api/v2 now. Existing API v1 integrations must migrate by 30 June 2026 because v1 is removed on 1 July, and v2 payloads use workspace_key instead of project_key.
+
+Is semantic indexing enabled automatically?
+
+Semantic indexing was opt-in at the Atlas Core 3.0 launch on 18 March 2026. It is the default only for workspaces created on or after 15 April 2026; existing workspaces retain their chosen mode.
+
+How often can Atlas Core synchronize?
+
+Atlas Core 3.0 can run incremental synchronization every 5 minutes. This interval is a Core scheduling setting and should not be confused with Atlas Edge's 72-hour offline event buffer.

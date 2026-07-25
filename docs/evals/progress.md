@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-25  
 Branch: `improvements/evaluation-redesign`  
-Overall status: milestone 2 in progress; first document pack validates
+Overall status: milestone 2 in progress; two document packs validate
 
 The authoritative design is [design.md](design.md).
 
@@ -44,6 +44,10 @@ The authoritative design is [design.md](design.md).
   passages.
 - Generated the People policies vertical slice: six documents and ten draft cases, including one
   two-turn conversation.
+- Generated the Product lifecycle pack: six documents and ten draft cases, including one
+  two-turn conversation.
+- Added product/version ambiguity, superseded specifications, phased release behavior, and
+  ordered migration evidence to the benchmark draft.
 - Isolated PyMuPDF at an `Any` boundary in artifact validation because its editor-visible
   `Document` annotations do not match the runtime API.
 
@@ -51,8 +55,8 @@ The authoritative design is [design.md](design.md).
 
 Continue milestone 2:
 
-1. Expand the fact ledger across Product, Customer, Security, Facilities, and Finance.
-2. Render the remaining approximately 30 PDF, DOCX, and TXT artifacts.
+1. Expand the fact ledger across Customer, Security, Facilities, and Finance.
+2. Render the remaining approximately 24 PDF, DOCX, and TXT artifacts.
 3. Use RAGAS-assisted generation to propose the remaining cases, then normalize them into the
    project schema.
 4. Add deterministic web fixtures and document/web/abstention cases.
@@ -121,3 +125,16 @@ The draft will not become the accepted benchmark until milestone 3's manual revi
 - Material issue: PyMuPDF's legacy and canonical imports produced inconsistent editor type
   information. The PDF reader now uses distinct DOCX/PDF variables and limits `Any` to the
   opened third-party PDF object.
+
+### Milestone 2 Product lifecycle pack
+
+- Authoring: six additional corpus artifacts rendered across PDF, DOCX, and TXT.
+- Reproducibility: rerendering the Product artifacts produced identical SHA-256 hashes.
+- Coverage: ten additional cases exercise current versus superseded values, similar product
+  names, release timing, migration order, and conversational follow-up.
+- Chunk-shape check: four Product documents produce one chunk and two produce two chunks under
+  the current production chunker.
+- Validation: `Validated 12 documents, 20 cases, and 0 web fixtures.`
+- Full verification: Ruff, formatting, mypy, benchmark validation, and all 145 tests passed.
+- Environment note: the first sandboxed test run could not access FastEmbed's external BM25
+  model cache; the complete suite passed once run with normal cache access.

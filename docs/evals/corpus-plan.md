@@ -40,3 +40,21 @@ documents are created.
 The pack contains ten draft cases: current-policy facts, policy changes over time,
 multi-document comparisons, and one two-turn follow-up. These cases remain drafts until the
 manual review milestone.
+
+## Product lifecycle pack
+
+The second draft pack exercises retrieval where product names, versions, and document purposes
+overlap.
+
+| Document | Format | Benchmark role |
+|---|---|---|
+| Atlas Core 2.4 specification | TXT | Superseded capacity, retention, and runtime values |
+| Atlas Core 3.0 specification | PDF | Current limits and supported interfaces |
+| Atlas Edge 3.0 specification | DOCX | Similar-name distractor and product-boundary questions |
+| Atlas Core 3.0 release notes | PDF | Launch dates, phased defaults, and API transition |
+| Atlas Core 3.0 migration guide | DOCX | Ordered procedure, rollback, and field migration |
+| Atlas product FAQ | TXT | Supporting evidence with near-duplicate wording |
+
+Its ten draft cases cover current values, version comparisons, Core-versus-Edge disambiguation,
+release timing, ordered migration steps, and one two-turn API migration conversation. These cases
+also remain drafts until the manual review milestone.

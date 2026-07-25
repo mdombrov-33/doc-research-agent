@@ -19,5 +19,5 @@ benchmark/
 ledger passages and rendered documents. Neither command calls an embedding model, generator, or
 judge.
 
-The current vertical slice contains six People policy documents and ten draft cases. It proves
-the authoring path; it is not yet the accepted benchmark.
+The current draft contains twelve documents and twenty cases across the People policies and
+Product lifecycle packs. It proves the authoring path; it is not yet the accepted benchmark.

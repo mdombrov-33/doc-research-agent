@@ -153,6 +153,108 @@
       "id": "performance-cycle-2026",
       "text": "The 2026 performance cycle has formal review checkpoints in June and December.",
       "valid_from": "2026-01-01"
+    },
+    {
+      "id": "atlas-core-workspaces-2-4",
+      "text": "Atlas Core 2.4 supports up to 200 active workspaces per organization.",
+      "valid_from": "2025-02-10",
+      "valid_until": "2026-03-17"
+    },
+    {
+      "id": "atlas-core-retention-2-4",
+      "text": "Atlas Core 2.4 retains searchable activity history for 30 days.",
+      "valid_from": "2025-02-10",
+      "valid_until": "2026-03-17"
+    },
+    {
+      "id": "atlas-core-runtime-2-4",
+      "text": "Atlas Core 2.4 requires Northstar Runtime 7.9 or later.",
+      "valid_from": "2025-02-10",
+      "valid_until": "2026-03-17"
+    },
+    {
+      "id": "atlas-core-workspaces-3-0",
+      "text": "Atlas Core 3.0 supports up to 500 active workspaces per organization.",
+      "valid_from": "2026-03-18",
+      "supersedes_fact_id": "atlas-core-workspaces-2-4"
+    },
+    {
+      "id": "atlas-core-retention-3-0",
+      "text": "Atlas Core 3.0 retains searchable activity history for 90 days.",
+      "valid_from": "2026-03-18",
+      "supersedes_fact_id": "atlas-core-retention-2-4"
+    },
+    {
+      "id": "atlas-core-runtime-3-0",
+      "text": "Atlas Core 3.0 requires Northstar Runtime 8.4 or later.",
+      "valid_from": "2026-03-18",
+      "supersedes_fact_id": "atlas-core-runtime-2-4"
+    },
+    {
+      "id": "atlas-core-api-v2",
+      "text": "Atlas Core 3.0 uses /api/v2 as its supported automation endpoint.",
+      "valid_from": "2026-03-18"
+    },
+    {
+      "id": "atlas-core-api-v1-retirement",
+      "text": "Atlas Core API v1 remains available through 30 June 2026 and is removed on 1 July 2026.",
+      "valid_from": "2026-03-18"
+    },
+    {
+      "id": "atlas-core-sync-interval",
+      "text": "Atlas Core 3.0 supports an incremental synchronization interval as short as 5 minutes.",
+      "valid_from": "2026-03-18"
+    },
+    {
+      "id": "atlas-core-3-0-ga",
+      "text": "Atlas Core 3.0 became generally available on 18 March 2026.",
+      "valid_from": "2026-03-18"
+    },
+    {
+      "id": "atlas-semantic-indexing-opt-in",
+      "text": "Semantic indexing was opt-in when Atlas Core 3.0 launched on 18 March 2026.",
+      "valid_from": "2026-03-18"
+    },
+    {
+      "id": "atlas-semantic-indexing-default",
+      "text": "Semantic indexing became the default for newly created Atlas Core workspaces on 15 April 2026.",
+      "valid_from": "2026-04-15",
+      "supersedes_fact_id": "atlas-semantic-indexing-opt-in"
+    },
+    {
+      "id": "atlas-edge-node-limit",
+      "text": "An Atlas Edge 3.0 gateway supports up to 40 registered edge nodes.",
+      "valid_from": "2026-03-25"
+    },
+    {
+      "id": "atlas-edge-buffer",
+      "text": "Atlas Edge 3.0 buffers up to 72 hours of events while disconnected.",
+      "valid_from": "2026-03-25"
+    },
+    {
+      "id": "atlas-edge-core-requirement",
+      "text": "Atlas Edge 3.0 can synchronize only with Atlas Core 3.0 or later.",
+      "valid_from": "2026-03-25"
+    },
+    {
+      "id": "atlas-migration-backup",
+      "text": "Before upgrading Atlas Core 2.4, operators must export an organization backup and verify its checksum.",
+      "valid_from": "2026-03-01"
+    },
+    {
+      "id": "atlas-migration-runtime-first",
+      "text": "Operators must upgrade Northstar Runtime to version 8.4 or later before installing Atlas Core 3.0.",
+      "valid_from": "2026-03-01"
+    },
+    {
+      "id": "atlas-migration-rollback-window",
+      "text": "Atlas Core 3.0 supports automated rollback for 60 minutes after the first successful 3.0 startup.",
+      "valid_from": "2026-03-01"
+    },
+    {
+      "id": "atlas-workspace-key-rename",
+      "text": "Atlas Core 3.0 renames the automation payload field project_key to workspace_key.",
+      "valid_from": "2026-03-18"
     }
   ],
   "documents": [
@@ -426,6 +528,308 @@
           "fact_ids": [
             "regional-benefit-eligibility",
             "family-leave-eligibility"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "atlas-core-spec-2-4",
+      "pack_id": "product",
+      "filename": "atlas_core_spec_2_4.txt",
+      "title": "Atlas Core 2.4 Product Specification",
+      "published_on": "2025-02-10",
+      "passages": [
+        {
+          "id": "organization-capacity",
+          "heading": "Organization capacity",
+          "text": "Atlas Core 2.4 supports up to 200 active workspaces in one organization. Archived workspaces do not count toward the limit, but an archived workspace must be restored before users can search or update it.",
+          "fact_ids": [
+            "atlas-core-workspaces-2-4"
+          ]
+        },
+        {
+          "id": "activity-history",
+          "heading": "Activity history",
+          "text": "Searchable activity history is retained for 30 days in Atlas Core 2.4. Exported audit files may be stored externally for longer periods, but they are not searchable from the Atlas Core interface.",
+          "fact_ids": [
+            "atlas-core-retention-2-4"
+          ]
+        },
+        {
+          "id": "runtime-requirement",
+          "heading": "Runtime requirement",
+          "text": "Atlas Core 2.4 requires Northstar Runtime 7.9 or a later compatible 7.x release. This requirement applies to the Core service and does not describe the firmware used by Atlas Edge gateways.",
+          "fact_ids": [
+            "atlas-core-runtime-2-4"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "atlas-core-spec-3-0",
+      "pack_id": "product",
+      "filename": "atlas_core_spec_3_0.pdf",
+      "title": "Atlas Core 3.0 Product Specification",
+      "published_on": "2026-03-18",
+      "supersedes_document_id": "atlas-core-spec-2-4",
+      "passages": [
+        {
+          "id": "organization-capacity",
+          "heading": "Organization capacity",
+          "text": "Atlas Core 3.0 supports up to 500 active workspaces in one organization. The limit applies to active workspaces only; archived workspaces remain excluded until they are restored.",
+          "fact_ids": [
+            "atlas-core-workspaces-3-0"
+          ]
+        },
+        {
+          "id": "activity-history",
+          "heading": "Activity history",
+          "text": "Atlas Core 3.0 retains searchable activity history for 90 days. Administrators can still export audit data for external retention, but an export does not extend the history searchable inside Atlas Core.",
+          "fact_ids": [
+            "atlas-core-retention-3-0"
+          ]
+        },
+        {
+          "id": "runtime-requirement",
+          "heading": "Runtime requirement",
+          "text": "Atlas Core 3.0 requires Northstar Runtime 8.4 or later. A deployment running Runtime 7.9 may continue to host Atlas Core 2.4, but it must upgrade the runtime before Atlas Core 3.0 is installed.",
+          "fact_ids": [
+            "atlas-core-runtime-2-4",
+            "atlas-core-runtime-3-0",
+            "atlas-migration-runtime-first"
+          ]
+        },
+        {
+          "id": "automation-api",
+          "heading": "Automation API",
+          "text": "The supported automation endpoint for Atlas Core 3.0 is /api/v2. API v1 remains available during the transition through 30 June 2026 and is removed on 1 July 2026; new integrations should use v2 immediately.",
+          "fact_ids": [
+            "atlas-core-api-v2",
+            "atlas-core-api-v1-retirement"
+          ]
+        },
+        {
+          "id": "incremental-sync",
+          "heading": "Incremental synchronization",
+          "text": "Atlas Core 3.0 can schedule incremental synchronization as often as every 5 minutes. The configured interval controls synchronization with connected sources and is unrelated to the offline event buffer provided by Atlas Edge.",
+          "fact_ids": [
+            "atlas-core-sync-interval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "atlas-edge-spec-3-0",
+      "pack_id": "product",
+      "filename": "atlas_edge_spec_3_0.docx",
+      "title": "Atlas Edge 3.0 Gateway Specification",
+      "published_on": "2026-03-25",
+      "passages": [
+        {
+          "id": "gateway-capacity",
+          "heading": "Gateway capacity",
+          "text": "One Atlas Edge 3.0 gateway supports up to 40 registered edge nodes. The node limit is per gateway and must not be confused with the 500 active-workspace organization limit in Atlas Core 3.0.",
+          "fact_ids": [
+            "atlas-edge-node-limit",
+            "atlas-core-workspaces-3-0"
+          ]
+        },
+        {
+          "id": "offline-buffer",
+          "heading": "Offline event buffer",
+          "text": "When its connection to Atlas Core is unavailable, Atlas Edge 3.0 buffers up to 72 hours of events. The gateway forwards buffered events in timestamp order after connectivity returns.",
+          "fact_ids": [
+            "atlas-edge-buffer"
+          ]
+        },
+        {
+          "id": "core-compatibility",
+          "heading": "Atlas Core compatibility",
+          "text": "Atlas Edge 3.0 can synchronize only with Atlas Core 3.0 or later. Atlas Core 2.4 organizations must complete the Core upgrade before registering an Edge 3.0 gateway.",
+          "fact_ids": [
+            "atlas-edge-core-requirement"
+          ]
+        },
+        {
+          "id": "product-boundary",
+          "heading": "Product boundary",
+          "text": "Atlas Edge is an offline-capable gateway for remote sites; it does not host Atlas Core workspaces. Workspace capacity, activity-history retention, and automation API versions are Atlas Core properties.",
+          "fact_ids": [
+            "atlas-edge-node-limit",
+            "atlas-core-workspaces-3-0",
+            "atlas-core-retention-3-0",
+            "atlas-core-api-v2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "atlas-core-release-notes-3-0",
+      "pack_id": "product",
+      "filename": "atlas_core_release_notes_3_0.pdf",
+      "title": "Atlas Core 3.0 Release Notes",
+      "published_on": "2026-03-18",
+      "passages": [
+        {
+          "id": "general-availability",
+          "heading": "General availability",
+          "text": "Atlas Core 3.0 became generally available on 18 March 2026. The release increases organization capacity and searchable history, introduces API v2, and requires Northstar Runtime 8.4 or later.",
+          "fact_ids": [
+            "atlas-core-3-0-ga",
+            "atlas-core-workspaces-3-0",
+            "atlas-core-retention-3-0",
+            "atlas-core-api-v2",
+            "atlas-core-runtime-3-0"
+          ]
+        },
+        {
+          "id": "semantic-indexing-rollout",
+          "heading": "Semantic indexing rollout",
+          "text": "Semantic indexing was opt-in at the 18 March launch. It became the default for workspaces created on or after 15 April 2026; existing workspaces keep their configured indexing mode until an administrator changes it.",
+          "fact_ids": [
+            "atlas-semantic-indexing-opt-in",
+            "atlas-semantic-indexing-default"
+          ]
+        },
+        {
+          "id": "api-transition",
+          "heading": "API transition",
+          "text": "API v2 is the supported automation interface in Atlas Core 3.0. API v1 remains temporarily available through 30 June 2026 so operators can migrate integrations before its removal on 1 July.",
+          "fact_ids": [
+            "atlas-core-api-v2",
+            "atlas-core-api-v1-retirement"
+          ]
+        },
+        {
+          "id": "payload-change",
+          "heading": "Automation payload change",
+          "text": "The v2 automation payload uses workspace_key where v1 used project_key. Integrations that send project_key to /api/v2 fail validation and must rename the field before switching endpoints.",
+          "fact_ids": [
+            "atlas-workspace-key-rename"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "atlas-core-migration-guide-3-0",
+      "pack_id": "product",
+      "filename": "atlas_core_migration_guide_3_0.docx",
+      "title": "Migrating Atlas Core 2.4 to 3.0",
+      "published_on": "2026-03-01",
+      "passages": [
+        {
+          "id": "preflight-backup",
+          "heading": "Preflight backup",
+          "text": "Before changing either the runtime or Atlas Core, export an organization backup from Atlas Core 2.4 and verify the checksum recorded by the export command. Do not begin the upgrade when the checksum verification fails.",
+          "fact_ids": [
+            "atlas-migration-backup"
+          ]
+        },
+        {
+          "id": "runtime-upgrade",
+          "heading": "Upgrade the runtime first",
+          "text": "After verifying the backup, upgrade Northstar Runtime to version 8.4 or later. Atlas Core 3.0 cannot be installed on Runtime 7.9, so the runtime upgrade must finish before the Core installer starts.",
+          "fact_ids": [
+            "atlas-core-runtime-2-4",
+            "atlas-core-runtime-3-0",
+            "atlas-migration-runtime-first"
+          ]
+        },
+        {
+          "id": "core-installation",
+          "heading": "Install Atlas Core 3.0",
+          "text": "Install Atlas Core 3.0 only after the backup is verified and Runtime 8.4 or later is active. The first successful 3.0 startup begins the automated rollback window.",
+          "fact_ids": [
+            "atlas-migration-backup",
+            "atlas-migration-runtime-first",
+            "atlas-migration-rollback-window"
+          ]
+        },
+        {
+          "id": "rollback",
+          "heading": "Rollback window",
+          "text": "Automated rollback remains available for 60 minutes after the first successful Atlas Core 3.0 startup. After that window closes, recovery requires restoring the verified organization backup through the documented manual procedure.",
+          "fact_ids": [
+            "atlas-migration-rollback-window",
+            "atlas-migration-backup"
+          ]
+        },
+        {
+          "id": "integration-migration",
+          "heading": "Migrate automation integrations",
+          "text": "Move automation integrations to /api/v2 and rename project_key to workspace_key in request payloads. Complete this work by 30 June 2026 because API v1 is removed on 1 July 2026.",
+          "fact_ids": [
+            "atlas-core-api-v2",
+            "atlas-core-api-v1-retirement",
+            "atlas-workspace-key-rename"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "atlas-product-faq-2026",
+      "pack_id": "product",
+      "filename": "atlas_product_faq_2026.txt",
+      "title": "Atlas Product FAQ 2026",
+      "published_on": "2026-04-16",
+      "passages": [
+        {
+          "id": "core-capacity-summary",
+          "heading": "What are the current Atlas Core limits?",
+          "text": "Atlas Core 3.0 supports 500 active workspaces per organization and keeps searchable activity history for 90 days. The 200-workspace and 30-day figures belong to the archived Atlas Core 2.4 specification.",
+          "fact_ids": [
+            "atlas-core-workspaces-2-4",
+            "atlas-core-retention-2-4",
+            "atlas-core-workspaces-3-0",
+            "atlas-core-retention-3-0"
+          ]
+        },
+        {
+          "id": "core-runtime-summary",
+          "heading": "Which runtime does Atlas Core 3.0 need?",
+          "text": "Atlas Core 3.0 requires Northstar Runtime 8.4 or later. Runtime 7.9 is the old Atlas Core 2.4 requirement and is not sufficient for a 3.0 installation.",
+          "fact_ids": [
+            "atlas-core-runtime-2-4",
+            "atlas-core-runtime-3-0"
+          ]
+        },
+        {
+          "id": "edge-summary",
+          "heading": "Is Atlas Edge another Core edition?",
+          "text": "No. Atlas Edge 3.0 is a gateway that supports 40 registered edge nodes and buffers 72 hours of events while disconnected. It synchronizes with Atlas Core 3.0 or later but does not contain Core workspaces.",
+          "fact_ids": [
+            "atlas-edge-node-limit",
+            "atlas-edge-buffer",
+            "atlas-edge-core-requirement"
+          ]
+        },
+        {
+          "id": "api-summary",
+          "heading": "When must integrations move to API v2?",
+          "text": "New integrations should use /api/v2 now. Existing API v1 integrations must migrate by 30 June 2026 because v1 is removed on 1 July, and v2 payloads use workspace_key instead of project_key.",
+          "fact_ids": [
+            "atlas-core-api-v2",
+            "atlas-core-api-v1-retirement",
+            "atlas-workspace-key-rename"
+          ]
+        },
+        {
+          "id": "indexing-summary",
+          "heading": "Is semantic indexing enabled automatically?",
+          "text": "Semantic indexing was opt-in at the Atlas Core 3.0 launch on 18 March 2026. It is the default only for workspaces created on or after 15 April 2026; existing workspaces retain their chosen mode.",
+          "fact_ids": [
+            "atlas-core-3-0-ga",
+            "atlas-semantic-indexing-opt-in",
+            "atlas-semantic-indexing-default"
+          ]
+        },
+        {
+          "id": "sync-summary",
+          "heading": "How often can Atlas Core synchronize?",
+          "text": "Atlas Core 3.0 can run incremental synchronization every 5 minutes. This interval is a Core scheduling setting and should not be confused with Atlas Edge's 72-hour offline event buffer.",
+          "fact_ids": [
+            "atlas-core-sync-interval",
+            "atlas-edge-buffer"
           ]
         }
       ]

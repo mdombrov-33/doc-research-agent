@@ -1,0 +1,15 @@
+Atlas Core 2.4 Product Specification
+
+Published: 2025-02-10
+
+Organization capacity
+
+Atlas Core 2.4 supports up to 200 active workspaces in one organization. Archived workspaces do not count toward the limit, but an archived workspace must be restored before users can search or update it.
+
+Activity history
+
+Searchable activity history is retained for 30 days in Atlas Core 2.4. Exported audit files may be stored externally for longer periods, but they are not searchable from the Atlas Core interface.
+
+Runtime requirement
+
+Atlas Core 2.4 requires Northstar Runtime 7.9 or a later compatible 7.x release. This requirement applies to the Core service and does not describe the firmware used by Atlas Edge gateways.
