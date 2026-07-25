@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-25  
 Branch: `improvements/evaluation-redesign`  
-Overall status: milestone 1 complete; synthetic benchmark authoring is next
+Overall status: milestone 2 in progress; first document pack validates
 
 The authoritative design is [design.md](design.md).
 
@@ -12,7 +12,7 @@ The authoritative design is [design.md](design.md).
 |---|---|---|
 | 0. Design and terminology | Complete | Quality contract, boundaries, metrics, and data strategy agreed |
 | 1. Dependencies and structure | Complete | New packages resolve on Python 3.13; schemas and validation command exist |
-| 2. Synthetic benchmark draft | Pending | Fact ledger, approximately 36 files, web fixtures, and approximately 60 draft cases exist |
+| 2. Synthetic benchmark draft | In progress | Fact ledger, approximately 36 files, web fixtures, and approximately 60 draft cases exist |
 | 3. Benchmark review | Pending | Every accepted case has passed the one-time manual review |
 | 4. Shared application runner | Pending | Each case produces one normalized run record from the real graph |
 | 5. Evaluator integration | Pending | `ir-measures`, RAGAS, and DeepEval consume the shared record |
@@ -37,17 +37,26 @@ The authoritative design is [design.md](design.md).
 - Added `make eval-validate` as the first command in the replacement harness.
 - Disabled DeepEval's transitive pytest rerun plugin; the project does not use retries and the
   plugin opens a local coordination socket during test startup.
+- Defined six related Northstar Labs document packs and their intended retrieval challenges.
+- Added fact and document revision metadata to the ledger schema.
+- Added `make eval-author` to render PDF, DOCX, and TXT artifacts from the ledger.
+- Added artifact-content validation so committed files cannot silently drift from ledger
+  passages.
+- Generated the People policies vertical slice: six documents and ten draft cases, including one
+  two-turn conversation.
+- Isolated PyMuPDF at an `Any` boundary in artifact validation because its editor-visible
+  `Document` annotations do not match the runtime API.
 
 ## Next slice
 
-Milestone 2:
+Continue milestone 2:
 
-1. Choose the six related document-pack themes and define the facts, revisions, conflicts, and
-   distractors each pack must cover.
-2. Add the authoring path that renders corpus documents from the fact ledger.
-3. Generate the approximately 36 draft PDF, DOCX, and TXT artifacts.
-4. Generate approximately 60 draft cases and deterministic web fixtures.
-5. Run schema, cross-reference, and artifact validation over the complete draft.
+1. Expand the fact ledger across Product, Customer, Security, Facilities, and Finance.
+2. Render the remaining approximately 30 PDF, DOCX, and TXT artifacts.
+3. Use RAGAS-assisted generation to propose the remaining cases, then normalize them into the
+   project schema.
+4. Add deterministic web fixtures and document/web/abstention cases.
+5. Deduplicate to approximately 60 useful draft cases and validate the complete draft.
 
 The draft will not become the accepted benchmark until milestone 3's manual review.
 
@@ -80,7 +89,6 @@ The draft will not become the accepted benchmark until milestone 3's manual revi
 ## Open items
 
 - Exact judge model after compatibility and calibration checks.
-- Themes and fact structure for the six document packs.
 - Final case counts after deduplication and review.
 - Calibration examples and observed judge variance.
 - Baseline scores and eventual regression tolerances.
@@ -98,3 +106,18 @@ The draft will not become the accepted benchmark until milestone 3's manual revi
 - Material issue: DeepEval's transitive `pytest-rerunfailures` plugin tried to open a localhost
   socket during pytest startup. It is disabled because this repository does not use automatic
   test reruns.
+
+### Milestone 2 vertical slice
+
+- Authoring: six corpus artifacts rendered from the fact ledger across PDF, DOCX, and TXT.
+- Reproducibility: rerendering the same ledger produces byte-identical artifacts.
+- Validation: `Validated 6 documents, 10 cases, and 0 web fixtures.`
+- Focused tests: `11 passed`.
+- Artifact extraction: all three generated formats were read through the production extraction
+  path in tests.
+- Chunk-shape check: the pack mixes four short one-chunk documents with two longer two-chunk
+  documents under the current production chunker.
+- Full verification: Ruff, formatting, mypy, and the complete pytest suite passed.
+- Material issue: PyMuPDF's legacy and canonical imports produced inconsistent editor type
+  information. The PDF reader now uses distinct DOCX/PDF variables and limits `Any` to the
+  opened third-party PDF object.

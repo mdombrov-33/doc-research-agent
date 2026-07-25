@@ -1,3 +1,4 @@
+from datetime import date
 from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Literal
@@ -29,10 +30,24 @@ class Pack(StrictModel):
 class Fact(StrictModel):
     id: Identifier
     text: str = Field(min_length=1)
+    valid_from: date | None = None
+    valid_until: date | None = None
+    supersedes_fact_id: Identifier | None = None
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> "Fact":
+        if (
+            self.valid_from is not None
+            and self.valid_until is not None
+            and self.valid_until < self.valid_from
+        ):
+            raise ValueError("fact validity cannot end before it starts")
+        return self
 
 
 class LedgerPassage(StrictModel):
     id: Identifier
+    heading: str = Field(min_length=1)
     text: str = Field(min_length=1)
     fact_ids: list[Identifier] = Field(min_length=1)
 
@@ -42,6 +57,8 @@ class DocumentSpec(StrictModel):
     pack_id: Identifier
     filename: str = Field(min_length=1)
     title: str = Field(min_length=1)
+    published_on: date
+    supersedes_document_id: Identifier | None = None
     passages: list[LedgerPassage] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -65,14 +82,31 @@ class FactLedger(StrictModel):
     def validate_references(self) -> "FactLedger":
         pack_ids = _require_unique([pack.id for pack in self.packs], "pack IDs")
         fact_ids = _require_unique([fact.id for fact in self.facts], "fact IDs")
-        _require_unique([document.id for document in self.documents], "document IDs")
+        document_ids = _require_unique([document.id for document in self.documents], "document IDs")
         _require_unique([document.filename for document in self.documents], "document filenames")
 
+        referenced_fact_ids: set[str] = set()
+        for fact in self.facts:
+            if fact.supersedes_fact_id is not None:
+                if fact.supersedes_fact_id == fact.id:
+                    raise ValueError(f"fact {fact.id!r} cannot supersede itself")
+                if fact.supersedes_fact_id not in fact_ids:
+                    raise ValueError(
+                        f"fact {fact.id!r} supersedes unknown fact {fact.supersedes_fact_id!r}"
+                    )
         for document in self.documents:
             if document.pack_id not in pack_ids:
                 raise ValueError(
                     f"document {document.id!r} references unknown pack {document.pack_id!r}"
                 )
+            if document.supersedes_document_id is not None:
+                if document.supersedes_document_id == document.id:
+                    raise ValueError(f"document {document.id!r} cannot supersede itself")
+                if document.supersedes_document_id not in document_ids:
+                    raise ValueError(
+                        f"document {document.id!r} supersedes unknown document "
+                        f"{document.supersedes_document_id!r}"
+                    )
             for passage in document.passages:
                 unknown_facts = set(passage.fact_ids) - fact_ids
                 if unknown_facts:
@@ -80,6 +114,10 @@ class FactLedger(StrictModel):
                         f"passage {document.id}/{passage.id} references unknown facts "
                         f"{sorted(unknown_facts)}"
                     )
+                referenced_fact_ids.update(passage.fact_ids)
+        orphan_facts = fact_ids - referenced_fact_ids
+        if orphan_facts:
+            raise ValueError(f"facts are not used by any document: {sorted(orphan_facts)}")
         return self
 
 
@@ -95,7 +133,7 @@ class DocumentJudgment(StrictModel):
 
 class ExpectedToolCall(StrictModel):
     name: Identifier
-    arguments: dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, Any] | None = None
 
 
 class EvaluationTurn(StrictModel):

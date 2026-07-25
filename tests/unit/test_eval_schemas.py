@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 import pytest
 from pydantic import ValidationError
@@ -26,16 +27,24 @@ from evals.validate import load_benchmark
 def _ledger() -> FactLedger:
     return FactLedger(
         packs=[Pack(id="policy", title="Policy pack")],
-        facts=[Fact(id="leave-days", text="Employees receive 24 leave days.")],
+        facts=[
+            Fact(
+                id="leave-days",
+                text="Employees receive 24 leave days.",
+                valid_from=date(2026, 1, 1),
+            )
+        ],
         documents=[
             DocumentSpec(
                 id="handbook",
                 pack_id="policy",
                 filename="handbook.txt",
                 title="Employee handbook",
+                published_on=date(2025, 12, 1),
                 passages=[
                     LedgerPassage(
                         id="annual-leave",
+                        heading="Annual leave",
                         text="Full-time employees receive 24 leave days each year.",
                         fact_ids=["leave-days"],
                     )
@@ -103,7 +112,7 @@ def test_load_benchmark_validates_files_and_artifacts(tmp_path):
     root = tmp_path / "benchmark"
     corpus = root / "corpus"
     corpus.mkdir(parents=True)
-    (corpus / "handbook.txt").write_text("Employees receive 24 leave days.")
+    (corpus / "handbook.txt").write_text("Full-time employees receive 24 leave days each year.")
     (root / "fact_ledger.json").write_text(_ledger().model_dump_json(indent=2))
     (root / "cases.jsonl").write_text(_document_case().model_dump_json() + "\n")
     (root / "web_fixtures.json").write_text("[]\n")
@@ -111,6 +120,19 @@ def test_load_benchmark_validates_files_and_artifacts(tmp_path):
     benchmark = load_benchmark(root)
 
     assert benchmark.ledger.documents[0].id == "handbook"
+
+
+def test_load_benchmark_rejects_artifact_that_drifted_from_ledger(tmp_path):
+    root = tmp_path / "benchmark"
+    corpus = root / "corpus"
+    corpus.mkdir(parents=True)
+    (corpus / "handbook.txt").write_text("Employees receive 20 leave days.")
+    (root / "fact_ledger.json").write_text(_ledger().model_dump_json())
+    (root / "cases.jsonl").write_text(_document_case().model_dump_json() + "\n")
+    (root / "web_fixtures.json").write_text("[]\n")
+
+    with pytest.raises(ValueError, match="missing ledger passage"):
+        load_benchmark(root)
 
 
 def test_load_benchmark_reports_invalid_jsonl_line(tmp_path):

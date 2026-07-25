@@ -86,6 +86,9 @@ Initial target:
 - Overlapping facts, plausible distractors, revisions, and temporal conflicts.
 - Documents generated at authoring time, reviewed, and committed.
 
+The six document-pack themes and their intended challenges are defined in
+[corpus-plan.md](corpus-plan.md).
+
 The current 17-document corpus will be retired. Its contents are not a compatibility constraint
 for the new benchmark.
 
@@ -195,7 +198,8 @@ responsibility of `ir-measures`.
 Initial scorecard:
 
 - Exact expected outcome.
-- Strict tool correctness.
+- Strict tool correctness: exact tool choice, count, and order, plus only arguments whose wording
+  is stable.
 - Citation faithfulness for answered cases.
 - Conversation completeness for multi-turn cases.
 

@@ -25,6 +25,11 @@ _Avoid_: Failure, empty answer
 A fixed collection of representative documents used to measure research quality.
 _Avoid_: Golden corpus, test documents
 
+**Document pack**:
+A group of related evaluation documents designed to exercise one coherent family of retrieval
+and reasoning challenges.
+_Avoid_: Topic, corpus segment
+
 **Evaluation case**:
 A curated user scenario with an expected outcome and, when applicable, expected evidence and
 answer.
@@ -42,6 +47,11 @@ _Avoid_: Relevant document
 **Supporting evidence**:
 Evidence that corroborates or enriches an answer but is not necessary to answer correctly.
 _Avoid_: Optional required document
+
+**Reference passage**:
+A stable fact-ledger passage that identifies expected evidence independently of runtime
+chunking.
+_Avoid_: Golden chunk, expected chunk
 
 ## Stack
 

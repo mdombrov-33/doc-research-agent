@@ -1,0 +1,434 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "people",
+      "title": "People policies",
+      "description": "Company-wide policies, regional addenda, and superseded handbook editions."
+    },
+    {
+      "id": "product",
+      "title": "Product lifecycle",
+      "description": "Versioned product specifications, release notes, and migration guidance."
+    },
+    {
+      "id": "customer",
+      "title": "Customer commitments",
+      "description": "Plan terms, contract exceptions, service levels, and support procedures."
+    },
+    {
+      "id": "security",
+      "title": "Security operations",
+      "description": "Response playbooks, incident reports, timelines, and remediation records."
+    },
+    {
+      "id": "facilities",
+      "title": "Facilities and sustainability",
+      "description": "Site reports, dated targets, energy projects, and operational comparisons."
+    },
+    {
+      "id": "finance",
+      "title": "Finance and planning",
+      "description": "Quarterly results, budgets, forecasts, and board decisions."
+    }
+  ],
+  "facts": [
+    {
+      "id": "annual-leave-2024",
+      "text": "Full-time employees received 20 annual leave days per calendar year under the 2024 handbook.",
+      "valid_from": "2024-01-01",
+      "valid_until": "2025-12-31"
+    },
+    {
+      "id": "leave-carryover-2024",
+      "text": "Up to 5 unused annual leave days could be carried into the next year under the 2024 handbook.",
+      "valid_from": "2024-01-01",
+      "valid_until": "2025-12-31"
+    },
+    {
+      "id": "expense-deadline-2024",
+      "text": "Expense claims were due within 45 calendar days under the 2024 handbook.",
+      "valid_from": "2024-01-01",
+      "valid_until": "2025-12-31"
+    },
+    {
+      "id": "annual-leave-2026",
+      "text": "Full-time employees receive 24 annual leave days per calendar year from 2026.",
+      "valid_from": "2026-01-01",
+      "supersedes_fact_id": "annual-leave-2024"
+    },
+    {
+      "id": "leave-carryover-2026",
+      "text": "Up to 8 unused annual leave days may be carried into the next year from 2026.",
+      "valid_from": "2026-01-01",
+      "supersedes_fact_id": "leave-carryover-2024"
+    },
+    {
+      "id": "expense-deadline-2026",
+      "text": "Expense claims must be submitted within 30 calendar days from 2026.",
+      "valid_from": "2026-01-01",
+      "supersedes_fact_id": "expense-deadline-2024"
+    },
+    {
+      "id": "remote-office-days",
+      "text": "Remote-designated employees normally work from a Northstar office at least 3 days per calendar month.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "cross-border-limit",
+      "text": "Remote work from a country other than the employee's employing country is limited to 45 calendar days per year.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "home-office-budget",
+      "text": "Remote-designated employees may claim up to 900 Northstar Credits for home-office equipment once every 3 years.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "collaboration-window",
+      "text": "Distributed teams reserve 13:00 to 16:00 UTC on Tuesdays and Thursdays for synchronous collaboration.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "security-update-window",
+      "text": "Company-managed remote devices must install critical security updates within 7 calendar days.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "connectivity-backup-budget",
+      "text": "Remote-designated employees may claim up to 40 Northstar Credits per month for backup internet access.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "kyiv-recovery-days",
+      "text": "Employees assigned to the Kyiv hub receive 4 additional recovery days each calendar year.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "berlin-civic-days",
+      "text": "Employees assigned to the Berlin hub receive 2 civic-service days each calendar year.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "toronto-winter-budget",
+      "text": "Employees assigned to the Toronto hub may claim 300 Northstar Credits annually for winter commuting equipment.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "regional-benefit-eligibility",
+      "text": "Regional benefits begin after 30 consecutive days assigned to the qualifying hub.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "primary-caregiver-leave",
+      "text": "A primary caregiver receives 18 weeks of fully paid family leave.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "secondary-caregiver-leave",
+      "text": "A secondary caregiver receives 8 weeks of fully paid family leave.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "return-to-work-ramp",
+      "text": "After family leave, an employee may work an 80 percent schedule at full base pay for 4 weeks.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "family-leave-eligibility",
+      "text": "Employees become eligible for paid family leave after 90 calendar days of employment.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "family-leave-notice",
+      "text": "Employees should give 30 calendar days notice for foreseeable family leave.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "learning-budget-2026",
+      "text": "Employees may claim up to 1500 Northstar Credits per calendar year for approved professional learning.",
+      "valid_from": "2026-01-01"
+    },
+    {
+      "id": "performance-cycle-2026",
+      "text": "The 2026 performance cycle has formal review checkpoints in June and December.",
+      "valid_from": "2026-01-01"
+    }
+  ],
+  "documents": [
+    {
+      "id": "employee-handbook-2024",
+      "pack_id": "people",
+      "filename": "employee_handbook_2024.txt",
+      "title": "Northstar Labs Employee Handbook 2024",
+      "published_on": "2023-12-15",
+      "passages": [
+        {
+          "id": "annual-leave",
+          "heading": "Annual leave",
+          "text": "For the 2024 and 2025 calendar years, full-time employees receive 20 annual leave days. Employees may carry no more than 5 unused days into the following calendar year; any amount above that limit expires.",
+          "fact_ids": [
+            "annual-leave-2024",
+            "leave-carryover-2024"
+          ]
+        },
+        {
+          "id": "expense-submission",
+          "heading": "Expense submission",
+          "text": "Employees must submit reimbursable business expenses within 45 calendar days of the purchase date. Claims submitted after that deadline require approval from the finance operations lead.",
+          "fact_ids": [
+            "expense-deadline-2024"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "employee-handbook-2026",
+      "pack_id": "people",
+      "filename": "employee_handbook_2026.pdf",
+      "title": "Northstar Labs Employee Handbook 2026",
+      "published_on": "2025-12-15",
+      "supersedes_document_id": "employee-handbook-2024",
+      "passages": [
+        {
+          "id": "annual-leave",
+          "heading": "Annual leave",
+          "text": "Beginning 1 January 2026, full-time employees receive 24 annual leave days per calendar year. Up to 8 unused days may be carried into the next calendar year; remaining unused days expire.",
+          "fact_ids": [
+            "annual-leave-2026",
+            "leave-carryover-2026"
+          ]
+        },
+        {
+          "id": "expense-submission",
+          "heading": "Expense submission",
+          "text": "Beginning 1 January 2026, reimbursable business expenses must be submitted within 30 calendar days of purchase. The former 45-day deadline no longer applies to new expenses.",
+          "fact_ids": [
+            "expense-deadline-2026"
+          ]
+        },
+        {
+          "id": "professional-learning",
+          "heading": "Professional learning",
+          "text": "Employees may claim up to 1500 Northstar Credits per calendar year for approved courses, books, conferences, and professional certifications. The employee's manager must approve the learning plan before purchase, and unused allowance does not carry into the next year.",
+          "fact_ids": [
+            "learning-budget-2026"
+          ]
+        },
+        {
+          "id": "performance-cycle",
+          "heading": "Performance cycle",
+          "text": "The 2026 performance cycle includes formal review checkpoints in June and December. Managers may hold additional development conversations, but those conversations do not replace either documented checkpoint.",
+          "fact_ids": [
+            "performance-cycle-2026"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "distributed-work-policy-2026",
+      "pack_id": "people",
+      "filename": "distributed_work_policy_2026.docx",
+      "title": "Northstar Labs Distributed Work Policy",
+      "published_on": "2025-11-20",
+      "passages": [
+        {
+          "id": "office-presence",
+          "heading": "Office presence",
+          "text": "Remote-designated employees normally work from a Northstar office at least 3 days per calendar month. Team leads may group those days around planning or customer events, but they may not increase the monthly minimum without written notice.",
+          "fact_ids": [
+            "remote-office-days"
+          ]
+        },
+        {
+          "id": "cross-border-work",
+          "heading": "Cross-border remote work",
+          "text": "Remote work from a country other than the employee's employing country is limited to 45 calendar days in a calendar year. Employees must obtain People Operations approval before travel and remain responsible for visa restrictions.",
+          "fact_ids": [
+            "cross-border-limit"
+          ]
+        },
+        {
+          "id": "home-office-equipment",
+          "heading": "Home-office equipment",
+          "text": "A remote-designated employee may claim up to 900 Northstar Credits for approved home-office equipment once every 3 years. The allowance does not renew annually and cannot be exchanged for cash.",
+          "fact_ids": [
+            "home-office-budget"
+          ]
+        },
+        {
+          "id": "collaboration-window",
+          "heading": "Shared collaboration window",
+          "text": "Distributed teams reserve 13:00 to 16:00 UTC on Tuesdays and Thursdays for synchronous collaboration. Outside that window, teams should default to written updates and should not assume that colleagues in other time zones are immediately available.",
+          "fact_ids": [
+            "collaboration-window"
+          ]
+        },
+        {
+          "id": "managed-device-security",
+          "heading": "Managed-device security",
+          "text": "Company-managed devices used for remote work must install critical security updates within 7 calendar days of release. Employees who cannot complete an update must contact the security desk rather than disabling device management.",
+          "fact_ids": [
+            "security-update-window"
+          ]
+        },
+        {
+          "id": "backup-connectivity",
+          "heading": "Backup connectivity",
+          "text": "Remote-designated employees may claim up to 40 Northstar Credits per month for backup internet access. The benefit covers a secondary connection or mobile data plan, but not upgrades to the employee's primary household service.",
+          "fact_ids": [
+            "connectivity-backup-budget"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "regional-benefits-2026",
+      "pack_id": "people",
+      "filename": "regional_benefits_addendum_2026.pdf",
+      "title": "Northstar Labs Regional Benefits Addendum 2026",
+      "published_on": "2025-12-01",
+      "passages": [
+        {
+          "id": "kyiv-benefit",
+          "heading": "Kyiv hub",
+          "text": "Employees assigned to the Kyiv hub receive 4 additional recovery days per calendar year. These days are separate from annual leave, cannot be carried over, and must be recorded as recovery leave.",
+          "fact_ids": [
+            "kyiv-recovery-days"
+          ]
+        },
+        {
+          "id": "berlin-benefit",
+          "heading": "Berlin hub",
+          "text": "Employees assigned to the Berlin hub receive 2 civic-service days per calendar year. The days may be used for registered volunteer work or local election duties and cannot be carried over.",
+          "fact_ids": [
+            "berlin-civic-days"
+          ]
+        },
+        {
+          "id": "toronto-benefit",
+          "heading": "Toronto hub",
+          "text": "Employees assigned to the Toronto hub may claim up to 300 Northstar Credits each year for winter commuting equipment. Eligible items include insulated footwear, traction aids, and bicycle winterization.",
+          "fact_ids": [
+            "toronto-winter-budget"
+          ]
+        },
+        {
+          "id": "eligibility",
+          "heading": "Eligibility and assignment changes",
+          "text": "Regional benefits begin after an employee has been assigned to the qualifying hub for 30 consecutive days. When an assignment changes, no new regional benefit may be claimed until the employee completes the new 30-day qualification period.",
+          "fact_ids": [
+            "regional-benefit-eligibility"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "family-leave-guide-2026",
+      "pack_id": "people",
+      "filename": "family_leave_guide_2026.docx",
+      "title": "Northstar Labs Family Leave Guide 2026",
+      "published_on": "2025-12-05",
+      "passages": [
+        {
+          "id": "caregiver-leave",
+          "heading": "Paid caregiver leave",
+          "text": "A primary caregiver receives 18 weeks of fully paid family leave, while a secondary caregiver receives 8 weeks of fully paid family leave. Employees designate their caregiver category when arranging leave with People Operations.",
+          "fact_ids": [
+            "primary-caregiver-leave",
+            "secondary-caregiver-leave"
+          ]
+        },
+        {
+          "id": "return-ramp",
+          "heading": "Return-to-work ramp",
+          "text": "Immediately after family leave, an employee may work an 80 percent schedule while continuing to receive full base pay for 4 weeks. The temporary schedule must be agreed with the employee's manager before the return date.",
+          "fact_ids": [
+            "return-to-work-ramp"
+          ]
+        },
+        {
+          "id": "eligibility",
+          "heading": "Eligibility",
+          "text": "Employees become eligible for paid family leave after 90 calendar days of employment. The qualifying period is measured from the employee's start date and does not depend on whether the employee works from an office or remotely.",
+          "fact_ids": [
+            "family-leave-eligibility"
+          ]
+        },
+        {
+          "id": "planning-notice",
+          "heading": "Planning and notice",
+          "text": "For foreseeable family leave, employees should give People Operations at least 30 calendar days notice. A shorter notice period is accepted when the timing could not reasonably have been known in advance.",
+          "fact_ids": [
+            "family-leave-notice"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manager-people-faq-2026",
+      "pack_id": "people",
+      "filename": "manager_people_faq_2026.txt",
+      "title": "Manager FAQ: 2026 People Policy Changes",
+      "published_on": "2025-12-18",
+      "passages": [
+        {
+          "id": "leave-summary",
+          "heading": "What changed about annual leave?",
+          "text": "The current handbook raises annual leave to 24 days and the carryover limit to 8 days from 1 January 2026. Managers should not use the 20-day allowance or 5-day carryover limit printed in the archived 2024 handbook.",
+          "fact_ids": [
+            "annual-leave-2024",
+            "leave-carryover-2024",
+            "annual-leave-2026",
+            "leave-carryover-2026"
+          ]
+        },
+        {
+          "id": "expense-summary",
+          "heading": "What is the current expense deadline?",
+          "text": "New expenses must be submitted within 30 calendar days. The 45-day period applies only to expenses governed by the archived handbook and should not be quoted as the current deadline.",
+          "fact_ids": [
+            "expense-deadline-2024",
+            "expense-deadline-2026"
+          ]
+        },
+        {
+          "id": "remote-summary",
+          "heading": "How often do remote employees visit an office?",
+          "text": "Remote-designated employees normally attend a Northstar office at least 3 days each calendar month. This office-presence rule is separate from the 45-day annual limit on cross-border remote work.",
+          "fact_ids": [
+            "remote-office-days",
+            "cross-border-limit"
+          ]
+        },
+        {
+          "id": "learning-summary",
+          "heading": "What is the learning allowance?",
+          "text": "The 2026 professional-learning allowance is 1500 Northstar Credits per employee for the calendar year. Managers approve the learning plan before purchase, and the allowance is unrelated to the three-year home-office equipment budget.",
+          "fact_ids": [
+            "learning-budget-2026",
+            "home-office-budget"
+          ]
+        },
+        {
+          "id": "family-leave-summary",
+          "heading": "When does family leave eligibility begin?",
+          "text": "Paid family leave eligibility begins after 90 calendar days of employment. For foreseeable leave, managers should direct employees to People Operations at least 30 calendar days before the expected start.",
+          "fact_ids": [
+            "family-leave-eligibility",
+            "family-leave-notice"
+          ]
+        },
+        {
+          "id": "regional-summary",
+          "heading": "When do regional benefits begin?",
+          "text": "An employee must be assigned to a qualifying hub for 30 consecutive days before regional benefits begin. The waiting period applies again after a move to another hub and is not the same as family leave eligibility.",
+          "fact_ids": [
+            "regional-benefit-eligibility",
+            "family-leave-eligibility"
+          ]
+        }
+      ]
+    }
+  ]
+}
