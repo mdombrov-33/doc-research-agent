@@ -17,6 +17,7 @@ class MetricsStore(Protocol):
         latency_ms: float,
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
+        path: str,
     ) -> None: ...
 
     def record_event(
@@ -29,6 +30,13 @@ class MetricsStore(Protocol):
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
         cache_hit: bool,
+        path: str,
+        planner_model: str | None,
+        assessor_model: str | None,
+        query_shape: str | None,
+        candidate_count: int,
+        evidence_count: int,
+        reranker_calls: int,
     ) -> None: ...
 
     def load_event_stats(self) -> dict: ...
@@ -48,7 +56,10 @@ CREATE TABLE IF NOT EXISTS monitoring_stats (
     document_answers INTEGER DEFAULT 0,
     web_answers INTEGER DEFAULT 0,
     abstentions INTEGER DEFAULT 0,
-    conversational_answers INTEGER DEFAULT 0
+    conversational_answers INTEGER DEFAULT 0,
+    refusals INTEGER DEFAULT 0,
+    errors INTEGER DEFAULT 0,
+    timeouts INTEGER DEFAULT 0
 )
 """
 
@@ -64,7 +75,10 @@ CREATE TABLE IF NOT EXISTS monitoring_stats (
     document_answers BIGINT DEFAULT 0,
     web_answers BIGINT DEFAULT 0,
     abstentions BIGINT DEFAULT 0,
-    conversational_answers BIGINT DEFAULT 0
+    conversational_answers BIGINT DEFAULT 0,
+    refusals BIGINT DEFAULT 0,
+    errors BIGINT DEFAULT 0,
+    timeouts BIGINT DEFAULT 0
 )
 """
 
@@ -73,8 +87,9 @@ INSERT INTO monitoring_stats (
     id, total_queries, web_search_triggered,
     total_sources_retrieved, total_latency_ms, total_time_to_first_token_ms,
     time_to_first_token_samples,
-    document_answers, web_answers, abstentions, conversational_answers
-) VALUES (1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    document_answers, web_answers, abstentions, conversational_answers,
+    refusals, errors, timeouts
+) VALUES (1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     total_queries = monitoring_stats.total_queries + excluded.total_queries,
     web_search_triggered = monitoring_stats.web_search_triggered + excluded.web_search_triggered,
@@ -89,7 +104,10 @@ ON CONFLICT(id) DO UPDATE SET
     web_answers = monitoring_stats.web_answers + excluded.web_answers,
     abstentions = monitoring_stats.abstentions + excluded.abstentions,
     conversational_answers = monitoring_stats.conversational_answers
-        + excluded.conversational_answers
+        + excluded.conversational_answers,
+    refusals = monitoring_stats.refusals + excluded.refusals,
+    errors = monitoring_stats.errors + excluded.errors,
+    timeouts = monitoring_stats.timeouts + excluded.timeouts
 """
 
 _RECORD_POSTGRES = _RECORD_SQLITE.replace("?", "%s")
@@ -108,7 +126,14 @@ CREATE TABLE IF NOT EXISTS query_events (
     latency_ms REAL NOT NULL,
     time_to_first_token_ms REAL,
     outcome TEXT NOT NULL,
-    cache_hit INTEGER NOT NULL DEFAULT 0
+    cache_hit INTEGER NOT NULL DEFAULT 0,
+    path TEXT NOT NULL DEFAULT 'document',
+    planner_model TEXT,
+    assessor_model TEXT,
+    query_shape TEXT,
+    candidate_count INTEGER NOT NULL DEFAULT 0,
+    evidence_count INTEGER NOT NULL DEFAULT 0,
+    reranker_calls INTEGER NOT NULL DEFAULT 0
 )
 """
 
@@ -123,15 +148,24 @@ CREATE TABLE IF NOT EXISTS query_events (
     latency_ms DOUBLE PRECISION NOT NULL,
     time_to_first_token_ms DOUBLE PRECISION,
     outcome TEXT NOT NULL,
-    cache_hit BOOLEAN NOT NULL DEFAULT FALSE
+    cache_hit BOOLEAN NOT NULL DEFAULT FALSE,
+    path TEXT NOT NULL DEFAULT 'document',
+    planner_model TEXT,
+    assessor_model TEXT,
+    query_shape TEXT,
+    candidate_count BIGINT NOT NULL DEFAULT 0,
+    evidence_count BIGINT NOT NULL DEFAULT 0,
+    reranker_calls BIGINT NOT NULL DEFAULT 0
 )
 """
 
 _RECORD_EVENT_SQLITE = """
 INSERT INTO query_events (
     model, input_tokens, output_tokens, reported_cost,
-    latency_ms, time_to_first_token_ms, outcome, cache_hit
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    latency_ms, time_to_first_token_ms, outcome, cache_hit,
+    path, planner_model, assessor_model, query_shape,
+    candidate_count, evidence_count, reranker_calls
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _RECORD_EVENT_POSTGRES = _RECORD_EVENT_SQLITE.replace("?", "%s")
@@ -150,7 +184,8 @@ FROM query_events WHERE model IS NOT NULL GROUP BY model ORDER BY model
 _SELECT = """
 SELECT total_queries, web_search_triggered, total_sources_retrieved,
        total_latency_ms, total_time_to_first_token_ms, time_to_first_token_samples,
-       document_answers, web_answers, abstentions, conversational_answers
+       document_answers, web_answers, abstentions, conversational_answers,
+       refusals, errors, timeouts
 FROM monitoring_stats WHERE id = 1
 """
 
@@ -167,6 +202,17 @@ class SqliteMetricsDB:
                 conn.execute(
                     "ALTER TABLE query_events ADD COLUMN cache_hit INTEGER NOT NULL DEFAULT 0"
                 )
+            for column, declaration in (
+                ("path", "TEXT NOT NULL DEFAULT 'document'"),
+                ("planner_model", "TEXT"),
+                ("assessor_model", "TEXT"),
+                ("query_shape", "TEXT"),
+                ("candidate_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("evidence_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("reranker_calls", "INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if column not in event_columns:
+                    conn.execute(f"ALTER TABLE query_events ADD COLUMN {column} {declaration}")
             columns = {row[1] for row in conn.execute("PRAGMA table_info(monitoring_stats)")}
             if "total_sources_retrieved" not in columns:
                 conn.execute(
@@ -184,6 +230,9 @@ class SqliteMetricsDB:
                 ("web_answers", "INTEGER"),
                 ("abstentions", "INTEGER"),
                 ("conversational_answers", "INTEGER"),
+                ("refusals", "INTEGER"),
+                ("errors", "INTEGER"),
+                ("timeouts", "INTEGER"),
             ):
                 if column not in columns:
                     conn.execute(
@@ -205,6 +254,7 @@ class SqliteMetricsDB:
         latency_ms: float,
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
+        path: str,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -217,8 +267,11 @@ class SqliteMetricsDB:
                     time_to_first_token_ms is not None,
                     outcome == "document_answer",
                     outcome == "web_answer",
-                    outcome == "abstained",
+                    outcome == "abstained" and path == "abstention",
                     outcome == "conversational",
+                    path == "refusal",
+                    path == "error",
+                    path == "timeout",
                 ),
             )
 
@@ -232,6 +285,13 @@ class SqliteMetricsDB:
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
         cache_hit: bool,
+        path: str,
+        planner_model: str | None,
+        assessor_model: str | None,
+        query_shape: str | None,
+        candidate_count: int,
+        evidence_count: int,
+        reranker_calls: int,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -245,6 +305,13 @@ class SqliteMetricsDB:
                     time_to_first_token_ms,
                     outcome,
                     cache_hit,
+                    path,
+                    planner_model,
+                    assessor_model,
+                    query_shape,
+                    candidate_count,
+                    evidence_count,
+                    reranker_calls,
                 ),
             )
 
@@ -268,6 +335,18 @@ class PostgresMetricsDB:
                 "ALTER TABLE query_events "
                 "ADD COLUMN IF NOT EXISTS cache_hit BOOLEAN NOT NULL DEFAULT FALSE"
             )
+            for column, declaration in (
+                ("path", "TEXT NOT NULL DEFAULT 'document'"),
+                ("planner_model", "TEXT"),
+                ("assessor_model", "TEXT"),
+                ("query_shape", "TEXT"),
+                ("candidate_count", "BIGINT NOT NULL DEFAULT 0"),
+                ("evidence_count", "BIGINT NOT NULL DEFAULT 0"),
+                ("reranker_calls", "BIGINT NOT NULL DEFAULT 0"),
+            ):
+                cursor.execute(
+                    f"ALTER TABLE query_events ADD COLUMN IF NOT EXISTS {column} {declaration}"
+                )
             for column, sql_type in (
                 ("total_time_to_first_token_ms", "DOUBLE PRECISION"),
                 ("time_to_first_token_samples", "BIGINT"),
@@ -275,6 +354,9 @@ class PostgresMetricsDB:
                 ("web_answers", "BIGINT"),
                 ("abstentions", "BIGINT"),
                 ("conversational_answers", "BIGINT"),
+                ("refusals", "BIGINT"),
+                ("errors", "BIGINT"),
+                ("timeouts", "BIGINT"),
             ):
                 cursor.execute(
                     "ALTER TABLE monitoring_stats "
@@ -294,6 +376,7 @@ class PostgresMetricsDB:
         latency_ms: float,
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
+        path: str,
     ) -> None:
         with self._connection.cursor() as cursor:
             cursor.execute(
@@ -306,8 +389,11 @@ class PostgresMetricsDB:
                     time_to_first_token_ms is not None,
                     outcome == "document_answer",
                     outcome == "web_answer",
-                    outcome == "abstained",
+                    outcome == "abstained" and path == "abstention",
                     outcome == "conversational",
+                    path == "refusal",
+                    path == "error",
+                    path == "timeout",
                 ),
             )
 
@@ -321,6 +407,13 @@ class PostgresMetricsDB:
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
         cache_hit: bool,
+        path: str,
+        planner_model: str | None,
+        assessor_model: str | None,
+        query_shape: str | None,
+        candidate_count: int,
+        evidence_count: int,
+        reranker_calls: int,
     ) -> None:
         with self._connection.cursor() as cursor:
             cursor.execute(
@@ -334,6 +427,13 @@ class PostgresMetricsDB:
                     time_to_first_token_ms,
                     outcome,
                     cache_hit,
+                    path,
+                    planner_model,
+                    assessor_model,
+                    query_shape,
+                    candidate_count,
+                    evidence_count,
+                    reranker_calls,
                 ),
             )
 
@@ -372,9 +472,7 @@ def _event_stats_from_rows(
     }
 
 
-def _row_to_totals(
-    row: tuple[int, int, int, float, float, int, int, int, int, int] | None,
-) -> dict | None:
+def _row_to_totals(row: tuple | None) -> dict | None:
     if not row:
         return None
 
@@ -389,6 +487,9 @@ def _row_to_totals(
         web_answers,
         abstentions,
         conversational_answers,
+        refusals,
+        errors,
+        timeouts,
     ) = row
     return {
         "total_queries": total_queries,
@@ -401,4 +502,7 @@ def _row_to_totals(
         "web_answers": web_answers,
         "abstentions": abstentions,
         "conversational_answers": conversational_answers,
+        "refusals": refusals,
+        "errors": errors,
+        "timeouts": timeouts,
     }

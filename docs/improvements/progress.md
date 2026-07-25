@@ -11,3 +11,4 @@ Session-reset entry point. Specs live beside this file; cross-cutting decisions 
 | 04 chunk headers | done | filename header in page_content; eval-retrieval held at ceiling (no regression) |
 | 05 conversational path | done | pre-graph rule match → fixed reply; new `conversational` outcome + rate, excluded from abstention |
 | 06 rerank floor | done | swept on golden set; floor filter in `rerank()`; deployed default `-9.0` in `.env.example`, code default None |
+| 07 uncached agentic RAG latency | in progress | implementation/tests complete; live uncached p50/p95 proof pending |

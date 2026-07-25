@@ -9,8 +9,7 @@ from src.utils.logger import logger
 
 
 def timed(name: str, fn: Callable) -> Callable:
-    # Two-arg signature so LangGraph passes the RunnableConfig through to nodes that need
-    # per-request invocation params (model, top_k); nodes that don't can ignore it.
+    # Two-arg signature lets LangGraph pass invocation-scoped answer-model configuration.
     def wrapper(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
         start = time.monotonic()
         result = fn(state, config)

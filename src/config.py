@@ -35,7 +35,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     LLM_MODEL: str = "anthropic/claude-sonnet-4.6"
-    CLASSIFIER_MODEL: str = "openai/gpt-5.6-luna"
+    PLANNER_MODEL: str = "openai/gpt-5.6-luna"
+    ASSESSOR_MODEL: str = "openai/gpt-5.6-luna"
+    PLANNER_MAX_TOKENS: int = Field(default=256, ge=1)
+    ASSESSOR_MAX_TOKENS: int = Field(default=256, ge=1)
+    ANSWER_MAX_TOKENS: int = Field(default=1000, ge=1)
     LLM_MAX_RETRIES: int = 3
     LLM_TIMEOUT_SECONDS: float = 60
     QUERY_TIMEOUT_SECONDS: float = 1000
@@ -64,13 +68,10 @@ class Settings(BaseSettings):
     ANSWER_CACHE_ENABLED: bool = True
     ANSWER_CACHE_COLLECTION: str = "answer_cache"
 
-    # Cross-encoder reranking. Hybrid search pulls a wide candidate pool, then a cross-encoder
-    # reorders it and we keep the user's top_k. Pool = top_k * MULTIPLIER, capped at FETCH_CAP.
-    # Disable to fall back to raw hybrid ordering (fetch exactly top_k, no rerank).
-    RERANK_ENABLED: bool = True
+    # One or two hybrid branches merge into a global pool before one mandatory rerank.
+    RETRIEVAL_CANDIDATE_BUDGET: int = Field(default=40, ge=1)
+    RETRIEVAL_EVIDENCE_BUDGET: int = Field(default=8, ge=1)
     RERANK_MODEL: str = "Xenova/ms-marco-MiniLM-L-6-v2"
-    RERANK_MULTIPLIER: int = 4
-    RERANK_FETCH_CAP: int = 100
     # Minimum cross-encoder score (raw logit) a chunk must clear to enter the evidence pool.
     # None keeps every reranked chunk; a calibrated value drops labelled-irrelevant chunks at
     # ~zero recall cost (swept via `make eval-rerank-sweep`). If all chunks fall below it the

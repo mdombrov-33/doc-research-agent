@@ -2,10 +2,12 @@ import json
 from unittest.mock import MagicMock
 
 from ddgs.exceptions import TimeoutException
+from langchain_core.messages import HumanMessage
 
 from src.config import Settings
 from src.core.agent import tools
-from src.core.agent.tools import _web_evidence, format_docs
+from src.core.agent.tools import _web_evidence, artifact_documents, format_docs
+from src.core.retrieval.search import RetrievalMetrics, RetrievalResult
 
 
 class _RecordingSpan:
@@ -133,10 +135,33 @@ def test_format_docs_keeps_hostile_source_text_as_quoted_data():
     ]
 
 
+def test_artifact_documents_unwraps_retrieval_metrics_without_exposing_them_as_evidence():
+    document = {"content": "evidence", "source": "document"}
+    artifact = {
+        "documents": [document],
+        "retrieval": {"candidates": 40, "evidence": 1},
+    }
+
+    assert artifact_documents(artifact) == [document]
+
+
 def test_tool_spans_keep_query_text_out_of_telemetry(monkeypatch):
     tracer = _RecordingTracer()
     monkeypatch.setattr(tools, "_tracer", tracer)
-    monkeypatch.setattr(tools, "hybrid_search", lambda _query, _top_k: [])
+    monkeypatch.setattr(
+        tools,
+        "retrieve_evidence",
+        lambda _queries, _question: RetrievalResult(
+            documents=[],
+            metrics=RetrievalMetrics(
+                query_count=1,
+                query_shape="single",
+                candidates=0,
+                evidence=0,
+                reranker_calls=0,
+            ),
+        ),
+    )
     monkeypatch.setattr(
         tools,
         "get_settings",
@@ -149,14 +174,28 @@ def test_tool_spans_keep_query_text_out_of_telemetry(monkeypatch):
     )
 
     secret_query = "private rollout details for Acme"
-    tools.retrieve_documents.func(secret_query, {"configurable": {"top_k": 4}})
+    tools.retrieve_documents.func(
+        [secret_query],
+        {"messages": [HumanMessage(content="What is the rollout status?")]},
+    )
     tools.search_web(secret_query)
 
-    assert tracer.spans[0].attributes == {"tool.top_k": 4, "tool.docs_returned": 0}
+    assert tracer.spans[0].attributes == {
+        "tool.query_count": 1,
+        "tool.candidates": 0,
+        "tool.docs_returned": 0,
+    }
     assert tracer.spans[1].attributes == {
         "tool.timeout_seconds": 11,
         "tool.results_returned": 0,
     }
+
+
+def test_retrieval_tool_schema_caps_planned_queries_at_two():
+    schema = tools.retrieve_documents.args_schema.model_json_schema()
+
+    assert schema["properties"]["search_queries"]["minItems"] == 1
+    assert schema["properties"]["search_queries"]["maxItems"] == 2
 
 
 def test_search_web_retries_a_transient_ddgs_timeout_once(monkeypatch):

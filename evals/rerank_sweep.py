@@ -19,7 +19,6 @@ import asyncio
 # under src/ so retrieval hits the isolated eval collection.
 from evals import ranking
 from evals.run_eval import (
-    TOP_K,
     K,
     _ingest_corpus,
     _load_golden,
@@ -27,7 +26,7 @@ from evals.run_eval import (
 )
 from src.config import get_settings
 from src.core.retrieval.rerank import _get_cross_encoder
-from src.core.retrieval.search import hybrid_search
+from src.core.retrieval.search import _collect_candidates, _merge_candidate_branches
 
 STEPS = 25  # candidate floors, evenly spaced across the observed score range
 
@@ -45,7 +44,12 @@ def _dedup(filenames: list[str]) -> list[str]:
 def _scored_pool(question: str) -> list[tuple[str, float]]:
     """The full reranked candidate pool as (filename, cross-encoder score) in ranked order."""
     settings = get_settings()
-    docs = hybrid_search(question, settings.RERANK_FETCH_CAP)
+    branch = _collect_candidates(
+        question,
+        settings.RETRIEVAL_CANDIDATE_BUDGET,
+        settings.RETRIEVAL_EVIDENCE_BUDGET,
+    )
+    docs = _merge_candidate_branches([branch], settings.RETRIEVAL_CANDIDATE_BUDGET)
     encoder = _get_cross_encoder(settings.RERANK_MODEL)
     scores = list(encoder.rerank(question, [doc["content"] for doc in docs]))
     return [(doc["filename"], float(score)) for doc, score in zip(docs, scores)]
@@ -56,7 +60,7 @@ def _recall_at_floor(
 ) -> float:
     """Document recall@K after applying the floor and the serving top-k chunk slice."""
     kept = [(name, score) for name, score in pool if floor is None or score >= floor]
-    ranked = _dedup([name for name, _ in kept[:TOP_K]])
+    ranked = _dedup([name for name, _ in kept[: get_settings().RETRIEVAL_EVIDENCE_BUDGET]])
     relevances = [1 if name in relevant else 0 for name in ranked]
     return ranking.recall_at_k(relevances, len(relevant), K)
 

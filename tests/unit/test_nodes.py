@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -7,14 +8,31 @@ from src.core.agent.nodes import EvidenceAssessment
 from src.core.agent.tools import retrieve_documents
 
 
+def _settings(**overrides):
+    values = {
+        "PLANNER_MODEL": "planner",
+        "ASSESSOR_MODEL": "assessor",
+        "PLANNER_MAX_TOKENS": 128,
+        "ASSESSOR_MAX_TOKENS": 128,
+        "ANSWER_MAX_TOKENS": 1000,
+        "CONVERSATION_HISTORY_TURNS": 3,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 def test_agent_node_binds_tools_and_prepends_system_prompt(monkeypatch):
     bound = MagicMock()
     bound.invoke.return_value = AIMessage(content="hi")
     llm = MagicMock()
     llm.bind_tools.return_value = bound
     monkeypatch.setattr(nodes, "get_llm", lambda *a, **k: llm)
+    monkeypatch.setattr(nodes, "get_settings", _settings)
 
-    out = nodes.agent_node({"messages": [HumanMessage(content="q")]})
+    out = nodes.agent_node(
+        {"messages": [HumanMessage(content="q")]},
+        {"configurable": {"model": "selected-answer-model"}},
+    )
 
     llm.bind_tools.assert_called_once_with([retrieve_documents])
     sent = bound.invoke.call_args.args[0]
@@ -32,7 +50,7 @@ def test_agent_node_bounds_history_and_excludes_tool_payloads(monkeypatch):
     monkeypatch.setattr(
         nodes,
         "get_settings",
-        lambda: MagicMock(CONVERSATION_HISTORY_TURNS=2),
+        lambda: _settings(CONVERSATION_HISTORY_TURNS=2),
     )
 
     nodes.agent_node(
@@ -44,7 +62,7 @@ def test_agent_node_bounds_history_and_excludes_tool_payloads(monkeypatch):
                     tool_calls=[
                         {
                             "name": "retrieve_documents",
-                            "args": {"query": "first"},
+                            "args": {"search_queries": ["first"]},
                             "id": "first-retrieval",
                         }
                     ],
@@ -92,6 +110,7 @@ def test_answer_node_sees_retrieved_evidence_the_assessment_did_not_name(monkeyp
     answer_model = MagicMock()
     answer_model.invoke.return_value = AIMessage(content="answer [document:doc-1:7]")
     monkeypatch.setattr(nodes, "get_llm", lambda *a, **k: answer_model)
+    monkeypatch.setattr(nodes, "get_settings", _settings)
     state = {
         "messages": [
             HumanMessage(content="How do I do dependency injection in Go?"),
@@ -99,7 +118,7 @@ def test_answer_node_sees_retrieved_evidence_the_assessment_did_not_name(monkeyp
                 content=nodes.format_docs([named, unnamed]),
                 tool_call_id="retrieval",
                 name="retrieve_documents",
-                artifact=[named, unnamed],
+                artifact={"documents": [named, unnamed], "retrieval": {}},
             ),
         ],
         "supporting_source_ids": ["document:doc-1:0"],
@@ -133,9 +152,9 @@ def test_evidence_models_treat_hostile_source_text_as_untrusted_data(monkeypatch
     monkeypatch.setattr(
         nodes,
         "get_llm",
-        lambda model=None: classifier if model == "classifier" else answer_model,
+        lambda model=None, **_kwargs: classifier if model == "assessor" else answer_model,
     )
-    monkeypatch.setattr(nodes, "get_settings", lambda: MagicMock(CLASSIFIER_MODEL="classifier"))
+    monkeypatch.setattr(nodes, "get_settings", _settings)
     state = {
         "messages": [
             HumanMessage(content="What does the document say?"),
@@ -143,7 +162,7 @@ def test_evidence_models_treat_hostile_source_text_as_untrusted_data(monkeypatch
                 content=nodes.format_docs([artifact]),
                 tool_call_id="retrieval",
                 name="retrieve_documents",
-                artifact=[artifact],
+                artifact={"documents": [artifact], "retrieval": {}},
             ),
         ],
         "supporting_source_ids": ["document:doc-1:0"],
@@ -163,3 +182,63 @@ def test_evidence_models_treat_hostile_source_text_as_untrusted_data(monkeypatch
         assert isinstance(sent[1], HumanMessage)
         assert "<untrusted_evidence_json>" in sent[1].content
         assert hostile_text in sent[1].content
+
+
+def test_agent_node_uses_planner_model_not_selected_answer_model(monkeypatch):
+    bound = MagicMock()
+    bound.invoke.return_value = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "retrieve_documents",
+                "args": {"search_queries": ["question"]},
+                "id": "call",
+            }
+        ],
+    )
+    planner = MagicMock()
+    planner.bind_tools.return_value = bound
+    get_llm = MagicMock(return_value=planner)
+    monkeypatch.setattr(nodes, "get_llm", get_llm)
+    monkeypatch.setattr(nodes, "get_settings", _settings)
+
+    nodes.agent_node(
+        {"messages": [HumanMessage(content="question")]},
+        {"configurable": {"model": "selected-answer-model"}},
+    )
+
+    get_llm.assert_called_once_with("planner", max_tokens=128)
+
+
+def test_agent_node_collapses_duplicate_tool_calls_to_one_bounded_plan(monkeypatch):
+    bound = MagicMock()
+    bound.invoke.return_value = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "retrieve_documents",
+                "args": {"search_queries": ["first"]},
+                "id": "first-call",
+            },
+            {
+                "name": "retrieve_documents",
+                "args": {"search_queries": ["second", "third"]},
+                "id": "second-call",
+            },
+        ],
+    )
+    planner = MagicMock()
+    planner.bind_tools.return_value = bound
+    monkeypatch.setattr(nodes, "get_llm", lambda *_args, **_kwargs: planner)
+    monkeypatch.setattr(nodes, "get_settings", _settings)
+
+    result = nodes.agent_node({"messages": [HumanMessage(content="multipart question")]})
+
+    assert result["messages"][0].tool_calls == [
+        {
+            "name": "retrieve_documents",
+            "args": {"search_queries": ["first", "second"]},
+            "id": "first-call",
+            "type": "tool_call",
+        }
+    ]

@@ -26,8 +26,9 @@ happen at most once, and answer generation receives only evidence that the class
 Conversations are multi-turn; history is persisted per session (§12).
 
 **Two LLM providers, by role:**
-- **OpenRouter** — every chat/LLM call (the agent's reasoning and answer, and the eval
-  judges). The UI can select from the supported model list. See `src/core/llm.py`.
+- **OpenRouter** — every chat/LLM call (planner, assessor, answer, and eval judges). The UI
+  selects the answer model; planner and assessor models are configured independently. See
+  `src/core/llm.py`.
 - **OpenAI (direct)** — embeddings only (`text-embedding-3-small`), for ingestion and
   retrieval. Each request has a configurable 30-second default deadline and bounded SDK retries
   for transient rate-limit/server failures. See `src/core/vectorstore.py`.
@@ -40,7 +41,7 @@ Safety screening uses **neither** provider: it runs **local** HuggingFace models
 ## 2. Request lifecycle (the big picture)
 
 ```
-POST /api/stream  (QueryRequest: question, session_id?, model?, top_k?)
+POST /api/stream  (QueryRequest: question, session_id?, model?)
       │
       ▼
 Guardrails — INPUT check        llm-guard Toxicity scanner, local
@@ -191,9 +192,10 @@ entry is one point: the question-embedding vector plus a payload holding the ans
 - **Two layers, one entry.** **L1 exact** is a filtered scroll on a SHA-256 `question_hash` of
   the normalized question — no embedding call. On an L1 miss, **L2 semantic** embeds the question
   once and vector-searches the same filter, accepting a hit at cosine ≥ 0.95.
-- **Cache key = `question_hash` + `model` + `top_k` + `corpus_version` + `namespace`.** Model and
-  top_k change the answer and its sources, so they must not cross. `namespace` is hardcoded to
-  `"default"` (the app is single-tenant, forward-compatible).
+- **Cache key = `question_hash` + `model` + `corpus_version` + `namespace`.** Answers from
+  different selectable models must not cross. `namespace` is hardcoded to `"default"` (the app
+  is single-tenant, forward-compatible). Startup drops the legacy cache collection once if its
+  removed retrieval-width field is still present.
 - **Correctness by version, not heuristics.** A reserved point (nil-UUID id) holds the current
   `corpus_version`; every upload bumps it (§4) and deletes now-stale entries. Lookups only match
   the current version, so a new document can never surface a stale answer. A 24 h `created_at`
@@ -215,7 +217,7 @@ entry is one point: the question-embedding vector plus a payload holding the ans
 ## 5. The vector store & hybrid search
 
 `src/core/vectorstore.py` (collection setup + the store) and `src/core/retrieval/search.py`
-(the `hybrid_search` query function).
+(the bounded retrieval-plan module).
 
 The Qdrant collection holds **two vectors per chunk**:
 
@@ -243,33 +245,28 @@ position, not raw score: a chunk scores `Σ 1/(k + rank_i)` across the lists it 
 RRF needs no score normalization or weight tuning, which is what makes mixing cosine and BM25
 scales robust. `RetrievalMode.HYBRID` turns this on; it's a single Qdrant query.
 
-**`hybrid_search(question, top_k)`** is the whole retrieval path in one function:
+**`retrieve_evidence(search_queries, rerank_query)`** is the serving and eval interface:
 
-1. **Extract query entities** with spaCy and build an **entity supplement** (`_entity_filter`).
-   Entity tags are imperfect, so they can add matching chunks but can never exclude ordinary
-   hybrid results.
-2. **Compute `fetch_k`** (`_fetch_k`): the candidate pool to pull *before* reranking. With
-   reranking on, `fetch_k = min(top_k × RERANK_MULTIPLIER, RERANK_FETCH_CAP)` (default
-   `top_k×4`, capped 100, floored at `top_k`); with it off, `fetch_k = top_k`.
-3. **Hybrid search** for the unfiltered `fetch_k` candidate pool. When reranking is enabled and
-   entities exist, fetch up to `top_k` additional entity-matching chunks, de-duplicate them, and
-   add them to the rerank pool. With reranking off, the raw hybrid path remains one query. Each
-   Qdrant request uses `QDRANT_QUERY_TIMEOUT_SECONDS` (10 seconds by default), independent of
-   indexing. A transient timeout, network error, Qdrant rate limit, or retriable HTTP status
-   gets one short jittered retry; permanent errors are not retried.
-4. Map results to dicts (`content`, `document_id`, `filename`, `chunk_id`, `chunk_index`,
-   `chunk_length`, `source="document"`), skipping blanks. Log `docs_retrieved` with score
-   stats.
-5. **Rerank** the pool with the cross-encoder and keep `top_k` (§9). Reranking off → just
-   trim to `top_k`.
+1. Accept exactly one focused query, or two for a genuinely multipart/follow-up plan. Runtime
+   validation rejects empty plans and plans wider than two queries.
+2. Run the one or two hybrid Qdrant branches concurrently. Every branch extracts spaCy entities
+   and supplements its ordinary hybrid results with entity-filtered matches; supplements can add
+   candidates but never exclude the unfiltered results.
+3. Each Qdrant request uses `QDRANT_QUERY_TIMEOUT_SECONDS` (10 seconds by default). A transient
+   timeout, network error, Qdrant rate limit, or retriable HTTP status gets one short jittered
+   retry; permanent errors are not retried.
+4. Map results to document dicts and fuse branch ranks deterministically with RRF. Deduplicate by
+   stable chunk identity and retain at most `RETRIEVAL_CANDIDATE_BUDGET` unique chunks (40).
+5. **Rerank once** against the current user question, apply the calibrated score floor, and keep
+   at most `RETRIEVAL_EVIDENCE_BUDGET` chunks (8). There is no raw-order serving mode.
 
 > Bi-encoder vs cross-encoder: hybrid search is still **bi-encoder** — query and chunk are
 > embedded separately and compared. That is fast but approximate. The reranker (§9) is a
 > **cross-encoder** that reads query and chunk *together* for a sharper relevance judgment.
 > We use the fast one to shortlist and the sharp one to re-order the shortlist.
 
-`hybrid_search` is called from the `retrieve_documents` **tool** (§6) during serving, and
-directly from the offline eval (§15) — the retrieval layer is the same in both.
+`retrieve_evidence` is called from the `retrieve_documents` **tool** (§6) during serving and
+directly from the offline eval (§15), so both exercise the same bounded retrieval interface.
 
 ---
 
@@ -365,25 +362,26 @@ class AgentState(TypedDict, total=False):
   The graph topology is the execution budget: it permits one document retrieval and, only after
   insufficient evidence, one web fallback—there is no retry loop to count or configure.
 
-> **Per-request knobs are not in state.** `model` and `top_k` ride in the `RunnableConfig`'s
-> `configurable` dict, not in `AgentState`. The agent node reads `model`; the
-> `retrieve_documents` tool reads `top_k`. Keeping invocation-scoped parameters out of the
-> evolving, persisted state keeps the state minimal (§12).
+> **Per-request configuration is not in state.** The selected answer `model` rides in the
+> `RunnableConfig` alongside `thread_id`, not in `AgentState`. Retrieval budgets are internal
+> application policy. Keeping invocation-scoped configuration out of evolving, persisted state
+> keeps the state minimal (§12).
 
 ### 6.3 The tools
 
 `src/core/agent/tools.py` defines two tools, both declared
 `@tool(response_format="content_and_artifact")`. That response format is the key trick: each
-tool returns a **`(string, list[dict])`** pair — the **string** becomes the `ToolMessage`
-content the model reads, and the **list of doc dicts** rides along as the `ToolMessage`'s
-**`artifact`**. `format_docs` includes each valid artifact's stable source ID in the model
+tool returns a content string plus a structured artifact. The **string** becomes the
+`ToolMessage` content the model reads. Document retrieval wraps its bounded document list and
+safe count metrics in the artifact; web search uses a document list. `format_docs` includes each
+valid document's stable source ID in the model
 context. The stream handler later validates only source IDs referenced by the final answer
 against these artifacts (§10).
 
 | Tool | What it does | Notes |
 |---|---|---|
-| `retrieve_documents(query, config)` | hybrid search over the user's uploaded docs (§5) | `top_k` is read from the injected `config` (`configurable.top_k`), defaulting to `10`. `config` is injected by `ToolNode`; the model never sees it. |
-| `web_search(query)` | DuckDuckGo live web search | Returns up to five structured title/link/snippet results, each independently citable. DDGS uses `WEB_SEARCH_TIMEOUT_SECONDS` (10 s default); its explicit timeout/rate-limit errors get one short jittered retry. **Fails soft**: all other/exhausted errors log only their type and return `("Web search failed.", [])`, so an outage never breaks the request. |
+| `retrieve_documents(search_queries, state)` | one bounded hybrid-search plan over uploaded docs (§5) | One query normally, at most two; `state` is injected by `ToolNode` so reranking uses the actual current user question and the model never supplies it. |
+| `web_search(query)` | DuckDuckGo live web search | Returns up to five structured title/link/snippet results, each independently citable. DDGS uses `WEB_SEARCH_TIMEOUT_SECONDS` (30 s default); its explicit timeout/rate-limit errors get one short jittered retry. **Fails soft**: all other/exhausted errors log only their type and return `("Web search failed.", [])`, so an outage never breaks the request. |
 
 `format_docs` renders every artifact inside one `<untrusted_evidence_json>` envelope as JSON:
 stable source ID, source type, title, and content. The two evidence-consuming system prompts
@@ -398,25 +396,22 @@ directly.
 ## 7. Node by node
 
 ### Query — `agent_node` (`nodes.py`)
-The query model binds only `retrieve_documents`, prepends `AGENT_SYSTEM_PROMPT`, and resolves a
-follow-up into a standalone query using a bounded projection of persisted `messages`. It cannot
-write the final answer or call the web. A missing retrieval call is an abstention, not an
-unsupported answer. The projection keeps the most recent `CONVERSATION_HISTORY_TURNS` user
-turns (three by default, including the current question) and completed assistant answers; it
-excludes prior tool calls, tool results, and evidence artifacts.
+The dedicated `PLANNER_MODEL` binds only `retrieve_documents`, prepends `AGENT_SYSTEM_PROMPT`,
+and resolves a follow-up into a standalone one- or two-query plan using a bounded projection of
+persisted `messages`. It cannot write the final answer or call the web. A missing retrieval call
+is an abstention, not an unsupported answer. If a provider emits duplicate retrieval calls, the
+node deterministically collapses them into one plan capped at two queries. The projection keeps
+the most recent `CONVERSATION_HISTORY_TURNS` user turns (three by default, including the current
+question) and completed assistant answers; it excludes prior tool calls, tool results, and
+evidence artifacts. Planning is capped by `PLANNER_MAX_TOKENS`.
 
-The model is per-request: a request may choose one of `SUPPORTED_MODELS` (`src/config.py`),
-otherwise `get_llm(config.configurable.model)` falls back to `LLM_MODEL`. The Streamlit
-selector reads that same list, and the API rejects all other request model IDs with a 422.
-Temperature is `get_llm`'s default of **0**.
-
-This remains prompt-directed query formation, not a separate query-analysis module: the query
-model sees that bounded conversational projection and supplies the tool's `query` argument
-directly.
+The request's selected model is not used here. It remains the answer model only; the Streamlit
+selector reads `SUPPORTED_MODELS`, and the API rejects all other request model IDs with a 422.
 
 ### Evidence assessment, answer, and fallback — `nodes.py`
 `evidence_assessment_node` sends the current question plus this turn's tool evidence to the
-small `CLASSIFIER_MODEL` as `EvidenceAssessment(sufficient, supporting_source_ids)`. A verdict
+small `ASSESSOR_MODEL` as `EvidenceAssessment(sufficient, supporting_source_ids)`, bounded by
+`ASSESSOR_MAX_TOKENS`. A verdict
 is accepted only when it is sufficient, names at least one source ID, and every ID exists in the
 actual artifacts. The evidence is explicitly labelled untrusted source data before the model sees
 it; malformed evaluator output and evaluator failures fail closed. This is the relevance gate:
@@ -424,13 +419,15 @@ retrieval and its cross-encoder optimize the candidate order, while the assessor
 the supplied corpus evidence supports an answer at all. We deliberately do not turn raw reranker
 scores into a minimum relevance cutoff without a calibrated labelled set.
 
-`answer_node` receives the question and all of this turn's artifacts, then writes a cited answer
+`answer_node` receives the question and the final bounded evidence set, then writes a cited answer
 without tools. It is deliberately not restricted to the IDs the verdict named: the assessor names
 enough sources to justify sufficiency, not every source worth quoting, so filtering on them
 starved answers of relevant retrieved chunks. User-facing sources stay precise because they are
 resolved from the IDs the answer actually cites, not from everything retrieved. Its system prompt separately repeats that those artifacts are
 untrusted data rather than instructions. It records `document_answer` when document evidence
 passed directly, or `web_answer` when the bounded web fallback ran before evidence passed.
+Ordinary synthesis is capped by `ANSWER_MAX_TOKENS` (1,000 by default) and prompted to answer
+more briefly when the question is narrow.
 `web_fallback_node` searches once using the query agent's standalone retrieval query. If neither
 evidence set passes, `abstain_node` emits a fixed honest response and records `abstained`.
 
@@ -439,8 +436,9 @@ evidence set passes, `abstain_node` emits a fixed honest response and records `a
 ## 8. Walkthroughs: the two retrieval paths
 
 **Documents-only (the common case).**
-1. `agent` → calls `retrieve_documents` (query derived from the question).
-2. `tools` → hybrid search returns reranked chunks as a `ToolMessage` + artifact.
+1. `agent` → makes exactly one `retrieve_documents` call with one or two planned queries.
+2. `tools` → branches run concurrently, merge to 40 candidates, and rerank once to at most
+   eight chunks returned as a `ToolMessage` + artifact.
 3. `assess_evidence` validates that the artifacts answer the question.
 4. `answer` writes a cited response and the graph ends.
 
@@ -460,8 +458,9 @@ is tuned for precision (sharpen the order).
 
 - **Model**: `Xenova/ms-marco-MiniLM-L-6-v2` via fastembed's `TextCrossEncoder` (ONNX, CPU,
   no torch in the hot path). Loaded once and cached (`@lru_cache`).
-- **Flow**: `hybrid_search` over-fetches `fetch_k` candidates → `rerank(query, docs, top_k)`
-  scores each `(query, chunk)` pair *together* → sort by score → apply the floor → keep `top_k`.
+- **Flow**: one/two hybrid branches → deterministic RRF merge and stable dedupe (≤40) →
+  `rerank(current_question, candidates, limit=8)` scores each pair together → sort → apply the
+  floor → keep at most eight.
 - **Score floor** (`RERANK_SCORE_FLOOR`, raw logit): chunks scoring below it are dropped from the
   evidence pool *before* assessment or the answer model see them, fixing the root cause of
   irrelevant chunks riding into the sources. `None` (code default) keeps every chunk; the
@@ -470,14 +469,11 @@ is tuned for precision (sharpen the order).
   chunks at ~zero recall cost. If every chunk falls below the floor the pool is empty, so
   assessment sees no evidence and the graph runs its web fallback or abstains — the intended
   evidence-controlled behaviour, not an error.
-- **`top_k` is the UI knob** (how many docs come back); **`fetch_k` is internal** (the pool to
-  choose from, a multiple of `top_k`). The user always gets exactly `top_k`, just better-chosen.
 - **Logging**: `documents_reranked` reports `candidates`, `returned`, and **`promoted`** — how
-  many returned docs ranked *below* `top_k` in the raw hybrid order, i.e. hits reranking
+  many returned docs ranked below the final evidence cutoff in the merged order, i.e. hits reranking
   rescued. `promoted > 0` proves it changed the outcome.
-- **Toggle**: `RERANK_ENABLED=false` reverts to raw hybrid ordering with no model load.
 - **Warmup**: `rerank.warmup()` runs at startup (§3) so the first query doesn't pay the model
-  load. No-op when reranking is disabled.
+  load. Reranking is mandatory on document-serving paths.
 - **Deployment**: the model is **baked into the Docker image** at build time
   (`FASTEMBED_CACHE_PATH=/app/.model_cache`) so the first request doesn't pay a ~9s download.
   See §19.
@@ -531,11 +527,12 @@ data: {"error": "...", "done": true}                                         # o
 Headers disable proxy buffering (`X-Accel-Buffering: no`, `Cache-Control: no-cache`). After
 the stream closes the handler records metrics (§14).
 
-**Whole-query deadline.** `QUERY_TIMEOUT_SECONDS` (120 seconds by default) starts before the
+**Whole-query deadline.** `QUERY_TIMEOUT_SECONDS` (1,000 seconds by default) starts at the
+stream-handler boundary, before the
 input guardrail and is shared by every subsequent graph-event await. It prevents otherwise
 bounded dependency calls from accumulating into an unbounded request. On expiration, the handler
 cancels the in-flight work, closes the event iterator, logs only the configured timeout, sends
-the stable timeout SSE error, and does not record a completed-query outcome.
+the stable timeout SSE error, and records a separately labelled timeout path.
 
 **Client disconnects.** The handler checks `Request.is_disconnected()` before the input
 guardrail and before requesting every next LangGraph event. Once disconnected, it logs only the
@@ -618,8 +615,9 @@ Model roles:
 
 | Role | Setting / value | Provider | Temp | Where |
 |---|---|---|---|---|
-| Query + answer | `LLM_MODEL` (overridable from `SUPPORTED_MODELS`) | OpenRouter | 0 | `agent_node`, `answer_node` |
-| Evidence assessment | `CLASSIFIER_MODEL` | OpenRouter | 0 | `evidence_assessment_node` |
+| Retrieval planning | `PLANNER_MODEL` | OpenRouter | 0 | `agent_node` |
+| Evidence assessment | `ASSESSOR_MODEL` | OpenRouter | 0 | `evidence_assessment_node` |
+| Answer synthesis | `LLM_MODEL` (overridable from `SUPPORTED_MODELS`) | OpenRouter | 0 | `answer_node` |
 | Embeddings | `EMBEDDING_MODEL` (`text-embedding-3-small`) | OpenAI | — | ingestion + retrieval |
 | Reranker | `RERANK_MODEL` (MiniLM cross-encoder) | local ONNX | — | `rerank` |
 | Guardrails | Toxicity | local (HF, via llm-guard) | — | `guardrails` |
@@ -639,7 +637,8 @@ Model roles:
 `metrics_db_path` is used only when `METRICS_BACKEND=sqlite` and `checkpoints_db_path` only
 when `CHECKPOINT_BACKEND=sqlite`. Mounting one directory persists both locally.
 
-Other key settings: `RERANK_*` (§9), `QDRANT_MODE` (`local`|`cloud`, picks the URL/credentials),
+Other key settings: `RETRIEVAL_*` and `RERANK_*` (§9), `QDRANT_MODE`
+(`local`|`cloud`, picks the URL/credentials),
 `LLM_MAX_RETRIES` (§17), `RATE_LIMIT*` (§17). See `.env.example` for the full annotated list.
 
 ---
@@ -655,8 +654,9 @@ After each query the stream handler calls `MetricsTracker.record(QueryMetrics(..
 `/api/monitoring/stats` reads the shared aggregate across instances.
 
 Two tables back this: the aggregate `monitoring_stats` row (running totals) and per-query
-`query_events` rows (one per query: model, token counts, provider cost, latency, first-token
-latency, outcome, `cache_hit` — no question, answer, or evidence content). The aggregate rates
+`query_events` rows (one per query: answer/planner/assessor models, path, query shape, candidate
+and evidence counts, reranker-call count, token counts, provider cost, completion latency,
+first-token latency, outcome, and `cache_hit` — no question, answer, or evidence content). The aggregate rates
 come from `monitoring_stats`; the token/cost averages, cache-hit rate, and per-model breakdown
 come from SQL over `query_events`.
 
@@ -668,11 +668,14 @@ come from SQL over `query_events`.
 | `web_search_rate` | fraction of queries where the agent used `web_search` |
 | `avg_sources_retrieved` | mean sources returned per query (all tool calls combined) |
 | `avg_latency_ms` | mean end-to-end latency |
-| `avg_time_to_first_token_ms` | mean graph-start-to-first-visible-token time; only completed streams that emitted an answer token contribute |
+| `avg_time_to_first_token_ms` | mean API-handler-entry-to-first-visible-token time; only completed streams that emitted visible text contribute |
 | `document_answer_rate` | fraction answered from sufficient document evidence |
 | `web_answer_rate` | fraction answered after the one web-fallback route ran |
 | `abstention_rate` | fraction where no evidence passed assessment (excludes conversational turns) |
 | `conversational_rate` | fraction short-circuited as a greeting/meta-question before the graph |
+| `refusal_rate` | fraction rejected by the fail-closed input guardrail |
+| `error_rate` | fraction ending with the fixed safe stream error |
+| `timeout_rate` | fraction ending at the whole-query deadline |
 | `avg_input_tokens` | mean prompt tokens per query, summed across the turn's LLM calls |
 | `avg_output_tokens` | mean completion tokens per query |
 | `avg_cost_per_query` | mean OpenRouter-reported cost, or `null` when cost is unavailable (see below) |
@@ -684,7 +687,7 @@ answer text, or evidence excerpts. `web_answer` describes the graph route, so it
 may still include document evidence retained from the first retrieval.
 
 **Tokens and cost.** Token counts come from each LLM call's `usage_metadata`, summed over the
-turn (agent tool-call, classifier, answer). Cost is requested from OpenRouter via usage
+turn (planner tool-call, assessor, answer). Cost is requested from OpenRouter via usage
 accounting (`extra_body={"usage": {"include": true}}` in `src/core/llm.py`), but LangChain drops
 the provider cost field on streamed calls, and the stream handler consumes the graph through
 `astream_events`, which streams every model call. So `reported_cost` is currently always `null`
@@ -698,13 +701,15 @@ counts, booleans, configured limits, and exception class. Raw questions, rewritt
 queries, extracted entities, answers, document chunks, web snippets, and exception messages are
 not attached to normal telemetry. Upload events similarly use a document's extension and
 size bucket instead of its filename. A completed stream emits one `query_completed` event with
-the outcome, stop reason, source counts, web-search flag, full latency, and optional first-token
-latency; its inherited request ID correlates it with the request log without adding content.
+the outcome/path, role models, query shape, candidate/evidence/reranker counts, stage durations,
+source counts, web-search flag, full latency, and optional first-token latency; its inherited
+request ID correlates it with the request log without adding content.
 
-Time to first token starts when the graph begins, after the input-guardrail gate, and stops only
-when the handler sends its first visible answer token. Internal citation markers that are buffered
-or removed do not count. A completed abstention has no TTFT sample, so it cannot make the
-answer-streaming average look artificially fast.
+Time to first token starts at the stream-handler boundary, before guardrails, conversation/cache
+preflight, and the graph, and stops only when the handler sends its first visible answer token.
+Internal citation markers that are buffered or removed do not count. Completion uses that same
+request clock through the terminal SSE event. Refusals, cache hits, conversational replies,
+document answers, web answers, abstentions, errors, and timeouts have separate path labels.
 
 ---
 
@@ -713,7 +718,7 @@ answer-streaming average look artificially fast.
 `evals/` (repo root, **not** part of the shipped app). Full details in `evals/README.md`;
 the summary:
 
-It scores the **real retrieval layer** (`hybrid_search`) — and, under `--full`, a generation
+It scores the **real retrieval layer** (`retrieve_evidence`) — and, under `--full`, a generation
 step driven by the eval's own `GENERATION_*` prompts — against a fixed labelled **golden set**
 (`evals/golden.jsonl`) over a fixed **corpus** (`evals/corpus/`, ingested into an isolated
 `documents_eval` Qdrant collection). It deliberately scores the retrieval layer **directly**,
@@ -725,6 +730,10 @@ LLM's tool-choice behaviour. Three independent levels:
 | 1. Retrieval | did we fetch the right docs? | recall@k, precision@k, MRR, MAP, nDCG | `ranking.py` |
 | 2. Generation | grounded + on-topic answer? | faithfulness, answer-relevance (LLM judge) | `judges.py` |
 | 3. Embeddings | does the embedder still separate? | cosine separation guard | `embeddings_check.py` |
+
+The manual graph eval also loads `evals/graph_cases.jsonl`: explicit out-of-corpus and partially
+answerable cases must abstain with web disabled, while multipart and history-aware follow-up
+cases must retain document coverage and valid citations.
 
 Each aggregate is compared to a threshold; below it, the run exits non-zero. **Two tiers:**
 - **Default** (`make eval-retrieval`, run in CI on push to main): retrieval + embeddings only.
@@ -756,7 +765,7 @@ module for a short live smoke run; `make eval-graph` runs the full golden set.
 
 | Endpoint | Purpose | Request | Response |
 |---|---|---|---|
-| `POST /api/stream` | RAG query, streamed | `{question, session_id?, model?, top_k?}` (`top_k` 1–20, default 10) | `text/event-stream` (§10) |
+| `POST /api/stream` | RAG query, streamed | `{question, session_id?, model?}` | `text/event-stream` (§10) |
 | `POST /api/upload` | ingest a document | multipart file (`.pdf`/`.docx`/`.txt`, 25 MiB default cap) | `{document_id, filename, chunks_created, file_size, duplicate}` (`duplicate:true` + `chunks_created:0` when the same bytes were already indexed) |
 | `GET /api/monitoring/stats` | live telemetry | — | aggregates (§14) |
 | `GET /health` | liveness | — | `{status, environment, llm_model}` without a dependency probe |
@@ -775,7 +784,7 @@ and spans use safe operational fields rather than request or evidence content. `
 |---|---|---|
 | Chat-model timeout or transient API error | `ChatOpenAI(timeout=LLM_TIMEOUT_SECONDS, max_retries=LLM_MAX_RETRIES)`; 60 s default | `llm.py` |
 | OpenAI embedding timeout or transient API error | `OpenAIEmbeddings(timeout=EMBEDDING_TIMEOUT_SECONDS, max_retries=EMBEDDING_MAX_RETRIES)`; 30 s and two retries by default. Retrieval follows the fixed-error/web-fallback path; uploads return the existing stable processing error. | `vectorstore.py`, `graph.py`, `handlers/upload.py` |
-| Qdrant retrieval timeout / transient failure | `get_retrieval_vector_store()` uses `QDRANT_QUERY_TIMEOUT_SECONDS`; 10 s default; `hybrid_search` retries once with jitter, then emits a fixed tool error and follows the normal one-shot web fallback | `vectorstore.py`, `search.py`, `graph.py` |
+| Qdrant retrieval timeout / transient failure | `get_retrieval_vector_store()` uses `QDRANT_QUERY_TIMEOUT_SECONDS`; 10 s default; each candidate branch retries once with jitter, then emits a fixed tool error and follows the normal one-shot web fallback | `vectorstore.py`, `search.py`, `graph.py` |
 | Qdrant collection/indexing timeout | `get_ingestion_qdrant_client()` and `get_ingestion_vector_store()` use `QDRANT_INGESTION_TIMEOUT_SECONDS`; 30 s default | `vectorstore.py` |
 | Qdrant unavailable for readiness | one read-only collection check with the 10 s query deadline; return stable 503, never provider text | `vectorstore.py`, `main.py` |
 | Web-search timeout/rate limit | `DDGS(timeout=WEB_SEARCH_TIMEOUT_SECONDS)`; one short jittered retry, then fail soft → empty docs and the graph abstains | `agent/tools.py` |

@@ -86,14 +86,14 @@ Send the same `session_id` across requests and LangGraph loads the matching thre
 continues. The stream handler wires it as the `thread_id`:
 
 ```python
-config = {"configurable": {"thread_id": request.session_id, "model": ..., "top_k": ...}}
+config = {"configurable": {"thread_id": request.session_id, "model": ...}}
 async for event in agent.astream_events(inputs, config=config, version="v2"):
     ...
 ```
 
-That `config` is what tells LangGraph which thread's state to load. (The same `configurable`
-dict also carries the per-request `model` and `top_k` knobs — those are *not* in the persisted
-state.)
+That `config` is what tells LangGraph which thread's state to load. The same `configurable`
+dict carries the per-request answer model; it is not in persisted state. Retrieval widths are
+internal application policy rather than session or request knobs.
 
 ---
 

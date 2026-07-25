@@ -10,6 +10,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.core.agent import nodes, tools
 from src.core.agent.graph import build_graph
 from src.core.agent.nodes import EvidenceAssessment
+from src.core.retrieval.search import RetrievalMetrics, RetrievalResult
 
 CORPUS_DIR = Path(__file__).parents[2] / "evals" / "corpus"
 
@@ -30,23 +31,28 @@ def _patch_llms(monkeypatch, agent_script, assessments):
     classifier.with_structured_output.return_value = structured
 
     def get_llm(model=None, **_):
-        return classifier if model == "classifier" else agent
+        return classifier if model == "assessor" else agent
 
     monkeypatch.setattr(nodes, "get_llm", get_llm)
     monkeypatch.setattr(
         nodes,
         "get_settings",
-        lambda: SimpleNamespace(CLASSIFIER_MODEL="classifier", CONVERSATION_HISTORY_TURNS=3),
+        lambda: SimpleNamespace(
+            PLANNER_MODEL="planner",
+            ASSESSOR_MODEL="assessor",
+            PLANNER_MAX_TOKENS=128,
+            ASSESSOR_MAX_TOKENS=128,
+            ANSWER_MAX_TOKENS=1000,
+            CONVERSATION_HISTORY_TURNS=3,
+        ),
     )
     return agent
 
 
-def _run(graph, question, model=None, top_k=None, thread_id=None):
+def _run(graph, question, model=None, thread_id=None):
     configurable = {"thread_id": thread_id or str(uuid.uuid4())}
     if model is not None:
         configurable["model"] = model
-    if top_k is not None:
-        configurable["top_k"] = top_k
     config = {"configurable": configurable}
     inputs = {"messages": [HumanMessage(content=question)]}
     return graph.invoke(inputs, config=config)
@@ -54,7 +60,14 @@ def _run(graph, question, model=None, top_k=None, thread_id=None):
 
 def _retrieve_call(cid="c1"):
     return AIMessage(
-        content="", tool_calls=[{"name": "retrieve_documents", "args": {"query": "q"}, "id": cid}]
+        content="",
+        tool_calls=[
+            {
+                "name": "retrieve_documents",
+                "args": {"search_queries": ["q"]},
+                "id": cid,
+            }
+        ],
     )
 
 
@@ -68,6 +81,19 @@ def _corpus_artifact(filename: str, chunk_id: str) -> dict:
     }
 
 
+def _retrieval_result(documents: list[dict], query_count: int = 1) -> RetrievalResult:
+    return RetrievalResult(
+        documents=documents,
+        metrics=RetrievalMetrics(
+            query_count=query_count,
+            query_shape="multipart" if query_count == 2 else "single",
+            candidates=len(documents),
+            evidence=len(documents),
+            reranker_calls=1 if documents else 0,
+        ),
+    )
+
+
 def test_graph_retrieves_then_answers(graph, monkeypatch):
     agent = _patch_llms(
         monkeypatch,
@@ -77,22 +103,25 @@ def test_graph_retrieves_then_answers(graph, monkeypatch):
     seen = {}
     monkeypatch.setattr(
         tools,
-        "hybrid_search",
-        lambda q, k: seen.update(top_k=k)
-        or [
-            _corpus_artifact("photosynthesis.txt", "photosynthesis:0"),
-            {
-                "content": "UNSELECTED_ARTIFACT_MARKER",
-                "document_id": "b",
-                "filename": "b.pdf",
-                "source": "document",
-            },
-        ],
+        "retrieve_evidence",
+        lambda queries, question: seen.update(queries=queries, question=question)
+        or _retrieval_result(
+            [
+                _corpus_artifact("photosynthesis.txt", "photosynthesis:0"),
+                {
+                    "content": "UNSELECTED_ARTIFACT_MARKER",
+                    "document_id": "b",
+                    "filename": "b.pdf",
+                    "source": "document",
+                },
+            ]
+        ),
     )
 
-    state = _run(graph, "How do plants convert sunlight into chemical energy?", top_k=11)
+    question = "How do plants convert sunlight into chemical energy?"
+    state = _run(graph, question)
 
-    assert seen["top_k"] == 11
+    assert seen == {"queries": ["q"], "question": question}
     assert state["messages"][-1].content == "final answer [document:photosynthesis:0]"
     assert state["outcome"] == "document_answer"
     assert state["stop_reason"] == "document_evidence_sufficient"
@@ -113,7 +142,9 @@ def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):
                 tool_calls=[
                     {
                         "name": "retrieve_documents",
-                        "args": {"query": "Zero to Production in Rust database chapters"},
+                        "args": {
+                            "search_queries": ["Zero to Production in Rust database chapters"]
+                        },
                         "id": "follow-up-retrieval",
                     }
                 ],
@@ -128,16 +159,18 @@ def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):
     queries = []
     monkeypatch.setattr(
         tools,
-        "hybrid_search",
-        lambda query, top_k: queries.append(query)
-        or [
-            {
-                "content": "context",
-                "document_id": "rust",
-                "filename": "rust.pdf",
-                "source": "document",
-            }
-        ],
+        "retrieve_evidence",
+        lambda search_queries, _question: queries.extend(search_queries)
+        or _retrieval_result(
+            [
+                {
+                    "content": "context",
+                    "document_id": "rust",
+                    "filename": "rust.pdf",
+                    "source": "document",
+                }
+            ]
+        ),
     )
     thread_id = str(uuid.uuid4())
 
@@ -166,8 +199,10 @@ def test_graph_falls_back_to_web_search(graph, monkeypatch):
     )
     monkeypatch.setattr(
         tools,
-        "hybrid_search",
-        lambda q, k: [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")],
+        "retrieve_evidence",
+        lambda _queries, _question: _retrieval_result(
+            [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")]
+        ),
     )
     web_search = MagicMock(
         return_value=(
@@ -207,8 +242,10 @@ def test_graph_web_fallback_survives_an_earlier_turn_that_already_used_it(graph,
     )
     monkeypatch.setattr(
         tools,
-        "hybrid_search",
-        lambda q, k: [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")],
+        "retrieve_evidence",
+        lambda _queries, _question: _retrieval_result(
+            [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")]
+        ),
     )
     web_search = MagicMock(
         return_value=(
@@ -242,8 +279,10 @@ def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
     )
     monkeypatch.setattr(
         tools,
-        "hybrid_search",
-        lambda q, k: [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")],
+        "retrieve_evidence",
+        lambda _queries, _question: _retrieval_result(
+            [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")]
+        ),
     )
     monkeypatch.setattr(nodes, "search_web", lambda _: ("No documents found.", []))
 
@@ -267,10 +306,10 @@ def test_graph_abstains_when_query_model_does_not_request_retrieval(graph, monke
 def test_graph_handles_retrieval_failure_without_exposing_provider_error(graph, monkeypatch):
     _patch_llms(monkeypatch, [_retrieve_call()], [])
 
-    def unavailable(_query, _top_k):
+    def unavailable(_queries, _question):
         raise RuntimeError("qdrant connection details")
 
-    monkeypatch.setattr(tools, "hybrid_search", unavailable)
+    monkeypatch.setattr(tools, "retrieve_evidence", unavailable)
     monkeypatch.setattr(nodes, "search_web", lambda _: ("Web search failed.", []))
 
     state = _run(graph, "q")

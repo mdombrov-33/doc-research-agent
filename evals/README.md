@@ -31,7 +31,7 @@ embedding guard (3) catches a silent embedding-model swap that would quietly sin
 
 For each line in `golden.jsonl`:
 
-1. **Retrieve** with the real `hybrid_search` (the same retrieval the agent's
+1. **Retrieve** with the real bounded `retrieve_evidence` path (the same retrieval the agent's
    `retrieve_documents` tool calls) → rank the returned filenames against the labelled
    `relevant_filenames` → recall/precision/MRR/NDCG/MAP. The eval scores retrieval **directly**,
    not through the agent's tool loop, so the numbers reflect retrieval quality rather than the
@@ -53,11 +53,12 @@ it's capped at 1/k, so it reflects the question mix, not a regression).
 |------|------|
 | `corpus/*.txt` | The fixed document set that gets ingested |
 | `golden.jsonl` | Labelled questions: `question`, `relevant_filenames` |
+| `graph_cases.jsonl` | Live graph cases for out-of-corpus, partial, multipart, and follow-up behavior |
 | `ranking.py` | Pure retrieval metrics (recall@k, precision@k, MRR, MAP, NDCG) |
 | `judges.py` | LLM-as-judge faithfulness + answer-relevance scorers |
 | `embeddings_check.py` | Cosine separation guard for the embedding model |
 | `run_eval.py` | Orchestrator: ingest → score all three levels → report → gate |
-| `run_graph_eval.py` | Manual live graph path/citation evaluation against the same corpus |
+| `run_graph_eval.py` | Manual live graph path/citation evaluation against both case sets |
 | `tests/integration/test_agent_graph.py` | Deterministic compiled-graph route and citation contracts |
 
 The pure pieces (`ranking`, `judges`, `embeddings_check`) are unit-tested with no infra in

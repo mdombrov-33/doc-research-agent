@@ -12,7 +12,7 @@ from src.core.agent.prompts import (
     EVIDENCE_ASSESSMENT_SYSTEM_PROMPT,
 )
 from src.core.agent.state import AgentState
-from src.core.agent.tools import format_docs, retrieve_documents, search_web
+from src.core.agent.tools import artifact_documents, format_docs, retrieve_documents, search_web
 from src.core.citations import citations_from_artifacts
 from src.core.llm import get_llm
 from src.utils.logger import logger
@@ -35,13 +35,15 @@ def _configurable(config: RunnableConfig | None) -> dict:
 
 def agent_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """Form a history-aware standalone query and call document retrieval."""
-    model = _configurable(config).get("model")
-    llm = get_llm(model).bind_tools([retrieve_documents])
-    history = _conversation_messages(state["messages"], get_settings().CONVERSATION_HISTORY_TURNS)
+    settings = get_settings()
+    model = settings.PLANNER_MODEL
+    llm = get_llm(model, max_tokens=settings.PLANNER_MAX_TOKENS).bind_tools([retrieve_documents])
+    history = _conversation_messages(state["messages"], settings.CONVERSATION_HISTORY_TURNS)
     messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT), *history]
     with _tracer.start_as_current_span("agent.llm_call") as span:
-        span.set_attribute("agent.model", model or "default")
+        span.set_attribute("agent.model", model)
         response = llm.invoke(messages)
+        response = _one_retrieval_call(response)
         span.set_attribute("agent.has_tool_calls", bool(getattr(response, "tool_calls", None)))
     return {"messages": [response]}
 
@@ -58,9 +60,10 @@ def evidence_assessment_node(
 
     evidence = "\n\n".join(_turn_tool_content(state))
     try:
-        structured = get_llm(get_settings().CLASSIFIER_MODEL).with_structured_output(
-            EvidenceAssessment
-        )
+        settings = get_settings()
+        structured = get_llm(
+            settings.ASSESSOR_MODEL, max_tokens=settings.ASSESSOR_MAX_TOKENS
+        ).with_structured_output(EvidenceAssessment)
         assessment = EvidenceAssessment.model_validate(
             structured.invoke(
                 [
@@ -90,9 +93,10 @@ def answer_node(state: AgentState, config: RunnableConfig | None = None) -> dict
     only those starves the answer of chunks the gate never had to name. Answers see the whole
     turn's evidence and cite what they use; user-facing sources are the IDs cited in the answer.
     """
+    settings = get_settings()
     model = _configurable(config).get("model")
     evidence = format_docs(_turn_artifacts(state))
-    response = get_llm(model).invoke(
+    response = get_llm(model, max_tokens=settings.ANSWER_MAX_TOKENS).invoke(
         [
             SystemMessage(content=ANSWER_SYSTEM_PROMPT),
             HumanMessage(content=f"Question:\n{_current_question(state)}\n\nEvidence:\n{evidence}"),
@@ -180,9 +184,8 @@ def _turn_artifacts(state: AgentState) -> list[dict]:
     return [
         artifact
         for message in _turn_messages(state)
-        if isinstance(message, ToolMessage) and isinstance(message.artifact, list)
-        for artifact in message.artifact
-        if isinstance(artifact, dict)
+        if isinstance(message, ToolMessage)
+        for artifact in artifact_documents(message.artifact)
     ]
 
 
@@ -213,7 +216,37 @@ def _retrieval_query(state: AgentState) -> str:
             continue
         for tool_call in message.tool_calls:
             if tool_call["name"] == "retrieve_documents":
-                query = tool_call["args"].get("query")
-                if isinstance(query, str):
-                    return query
+                queries = tool_call["args"].get("search_queries")
+                if isinstance(queries, list):
+                    return " ".join(query for query in queries if isinstance(query, str))
     return ""
+
+
+def _one_retrieval_call(response: AIMessage) -> AIMessage:
+    """Collapse provider-emitted duplicate retrieval calls into the one-call contract."""
+    calls = [
+        call
+        for call in getattr(response, "tool_calls", [])
+        if call.get("name") == "retrieve_documents"
+    ]
+    if len(calls) <= 1:
+        return response
+
+    queries: list[str] = []
+    for call in calls:
+        values = call.get("args", {}).get("search_queries")
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if isinstance(value, str) and value.strip() and value.strip() not in queries:
+                queries.append(value.strip())
+
+    first = calls[0]
+    merged = {
+        "name": "retrieve_documents",
+        "args": {"search_queries": queries[:2]},
+        "id": first["id"],
+        "type": "tool_call",
+    }
+    logger.warning("planner_duplicate_tool_calls_collapsed", tool_calls=len(calls))
+    return response.model_copy(update={"tool_calls": [merged]})

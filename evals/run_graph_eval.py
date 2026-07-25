@@ -1,16 +1,18 @@
 """Manual live evaluation of the complete document-answer graph.
 
-It rebuilds the isolated eval corpus, then runs each golden question through the real query,
-retrieval, assessment, and answer nodes. A case passes only when it finishes as a document answer
-and cites every labelled document. Web fallback is disabled: needing it for a known-corpus
-question is the failure signal this evaluation is meant to expose.
+It rebuilds the isolated eval corpus, then runs positive golden questions and route-regression
+cases through the real planner, retrieval, assessment, and answer nodes. Positive cases must
+finish as document answers and cite every labelled document; negative/partial cases must abstain.
+Web fallback is disabled so graph behavior is measured against the fixed corpus.
 """
 
 import argparse
 import asyncio
+import json
 import os
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -19,34 +21,39 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from src.core.agent.outcomes import FinalOutcome, normalize_outcome
 from src.core.citations import citations_referenced_by_answer
 
+GRAPH_CASES_PATH = Path(__file__).parent / "graph_cases.jsonl"
+
 
 @dataclass(frozen=True)
 class GraphResult:
     question: str
     expected_filenames: frozenset[str]
+    expected_outcome: FinalOutcome
     outcome: FinalOutcome
     cited_filenames: frozenset[str]
     error: str | None = None
 
     @property
     def passed(self) -> bool:
+        if self.error is not None or self.outcome != self.expected_outcome:
+            return False
         return (
-            self.error is None
-            and self.outcome == "document_answer"
-            and self.expected_filenames <= self.cited_filenames
+            self.expected_outcome != "document_answer"
+            or self.expected_filenames <= self.cited_filenames
         )
 
 
 def evaluate_graph_state(row: dict[str, Any], state: dict[str, Any]) -> GraphResult:
     """Evaluate one completed graph state against its labelled document evidence."""
     messages = state.get("messages", [])
-    artifacts = [
-        artifact
-        for message in messages
-        if isinstance(message, ToolMessage) and isinstance(message.artifact, list)
-        for artifact in message.artifact
-        if isinstance(artifact, dict)
-    ]
+    artifacts = []
+    for message in messages:
+        if not isinstance(message, ToolMessage):
+            continue
+        artifact = message.artifact
+        documents = artifact.get("documents") if isinstance(artifact, dict) else artifact
+        if isinstance(documents, list):
+            artifacts.extend(document for document in documents if isinstance(document, dict))
     answer = next(
         (
             message.content
@@ -65,6 +72,7 @@ def evaluate_graph_state(row: dict[str, Any], state: dict[str, Any]) -> GraphRes
     return GraphResult(
         question=row["question"],
         expected_filenames=frozenset(row["relevant_filenames"]),
+        expected_outcome=row.get("expected_outcome", "document_answer"),
         outcome=normalize_outcome(state.get("outcome")),
         cited_filenames=cited_filenames,
     )
@@ -74,24 +82,35 @@ def evaluate_live_graph(graph: Any, golden: list[dict[str, Any]]) -> list[GraphR
     """Invoke the supplied compiled graph once per golden question."""
     results: list[GraphResult] = []
     for index, row in enumerate(golden, start=1):
-        print(f"[{index}/{len(golden)}] {row['question'][:72]}", flush=True)
+        turns = row.get("turns") or [row["question"]]
+        question = turns[-1]
+        print(f"[{index}/{len(golden)}] {question[:72]}", flush=True)
         try:
-            state = graph.invoke(
-                {"messages": [HumanMessage(content=row["question"])]},
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
-            results.append(evaluate_graph_state(row, state))
+            config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+            state = {}
+            for turn in turns:
+                state = graph.invoke(
+                    {"messages": [HumanMessage(content=turn)]},
+                    config=config,
+                )
+            result_row = {**row, "question": question}
+            results.append(evaluate_graph_state(result_row, state))
         except Exception as error:
             results.append(
                 GraphResult(
-                    question=row["question"],
+                    question=question,
                     expected_filenames=frozenset(row["relevant_filenames"]),
+                    expected_outcome=row.get("expected_outcome", "document_answer"),
                     outcome="abstained",
                     cited_filenames=frozenset(),
                     error=type(error).__name__,
                 )
             )
     return results
+
+
+def _load_graph_cases() -> list[dict[str, Any]]:
+    return [json.loads(line) for line in GRAPH_CASES_PATH.read_text().splitlines() if line.strip()]
 
 
 def _disabled_web_fallback(_: str) -> tuple[str, list[dict]]:
@@ -110,7 +129,7 @@ def _render(results: list[GraphResult]) -> None:
         print(f"{status:<4} {result.question[:62]:<64} {details}")
 
     passed = sum(result.passed for result in results)
-    print(f"\nDocument-answer coverage: {passed}/{len(results)}")
+    print(f"\nGraph case coverage: {passed}/{len(results)}")
 
 
 def main() -> int:
@@ -133,7 +152,7 @@ def main() -> int:
 
     _reset_collection()
     asyncio.run(_ingest_corpus())
-    golden = _load_golden()
+    golden = [*_load_golden(), *_load_graph_cases()]
     if args.limit is not None:
         golden = golden[: args.limit]
     graph = build_graph(checkpointer=MemorySaver())

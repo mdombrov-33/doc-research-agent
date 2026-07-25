@@ -46,6 +46,18 @@ def test_graph_eval_rejects_web_path_even_with_document_citation():
     assert result.passed is False
 
 
+def test_graph_eval_accepts_expected_abstention_without_citations():
+    row = {
+        "question": "What is Project Zephyr's launch date?",
+        "relevant_filenames": [],
+        "expected_outcome": "abstained",
+    }
+
+    result = evaluate_graph_state(row, _state(outcome="abstained", answer="No evidence."))
+
+    assert result.passed is True
+
+
 def test_live_graph_eval_continues_after_one_graph_error():
     class Graph:
         def __init__(self):
@@ -61,3 +73,29 @@ def test_live_graph_eval_continues_after_one_graph_error():
 
     assert [result.passed for result in results] == [False, True]
     assert results[0].error == "RuntimeError"
+
+
+def test_live_graph_eval_reuses_one_thread_for_follow_up_turns():
+    class Graph:
+        def __init__(self):
+            self.configs = []
+
+        def invoke(self, _inputs, config):
+            self.configs.append(config)
+            return _state()
+
+    row = {
+        "turns": ["Who discovered the moons?", "When did he do it?"],
+        "question": "When did he do it?",
+        "relevant_filenames": ["photosynthesis.txt"],
+    }
+    graph = Graph()
+
+    result = evaluate_live_graph(graph, [row])[0]
+
+    assert result.passed is True
+    assert len(graph.configs) == 2
+    assert (
+        graph.configs[0]["configurable"]["thread_id"]
+        == graph.configs[1]["configurable"]["thread_id"]
+    )

@@ -24,6 +24,13 @@ class QueryMetrics:
     output_tokens: int | None = None
     reported_cost: float | None = None
     cache_hit: bool = False
+    path: str = "document"
+    planner_model: str | None = None
+    assessor_model: str | None = None
+    query_shape: str | None = None
+    candidate_count: int = 0
+    evidence_count: int = 0
+    reranker_calls: int = 0
 
 
 class MetricsTracker:
@@ -44,6 +51,9 @@ class MetricsTracker:
         self.web_answers = 0
         self.abstentions = 0
         self.conversational_answers = 0
+        self.refusals = 0
+        self.errors = 0
+        self.timeouts = 0
         self._events: list[QueryMetrics] = []
         self._lock = Lock()
         self._store = store
@@ -61,6 +71,9 @@ class MetricsTracker:
                 self.web_answers = saved["web_answers"]
                 self.abstentions = saved["abstentions"]
                 self.conversational_answers = saved["conversational_answers"]
+                self.refusals = saved["refusals"]
+                self.errors = saved["errors"]
+                self.timeouts = saved["timeouts"]
 
     def record(self, evaluation: QueryMetrics) -> None:
         with self._lock:
@@ -71,6 +84,7 @@ class MetricsTracker:
                     evaluation.latency_ms,
                     evaluation.time_to_first_token_ms,
                     evaluation.outcome,
+                    evaluation.path,
                 )
                 self._store.record_event(
                     evaluation.model,
@@ -81,6 +95,13 @@ class MetricsTracker:
                     evaluation.time_to_first_token_ms,
                     evaluation.outcome,
                     evaluation.cache_hit,
+                    evaluation.path,
+                    evaluation.planner_model,
+                    evaluation.assessor_model,
+                    evaluation.query_shape,
+                    evaluation.candidate_count,
+                    evaluation.evidence_count,
+                    evaluation.reranker_calls,
                 )
                 return
 
@@ -94,7 +115,13 @@ class MetricsTracker:
             if evaluation.time_to_first_token_ms is not None:
                 self.total_time_to_first_token_ms += evaluation.time_to_first_token_ms
                 self.time_to_first_token_samples += 1
-            if evaluation.outcome == "document_answer":
+            if evaluation.path == "refusal":
+                self.refusals += 1
+            elif evaluation.path == "error":
+                self.errors += 1
+            elif evaluation.path == "timeout":
+                self.timeouts += 1
+            elif evaluation.outcome == "document_answer":
                 self.document_answers += 1
             elif evaluation.outcome == "web_answer":
                 self.web_answers += 1
@@ -124,6 +151,9 @@ class MetricsTracker:
                     "web_answers": self.web_answers,
                     "abstentions": self.abstentions,
                     "conversational_answers": self.conversational_answers,
+                    "refusals": self.refusals,
+                    "errors": self.errors,
+                    "timeouts": self.timeouts,
                 }
             )
             stats.update(_event_stats_from_metrics(self._events))
@@ -161,6 +191,9 @@ def _stats_from_totals(totals: dict[str, int | float]) -> dict[str, Any]:
         "web_answer_rate": totals["web_answers"] / total_queries,
         "abstention_rate": totals["abstentions"] / total_queries,
         "conversational_rate": totals["conversational_answers"] / total_queries,
+        "refusal_rate": totals["refusals"] / total_queries,
+        "error_rate": totals["errors"] / total_queries,
+        "timeout_rate": totals["timeouts"] / total_queries,
     }
 
 
@@ -175,6 +208,9 @@ def _empty_stats() -> dict[str, Any]:
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
         "conversational_rate": 0.0,
+        "refusal_rate": 0.0,
+        "error_rate": 0.0,
+        "timeout_rate": 0.0,
     }
 
 

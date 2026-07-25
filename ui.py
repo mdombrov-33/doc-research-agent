@@ -39,7 +39,7 @@ def upload_file(uploaded_file):
         return None
 
 
-def stream_query(question: str, model: str | None, top_k: int):
+def stream_query(question: str, model: str | None):
     """Generator that yields tokens from the SSE stream and stores final metadata."""
     st.session_state.stream_meta = {}
 
@@ -49,7 +49,6 @@ def stream_query(question: str, model: str | None, top_k: int):
             "question": question,
             "session_id": st.session_state.session_id,
             "model": model,
-            "top_k": top_k,
         },
         stream=True,
         timeout=300,
@@ -169,9 +168,6 @@ def main():
             format_func=lambda x: SUPPORTED_MODELS[x],
         )
 
-        top_k = st.slider("Top-K results", min_value=3, max_value=15, value=10, step=1)
-        st.caption("Per retrieval call — the agent may call retrieve multiple times.")
-
         st.caption(f"Backend: {settings.API_URL}")
         st.caption(f"Session: {st.session_state.session_id[:8]}...")
 
@@ -187,7 +183,7 @@ def main():
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            answer = st.write_stream(stream_query(prompt, selected_model, top_k))
+            answer = st.write_stream(stream_query(prompt, selected_model))
             meta = st.session_state.get("stream_meta", {})
             sources = meta.get("sources_count", 0)
             sources_meta = meta.get("sources", [])

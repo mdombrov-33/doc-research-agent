@@ -6,7 +6,6 @@ from src.api.schemas import QueryRequest
 
 def test_defaults():
     req = QueryRequest(question="what is RAG?")
-    assert req.top_k == 5
     assert req.model is None
     assert len(req.session_id) == 36  # UUID4
 
@@ -22,16 +21,9 @@ def test_explicit_session_id_preserved():
     assert req.session_id == "my-session"
 
 
-def test_top_k_bounds():
-    with pytest.raises(ValidationError):
-        QueryRequest(question="q", top_k=0)
-    with pytest.raises(ValidationError):
-        QueryRequest(question="q", top_k=21)
-
-
-def test_top_k_valid_range():
-    assert QueryRequest(question="q", top_k=1).top_k == 1
-    assert QueryRequest(question="q", top_k=20).top_k == 20
+def test_removed_retrieval_width_knob_is_rejected():
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        QueryRequest(question="q", top_k=5)
 
 
 def test_empty_question_rejected():

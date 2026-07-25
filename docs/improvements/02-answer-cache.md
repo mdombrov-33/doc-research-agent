@@ -9,15 +9,16 @@ a repeat into milliseconds and zero tokens. Depends on item 01 so savings are me
 
 - **One Qdrant collection `answer_cache`, both layers in one entry.** Point = question
   embedding (`text-embedding-3-small`) + payload: `question_hash` (SHA-256 of the normalized
-  question), `question`, `answer`, `sources` (JSON), `model`, `top_k`, `corpus_version`,
+  question), `question`, `answer`, `sources` (JSON), `model`, `corpus_version`,
   `namespace: "default"`, `created_at`. No Redis/GPTCache — we already run Qdrant and the
   embedder.
-- **L1 exact**: filtered lookup on `question_hash + model + top_k + corpus_version +
+- **L1 exact**: filtered lookup on `question_hash + model + corpus_version +
   namespace` — no embedding call. **L2 semantic** on exact miss: embed once, vector search
   with the same payload filter, accept at cosine ≥ 0.95. The spaCy entity-match guard is
   deferred until real collisions are observed.
-- **Cache key includes `model` and `top_k`**: per-request knobs change the answer and the
-  sources list; serving one model's answer as another's misrepresents provenance.
+- **Cache key includes `model`**: serving one model's answer as another's misrepresents
+  provenance. Improvement 07 removed the old public retrieval-width knob and reset legacy
+  cache entries.
 - **Invalidation: invalidate-all-on-upload.** A monotonically increasing `corpus_version`
   lives as a reserved point (nil-UUID id, zero vector) in `answer_cache`; every successful
   non-duplicate upload bumps it. Only current-version entries are served; on bump, delete

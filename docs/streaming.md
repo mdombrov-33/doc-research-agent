@@ -84,10 +84,11 @@ graph await. That cannot undo a provider request that has already reached the pr
 prevents subsequent graph work from starting.
 
 **What if the request takes too long?** `QUERY_TIMEOUT_SECONDS` is one wall-clock deadline for
-the input guardrail and every later graph-event await (120 seconds by default). It prevents the
+the input guardrail and every later graph-event await (1,000 seconds by default). It prevents the
 separate LLM, retrieval, and web-search timeouts from adding up without a cap. When it expires,
 the current await is cancelled, the graph iterator closes, and the client gets the stable timeout
-error event. It is not counted as a completed query.
+error event. Monitoring records it under the separate timeout path rather than as an
+evidence-controlled abstention.
 
 **Why `astream_events` and not `astream`?**
 
@@ -153,7 +154,7 @@ The client receives this fixed message for stream failures; exception details st
 In `ui.py`, the `stream_query()` function is a generator that consumes the SSE stream:
 
 ```python
-def stream_query(question: str, model: str | None, top_k: int):
+def stream_query(question: str, model: str | None):
     with requests.post(..., stream=True) as response:
         for line in response.iter_lines():
             if not line or not line.startswith(b"data: "):
@@ -194,13 +195,14 @@ handler reads everything the monitoring tracker needs:
 - `stop_reason` — the terminal cause: document or web evidence passed, evidence stayed
   insufficient after web fallback, or the query model never requested retrieval
 - `latency_ms` — full request duration
-- `time_to_first_token_ms` — graph-start-to-first-visible-answer-token time, present only when
+- `time_to_first_token_ms` — API-handler-entry-to-first-visible-answer-token time, present when
   the completed stream emitted visible answer text. Terminal nodes that build their message
   without calling a model (`abstain`) produce no `on_chat_model_stream` events, so the handler
   sends their text once the graph ends; for those the value is the full request duration.
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see
-`docs/architecture.md` §14). The tracker persists aggregate counters only; the accompanying
+`docs/architecture.md` §14). The tracker persists aggregates plus safe per-query dimensions;
+the accompanying
 request logs and OpenTelemetry spans use request IDs plus safe operational fields, never the
 question, answer, or retrieved evidence text. That same point emits one `query_completed` log
 event with outcome, stop reason, aggregate source counts, web-search flag, latency, and optional

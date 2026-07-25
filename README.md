@@ -41,11 +41,13 @@ POST /api/stream
    streamed answer tokens → SSE → client   +   outcome telemetry recorded
 ```
 
-- **Query** — a tool-calling LLM turns the current conversation into one standalone document
-  query; it cannot answer or call the web.
+- **Query** — a dedicated planner model turns the current conversation into one bounded
+  retrieval plan: one query normally, at most two for a multipart question. It cannot answer or
+  call the web.
 - **Tools** — `retrieve_documents` runs hybrid dense + BM25 search in Qdrant (fused with RRF),
-  then a cross-encoder reranks a wide candidate pool down to your `top_k`; `web_search` hits
-  the live web.
+  concurrently merges planned branches into at most 40 unique candidates, then performs one
+  mandatory cross-encoder rerank down to at most eight evidence chunks; `web_search` hits the
+  live web.
 - **Evidence assessment** — a structured classifier is the relevance gate: it must find the
   returned sources sufficient and name the exact supporting source IDs before an answer can run.
   A calibrated rerank-score floor first drops clearly-irrelevant chunks from the pool upstream;
@@ -110,13 +112,17 @@ the values that differ per environment. See [`.env.example`](.env.example) for t
 list. Keys:
 
 - `OPENAI_API_KEY` — embeddings (`text-embedding-3-small`) only
-- `OPENROUTER_API_KEY` — all chat/LLM calls (the agent's reasoning + answer)
+- `OPENROUTER_API_KEY` — planner, evidence-assessor, and answer calls
+- `LLM_MODEL` — default selectable answer model; `PLANNER_MODEL` and `ASSESSOR_MODEL` configure
+  the two narrow auxiliary roles independently
 - `LLM_TIMEOUT_SECONDS` — maximum duration of one chat-model request (default `60`)
 - `QUERY_TIMEOUT_SECONDS` — wall-clock ceiling for guardrails plus the whole graph stream
-  (default `120`); expiration cancels the in-flight work and returns a stable timeout event
-- `CONVERSATION_HISTORY_TURNS` — most recent user turns given to the query model (default `3`,
+  (default `1000`); expiration cancels the in-flight work and returns a stable timeout event
+- `CONVERSATION_HISTORY_TURNS` — most recent user turns given to the planner (default `3`,
   including the current question); old tool calls and retrieved evidence are never replayed
-- `WEB_SEARCH_TIMEOUT_SECONDS` — maximum duration of one DDGS web-search round (default `10`);
+- `RETRIEVAL_CANDIDATE_BUDGET` / `RETRIEVAL_EVIDENCE_BUDGET` — internal global retrieval
+  limits (defaults `40` / `8`); they are not request or UI controls
+- `WEB_SEARCH_TIMEOUT_SECONDS` — maximum duration of one DDGS web-search round (default `30`);
   explicit timeout/rate-limit failures retry once before the graph abstains
 - `EMBEDDING_TIMEOUT_SECONDS` — maximum duration of one OpenAI embedding request (default `30`);
   transient OpenAI rate-limit/server failures retry up to `EMBEDDING_MAX_RETRIES` (default `2`)
@@ -135,7 +141,7 @@ when durable, shared state is needed.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/stream` | RAG query, streamed via SSE (`{question, session_id?, model?, top_k?}`) |
+| `POST /api/stream` | RAG query, streamed via SSE (`{question, session_id?, model?}`) |
 | `POST /api/upload` | ingest a document (`.pdf` / `.docx` / `.txt`); re-uploading identical bytes returns the existing `document_id` with `duplicate: true`, skipping re-embedding |
 | `GET /api/monitoring/stats` | live query telemetry |
 | `GET /health` | liveness: event loop only |
@@ -151,8 +157,8 @@ abstention contracts with corpus artifacts and scripted models—no services, AP
 calls—and is a separate CI step on every PR. `make eval-graph` manually checks live graph
 outcomes and citations against the same corpus. Use `uv run python -m evals.run_graph_eval
 --limit 3` for a short live smoke run. Live telemetry reports aggregate outcome rates plus
-per-query token counts, cache-hit rate, and a per-model breakdown (no question or answer content
-is stored).
+per-query path, role-model, query-shape, candidate/evidence/reranker counts, token counts,
+cache-hit rate, and a per-answer-model breakdown (no question or answer content is stored).
 
 ## Tech stack
 

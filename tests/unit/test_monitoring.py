@@ -21,6 +21,13 @@ def _make_eval(
     output_tokens: int | None = None,
     reported_cost: float | None = None,
     cache_hit: bool = False,
+    path: str = "document",
+    planner_model: str | None = None,
+    assessor_model: str | None = None,
+    query_shape: str | None = None,
+    candidate_count: int = 0,
+    evidence_count: int = 0,
+    reranker_calls: int = 0,
 ) -> QueryMetrics:
     return QueryMetrics(
         sources_retrieved=sources_retrieved,
@@ -33,6 +40,13 @@ def _make_eval(
         output_tokens=output_tokens,
         reported_cost=reported_cost,
         cache_hit=cache_hit,
+        path=path,
+        planner_model=planner_model,
+        assessor_model=assessor_model,
+        query_shape=query_shape,
+        candidate_count=candidate_count,
+        evidence_count=evidence_count,
+        reranker_calls=reranker_calls,
     )
 
 
@@ -79,6 +93,9 @@ def test_legacy_database_migrates_source_total(tmp_path):
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
         "conversational_rate": 0.0,
+        "refusal_rate": 0.0,
+        "error_rate": 0.0,
+        "timeout_rate": 0.0,
         "avg_input_tokens": 0.0,
         "avg_output_tokens": 0.0,
         "avg_cost_per_query": None,
@@ -111,6 +128,9 @@ def test_sqlite_metrics_persist_recorded_totals(tmp_path):
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
         "conversational_rate": 0.0,
+        "refusal_rate": 0.0,
+        "error_rate": 0.0,
+        "timeout_rate": 0.0,
         "avg_input_tokens": 0.0,
         "avg_output_tokens": 0.0,
         "avg_cost_per_query": None,
@@ -197,6 +217,7 @@ def test_postgres_metrics_record_uses_atomic_increment(monkeypatch):
         latency_ms=250.0,
         time_to_first_token_ms=100.0,
         outcome="document_answer",
+        path="document",
     )
 
     assert cursor.execute.call_args_list[-1].args[1] == (
@@ -206,6 +227,9 @@ def test_postgres_metrics_record_uses_atomic_increment(monkeypatch):
         100.0,
         True,
         True,
+        False,
+        False,
+        False,
         False,
         False,
         False,
@@ -221,12 +245,8 @@ def test_postgres_metrics_configuration_requires_database_url():
 
 def test_event_stats_average_tokens_and_cost_across_queries():
     tracker = MetricsTracker()
-    tracker.record(
-        _make_eval(model="a/x", input_tokens=100, output_tokens=20, reported_cost=0.002)
-    )
-    tracker.record(
-        _make_eval(model="a/x", input_tokens=200, output_tokens=40, reported_cost=0.004)
-    )
+    tracker.record(_make_eval(model="a/x", input_tokens=100, output_tokens=20, reported_cost=0.002))
+    tracker.record(_make_eval(model="a/x", input_tokens=200, output_tokens=40, reported_cost=0.004))
 
     stats = tracker.get_stats()
     assert stats["avg_input_tokens"] == 150.0
@@ -256,9 +276,7 @@ def test_event_stats_cost_is_none_when_provider_never_reports_it():
 def test_sqlite_event_stats_persist_across_instances(tmp_path):
     db_path = tmp_path / "metrics.db"
     tracker = MetricsTracker(SqliteMetricsDB(str(db_path)))
-    tracker.record(
-        _make_eval(model="a/x", input_tokens=100, output_tokens=20, reported_cost=0.002)
-    )
+    tracker.record(_make_eval(model="a/x", input_tokens=100, output_tokens=20, reported_cost=0.002))
 
     stats = MetricsTracker(SqliteMetricsDB(str(db_path))).get_stats()
 
@@ -285,6 +303,13 @@ def test_postgres_record_event_persists_query_row(monkeypatch):
         time_to_first_token_ms=100.0,
         outcome="document_answer",
         cache_hit=False,
+        path="document",
+        planner_model="planner",
+        assessor_model="assessor",
+        query_shape="multipart",
+        candidate_count=40,
+        evidence_count=8,
+        reranker_calls=1,
     )
 
     assert cursor.execute.call_args_list[-1].args[1] == (
@@ -296,6 +321,13 @@ def test_postgres_record_event_persists_query_row(monkeypatch):
         100.0,
         "document_answer",
         False,
+        "document",
+        "planner",
+        "assessor",
+        "multipart",
+        40,
+        8,
+        1,
     )
     assert "INSERT INTO query_events" in cursor.execute.call_args_list[-1].args[0]
 
@@ -316,3 +348,39 @@ def test_sqlite_cache_hit_rate_persists_across_instances(tmp_path):
     tracker.record(_make_eval(cache_hit=False))
 
     assert MetricsTracker(SqliteMetricsDB(str(db_path))).get_stats()["cache_hit_rate"] == 0.5
+
+
+def test_sqlite_persists_latency_path_and_retrieval_dimensions(tmp_path):
+    db_path = tmp_path / "metrics.db"
+    tracker = MetricsTracker(SqliteMetricsDB(str(db_path)))
+    tracker.record(
+        _make_eval(
+            model="answer",
+            time_to_first_token_ms=125.0,
+            latency_ms=500.0,
+            planner_model="planner",
+            assessor_model="assessor",
+            query_shape="multipart",
+            candidate_count=40,
+            evidence_count=8,
+            reranker_calls=1,
+        )
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT path, planner_model, assessor_model, query_shape, "
+            "candidate_count, evidence_count, reranker_calls FROM query_events"
+        ).fetchone()
+
+    assert row == ("document", "planner", "assessor", "multipart", 40, 8, 1)
+
+
+def test_refusal_path_is_separate_from_evidence_abstention():
+    tracker = MetricsTracker()
+
+    tracker.record(_make_eval(outcome="abstained", path="refusal"))
+
+    stats = tracker.get_stats()
+    assert stats["refusal_rate"] == 1.0
+    assert stats["abstention_rate"] == 0.0

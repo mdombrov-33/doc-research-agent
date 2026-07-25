@@ -12,7 +12,7 @@ hard abstention — technically correct, bad UX, and it pollutes `abstention_rat
   content words falls through to the graph. False positives are ~impossible by construction;
   the ambiguous tail ("can you help me with something?") takes the normal graph path — same
   outcome as today, no worse.
-- A classifier tail (`CLASSIFIER_MODEL`) was rejected: it adds an LLM call and latency to the
+- A classifier tail (using the small assessor-class model) was rejected: it adds an LLM call and latency to the
   hot path of every short query to fix a paper cut.
 - Returns a **fixed capabilities-style response** (what the app does, how to use it) without
   touching retrieval.

@@ -1,3 +1,4 @@
+import time
 from functools import lru_cache
 
 from fastembed.rerank.cross_encoder import TextCrossEncoder
@@ -19,15 +20,13 @@ def _get_cross_encoder(model_name: str) -> TextCrossEncoder:
 
 
 def warmup() -> None:
-    """Prime the cross-encoder at startup so the first query doesn't pay the ~2s model load.
-    No-op when reranking is disabled, since rerank() is the only caller."""
+    """Prime the mandatory cross-encoder so the first query does not pay model-load latency."""
     settings = get_settings()
-    if settings.RERANK_ENABLED:
-        _get_cross_encoder(settings.RERANK_MODEL)
+    _get_cross_encoder(settings.RERANK_MODEL)
 
 
-def rerank(query: str, documents: list[dict], top_k: int) -> list[dict]:
-    """Reorder retrieved documents by cross-encoder relevance and keep the top_k.
+def rerank(query: str, documents: list[dict], limit: int) -> list[dict]:
+    """Reorder retrieved documents by cross-encoder relevance and bound the evidence set.
 
     Each document is a dict carrying a "content" field. Unlike bi-encoder retrieval, the
     cross-encoder reads the query and each document together, so the ordering reflects the
@@ -37,10 +36,11 @@ def rerank(query: str, documents: list[dict], top_k: int) -> list[dict]:
         return documents
 
     settings = get_settings()
+    started_at = time.monotonic()
     with _tracer.start_as_current_span("retrieval.rerank") as span:
         span.set_attribute("rerank.model", settings.RERANK_MODEL)
         span.set_attribute("rerank.candidates", len(documents))
-        span.set_attribute("rerank.top_k", top_k)
+        span.set_attribute("rerank.evidence_budget", limit)
 
         encoder = _get_cross_encoder(settings.RERANK_MODEL)
         scores = list(encoder.rerank(query, [doc["content"] for doc in documents]))
@@ -60,7 +60,9 @@ def rerank(query: str, documents: list[dict], top_k: int) -> list[dict]:
             kept = [triple for triple in ranked if triple[1] >= floor]
             dropped = len(ranked) - len(kept)
             if not kept:
+                duration_ms = round((time.monotonic() - started_at) * 1000, 1)
                 span.set_attribute("rerank.floor_excluded_all", True)
+                span.set_attribute("rerank.duration_ms", duration_ms)
                 logger.info(
                     "documents_reranked",
                     model=settings.RERANK_MODEL,
@@ -68,18 +70,20 @@ def rerank(query: str, documents: list[dict], top_k: int) -> list[dict]:
                     returned=0,
                     floor=floor,
                     floor_dropped=dropped,
+                    duration_ms=duration_ms,
                 )
                 return []
             span.set_attribute("rerank.floor_dropped", dropped)
             ranked = kept
 
-        top = ranked[:top_k]
+        top = ranked[:limit]
 
-        # "promoted" = docs the reranker moved into the top_k slice from positions top_k..fetch_k,
-        # i.e. hits that raw hybrid ordering would have cut.
-        promoted = sum(1 for _, _, original_rank in top if original_rank >= top_k)
+        # "promoted" = docs moved into the final evidence slice from below its raw cutoff.
+        promoted = sum(1 for _, _, original_rank in top if original_rank >= limit)
 
         span.set_attribute("rerank.promoted", promoted)
+        duration_ms = round((time.monotonic() - started_at) * 1000, 1)
+        span.set_attribute("rerank.duration_ms", duration_ms)
 
         logger.info(
             "documents_reranked",
@@ -87,6 +91,7 @@ def rerank(query: str, documents: list[dict], top_k: int) -> list[dict]:
             candidates=len(documents),
             returned=len(top),
             promoted=promoted,
+            duration_ms=duration_ms,
             score_max=round(top[0][1], 4),
             score_min=round(top[-1][1], 4),
         )

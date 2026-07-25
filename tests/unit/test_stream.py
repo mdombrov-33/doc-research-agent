@@ -68,7 +68,7 @@ def test_turn_sources_preserves_document_and_web_evidence():
         ),
     ]
 
-    sources, retrieved_total, web_search_triggered = _turn_sources(messages)
+    sources, retrieved_total, web_search_triggered, retrieval_metrics = _turn_sources(messages)
 
     assert sources == [
         {
@@ -90,6 +90,7 @@ def test_turn_sources_preserves_document_and_web_evidence():
     ]
     assert retrieved_total == 2
     assert web_search_triggered is True
+    assert retrieval_metrics == {}
 
 
 def test_turn_sources_deduplicates_repeated_artifacts():
@@ -119,7 +120,7 @@ def test_turn_sources_deduplicates_repeated_artifacts():
         ),
     ]
 
-    sources, retrieved_total, web_search_triggered = _turn_sources(messages)
+    sources, retrieved_total, web_search_triggered, retrieval_metrics = _turn_sources(messages)
 
     assert sources == [
         {
@@ -133,6 +134,7 @@ def test_turn_sources_deduplicates_repeated_artifacts():
     ]
     assert retrieved_total == 2
     assert web_search_triggered is False
+    assert retrieval_metrics == {}
 
 
 @pytest.mark.asyncio
@@ -284,7 +286,7 @@ async def test_stream_records_time_to_first_visible_answer_token(monkeypatch):
                 "data": {"chunk": SimpleNamespace(content="Visible answer")},
             }
 
-    now_ms = MagicMock(side_effect=[10_000.0, 11_500.0, 13_000.0])
+    now_ms = MagicMock(side_effect=[10_000.0] * 5 + [11_500.0, 13_000.0])
     monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
     monkeypatch.setattr("src.api.handlers.stream._now_ms", now_ms)
     tracker = MetricsTracker()
@@ -292,7 +294,11 @@ async def test_stream_records_time_to_first_visible_answer_token(monkeypatch):
     events = [
         event
         async for event in _token_generator(
-            QueryRequest(question="What is the status?"), Agent(), tracker, ConnectedRequest()
+            QueryRequest(question="What is the status?"),
+            Agent(),
+            tracker,
+            ConnectedRequest(),
+            10_000.0,
         )
     ]
 
@@ -376,15 +382,24 @@ async def test_stream_logs_safe_completion_metadata(monkeypatch):
                                 content="retrieved evidence",
                                 tool_call_id="retrieve-1",
                                 name="retrieve_documents",
-                                artifact=[
-                                    {
-                                        "content": source_text,
-                                        "document_id": "rollout-plan",
-                                        "chunk_id": "rollout-plan:1",
-                                        "filename": "confidential.pdf",
-                                        "source": "document",
-                                    }
-                                ],
+                                artifact={
+                                    "documents": [
+                                        {
+                                            "content": source_text,
+                                            "document_id": "rollout-plan",
+                                            "chunk_id": "rollout-plan:1",
+                                            "filename": "confidential.pdf",
+                                            "source": "document",
+                                        }
+                                    ],
+                                    "retrieval": {
+                                        "query_count": 1,
+                                        "query_shape": "single",
+                                        "candidates": 40,
+                                        "evidence": 1,
+                                        "reranker_calls": 1,
+                                    },
+                                },
                             ),
                             AIMessage(content=f"{answer} [document:rollout-plan:1]"),
                         ],
@@ -409,15 +424,16 @@ async def test_stream_logs_safe_completion_metadata(monkeypatch):
     ]
 
     completion = next(call for call in log_info.call_args_list if call.args == ("query_completed",))
-    assert completion.kwargs == {
-        "outcome": "document_answer",
-        "stop_reason": "document_evidence_sufficient",
-        "latency_ms": completion.kwargs["latency_ms"],
-        "time_to_first_token_ms": completion.kwargs["time_to_first_token_ms"],
-        "sources_retrieved": 1,
-        "sources_cited": 1,
-        "web_search_triggered": False,
-    }
+    assert completion.kwargs["path"] == "document"
+    assert completion.kwargs["outcome"] == "document_answer"
+    assert completion.kwargs["stop_reason"] == "document_evidence_sufficient"
+    assert completion.kwargs["sources_retrieved"] == 1
+    assert completion.kwargs["sources_cited"] == 1
+    assert completion.kwargs["web_search_triggered"] is False
+    assert completion.kwargs["query_shape"] == "single"
+    assert completion.kwargs["candidates"] == 40
+    assert completion.kwargs["evidence"] == 1
+    assert completion.kwargs["reranker_calls"] == 1
     assert completion.kwargs["latency_ms"] >= 0
     assert completion.kwargs["time_to_first_token_ms"] >= 0
     assert all(
@@ -555,6 +571,8 @@ async def test_stream_stops_at_whole_query_deadline_before_graph(monkeypatch):
             QUERY_TIMEOUT_SECONDS=0.01,
             LLM_MODEL="anthropic/claude-sonnet-4.6",
             ANSWER_CACHE_ENABLED=False,
+            PLANNER_MODEL="openai/gpt-5.6-luna",
+            ASSESSOR_MODEL="openai/gpt-5.6-luna",
         ),
     )
 
@@ -603,15 +621,24 @@ class _DocumentAnswerAgent:
                             content="retrieved evidence",
                             tool_call_id="retrieve-1",
                             name="retrieve_documents",
-                            artifact=[
-                                {
-                                    "content": "The rollout plan is complete.",
-                                    "document_id": "rollout-plan",
-                                    "chunk_id": "rollout-plan:1",
-                                    "filename": "plan.pdf",
-                                    "source": "document",
-                                }
-                            ],
+                            artifact={
+                                "documents": [
+                                    {
+                                        "content": "The rollout plan is complete.",
+                                        "document_id": "rollout-plan",
+                                        "chunk_id": "rollout-plan:1",
+                                        "filename": "plan.pdf",
+                                        "source": "document",
+                                    }
+                                ],
+                                "retrieval": {
+                                    "query_count": 1,
+                                    "query_shape": "single",
+                                    "candidates": 1,
+                                    "evidence": 1,
+                                    "reranker_calls": 1,
+                                },
+                            },
                         ),
                         AIMessage(content=f"{self._answer} [document:rollout-plan:1]"),
                     ],
@@ -734,6 +761,8 @@ async def test_stream_stops_at_whole_query_deadline_during_graph(monkeypatch):
             QUERY_TIMEOUT_SECONDS=0.01,
             LLM_MODEL="anthropic/claude-sonnet-4.6",
             ANSWER_CACHE_ENABLED=False,
+            PLANNER_MODEL="openai/gpt-5.6-luna",
+            ASSESSOR_MODEL="openai/gpt-5.6-luna",
         ),
     )
 
@@ -752,4 +781,5 @@ async def test_stream_stops_at_whole_query_deadline_during_graph(monkeypatch):
         "error": "The request timed out. Please try again.",
         "done": True,
     }
-    assert tracker.get_stats()["total_queries"] == 0
+    assert tracker.get_stats()["total_queries"] == 1
+    assert tracker._events[-1].path == "timeout"

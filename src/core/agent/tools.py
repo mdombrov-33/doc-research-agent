@@ -2,17 +2,20 @@ import json
 import random
 import time
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import Annotated, Any
 
 from ddgs import DDGS
 from ddgs.exceptions import DDGSException, RatelimitException, TimeoutException
-from langchain_core.runnables import RunnableConfig
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from opentelemetry import trace
+from pydantic import Field
 
 from src.config import get_settings
+from src.core.agent.state import AgentState
 from src.core.citations import citation_from_artifact
-from src.core.retrieval.search import hybrid_search
+from src.core.retrieval.search import retrieve_evidence
 from src.utils.logger import logger
 
 _tracer = trace.get_tracer(__name__)
@@ -71,21 +74,69 @@ def format_docs(docs: list[dict]) -> str:
     )
 
 
+def artifact_documents(artifact: Any) -> list[dict]:
+    """Return citable documents from either retrieval or web tool artifacts."""
+    if isinstance(artifact, list):
+        return [item for item in artifact if isinstance(item, dict)]
+    if isinstance(artifact, Mapping):
+        documents = artifact.get("documents")
+        if isinstance(documents, list):
+            return [item for item in documents if isinstance(item, dict)]
+    return []
+
+
+def artifact_retrieval_metrics(artifact: Any) -> dict[str, int | str]:
+    if not isinstance(artifact, Mapping):
+        return {}
+    metrics = artifact.get("retrieval")
+    if not isinstance(metrics, Mapping):
+        return {}
+    return {
+        key: value
+        for key, value in metrics.items()
+        if key in {"query_count", "query_shape", "candidates", "evidence", "reranker_calls"}
+        and isinstance(value, (int, str))
+    }
+
+
+def _current_question(state: AgentState) -> str:
+    for message in reversed(state["messages"]):
+        if isinstance(message, HumanMessage) and isinstance(message.content, str):
+            return message.content
+    raise ValueError("retrieval requires a current user question")
+
+
 # response_format="content_and_artifact": the string goes into the ToolMessage the model
 # reads; the structured docs ride along as ToolMessage.artifact for source metadata.
 @tool(response_format="content_and_artifact")
-def retrieve_documents(query: str, config: RunnableConfig) -> tuple[str, list[dict]]:
-    """Search the user's uploaded documents with hybrid vector + keyword search.
+def retrieve_documents(
+    search_queries: Annotated[
+        list[str],
+        Field(
+            min_length=1,
+            max_length=2,
+            description="One focused query, or two only for a genuinely multipart question.",
+        ),
+    ],
+    state: Annotated[AgentState, InjectedState],
+) -> tuple[str, dict[str, Any]]:
+    """Run one bounded search plan over the user's uploaded documents.
 
-    Use this first for almost any question about the user's documents. `query` should be a
-    focused search query (resolve vague follow-ups into standalone terms before calling)."""
-    top_k = (config.get("configurable") or {}).get("top_k") or 10
+    Resolve vague follow-ups into standalone terms. Use one query for a simple question and no
+    more than two focused queries when separate parts genuinely need different searches.
+    """
+    current_question = _current_question(state)
     with _tracer.start_as_current_span("tool.retrieve_documents") as span:
-        span.set_attribute("tool.top_k", top_k)
-        docs = hybrid_search(query, top_k)
-        span.set_attribute("tool.docs_returned", len(docs))
-    logger.info("retrieve_tool", count=len(docs))
-    return format_docs(docs), docs
+        span.set_attribute("tool.query_count", len(search_queries))
+        result = retrieve_evidence(search_queries, current_question)
+        span.set_attribute("tool.candidates", result.metrics.candidates)
+        span.set_attribute("tool.docs_returned", len(result.documents))
+    logger.info("retrieve_tool", **result.metrics.as_dict())
+    artifact = {
+        "documents": result.documents,
+        "retrieval": result.metrics.as_dict(),
+    }
+    return format_docs(result.documents), artifact
 
 
 @tool(response_format="content_and_artifact")

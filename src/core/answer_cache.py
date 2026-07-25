@@ -60,11 +60,10 @@ def _question_hash(question: str) -> str:
     return sha256(_normalize(question).encode("utf-8")).hexdigest()
 
 
-def _key_filters(model: str, top_k: int, version: int) -> list[Condition]:
-    """Filters shared by both lookup layers: the request knobs, version, tenancy, and TTL."""
+def _key_filters(model: str, version: int) -> list[Condition]:
+    """Filters shared by both lookup layers: answer model, version, tenancy, and TTL."""
     return [
         FieldCondition(key="model", match=MatchValue(value=model)),
-        FieldCondition(key="top_k", match=MatchValue(value=top_k)),
         FieldCondition(key="corpus_version", match=MatchValue(value=version)),
         FieldCondition(key="namespace", match=MatchValue(value=_NAMESPACE)),
         FieldCondition(key="created_at", range=Range(gte=time.time() - _TTL_SECONDS)),
@@ -79,6 +78,11 @@ def _entry(payload: dict | None) -> dict:
 def ensure_answer_cache_collection() -> None:
     client = _client()
     collection = _collection()
+    if client.collection_exists(collection):
+        existing_schema = client.get_collection(collection).payload_schema or {}
+        if "top_k" in existing_schema:
+            logger.info("answer_cache_collection_reset", collection=collection)
+            client.delete_collection(collection)
     if not client.collection_exists(collection):
         logger.info("answer_cache_collection_creating", collection=collection)
         client.create_collection(
@@ -92,7 +96,6 @@ def ensure_answer_cache_collection() -> None:
             ("question_hash", PayloadSchemaType.KEYWORD),
             ("model", PayloadSchemaType.KEYWORD),
             ("namespace", PayloadSchemaType.KEYWORD),
-            ("top_k", PayloadSchemaType.INTEGER),
             ("corpus_version", PayloadSchemaType.INTEGER),
             ("created_at", PayloadSchemaType.FLOAT),
         ):
@@ -148,14 +151,14 @@ def bump_corpus_version() -> int:
     return new_version
 
 
-def lookup(question: str, model: str, top_k: int) -> dict | None:
+def lookup(question: str, model: str) -> dict | None:
     """Return the cached ``{answer, sources}`` for this question, or None on a miss."""
     if not get_settings().ANSWER_CACHE_ENABLED:
         return None
     client = _client()
     collection = _collection()
     version = current_corpus_version()
-    shared = _key_filters(model, top_k, version)
+    shared = _key_filters(model, version)
 
     hash_match: Condition = FieldCondition(
         key="question_hash", match=MatchValue(value=_question_hash(question))
@@ -182,7 +185,7 @@ def lookup(question: str, model: str, top_k: int) -> dict | None:
     return None
 
 
-def store(question: str, answer: str, sources: list[dict], model: str, top_k: int) -> None:
+def store(question: str, answer: str, sources: list[dict], model: str) -> None:
     if not get_settings().ANSWER_CACHE_ENABLED:
         return
     _client().upsert(
@@ -197,7 +200,6 @@ def store(question: str, answer: str, sources: list[dict], model: str, top_k: in
                     "answer": answer,
                     "sources": json.dumps(sources),
                     "model": model,
-                    "top_k": top_k,
                     "corpus_version": current_corpus_version(),
                     "namespace": _NAMESPACE,
                     "created_at": time.time(),

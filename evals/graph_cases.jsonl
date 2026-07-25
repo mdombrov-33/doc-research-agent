@@ -1,0 +1,4 @@
+{"question": "What is the launch date and crew manifest for Project Zephyr?", "relevant_filenames": [], "expected_outcome": "abstained", "case_type": "out_of_corpus"}
+{"question": "How do TCP reliability and QUIC connection migration compare?", "relevant_filenames": [], "expected_outcome": "abstained", "case_type": "partially_answerable"}
+{"question": "How do photosynthesis and cellular respiration exchange matter while storing and releasing energy?", "relevant_filenames": ["photosynthesis.txt", "cellular_respiration.txt"], "expected_outcome": "document_answer", "case_type": "multipart"}
+{"turns": ["Who discovered Jupiter's four large moons?", "When did he make that discovery?"], "question": "When did he make that discovery?", "relevant_filenames": ["jupiter_moons.txt"], "expected_outcome": "document_answer", "case_type": "history_aware_follow_up"}

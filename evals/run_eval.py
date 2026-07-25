@@ -37,7 +37,7 @@ from src.core.agent.prompts import GENERATION_SYSTEM_PROMPT, GENERATION_USER_PRO
 from src.core.ingestion.pipeline import process_and_store
 from src.core.llm import get_llm
 from src.core.nlp import get_spacy_model
-from src.core.retrieval.search import hybrid_search
+from src.core.retrieval.search import retrieve_evidence
 from src.core.vectorstore import (
     ensure_collection_exists,
     get_embeddings,
@@ -48,7 +48,6 @@ from src.core.vectorstore import (
 CORPUS_DIR = Path(__file__).parent / "corpus"
 GOLDEN_PATH = Path(__file__).parent / "golden.jsonl"
 
-TOP_K = 10  # chunks pulled per query before de-duplicating to documents
 K = 5  # k for the @k metrics
 
 # Gated retrieval + embedding metrics (deterministic, run in CI).
@@ -120,7 +119,7 @@ def _evaluate_query(row: dict, full: bool) -> QueryResult:
     relevant = set(row["relevant_filenames"])
 
     # Score the retrieval layer directly (ungraded), independent of the agent's tool loop.
-    docs = hybrid_search(row["question"], TOP_K)
+    docs = retrieve_evidence([row["question"]], row["question"]).documents
     ranked = _dedup([doc["filename"] for doc in docs])
     result = QueryResult(
         question=row["question"],
