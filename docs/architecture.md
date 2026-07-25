@@ -46,6 +46,9 @@ POST /api/stream  (QueryRequest: question, session_id?, model?, top_k?)
 Guardrails — INPUT check        llm-guard Toxicity scanner, local
       │  (flagged → refusal, the graph never runs)
       ▼
+Conversational check            greeting / "what can you do?" → fixed reply, the graph never runs
+      │  (content-bearing question)
+      ▼
 Answer cache — first-turn lookup   hit → replay cached answer + sources, the graph never runs
       │  (miss, or a follow-up turn)
       ▼
@@ -67,9 +70,13 @@ SSE stream closes  ({"done": true, "sources": [...]})
 ```
 
 Input guardrails are a **hard gate** (they run before the graph). There is **no output
-guardrail** — once the agent starts answering, tokens stream straight to the client (§11). The
-answer cache sits between the guardrail and the graph and only ever *shortcuts* it — a miss (or
-any follow-up turn) runs the full workflow unchanged (§4a).
+guardrail** — once the agent starts answering, tokens stream straight to the client (§11). After
+the guardrail, a **conversational check** short-circuits bare greetings and "what can you do?"
+meta-questions with a fixed capabilities reply (outcome `conversational`), so they never run the
+graph and land as a hard abstention. It matches conservatively — a fixed set of normalized
+greetings/thanks and help phrases — so anything carrying real content words falls through
+unchanged. The answer cache then sits between that check and the graph and only ever *shortcuts*
+it — a miss (or any follow-up turn) runs the full workflow unchanged (§4a).
 
 ---
 
@@ -349,7 +356,8 @@ class AgentState(TypedDict, total=False):
 
 - **`outcome`** — the final route result: `document_answer`, `web_answer`, or `abstained`.
   It is written only by the terminal `answer` and `abstain` nodes, then reported in the final
-  SSE event and aggregated by monitoring.
+  SSE event and aggregated by monitoring. A fourth value, `conversational`, is set by the
+  pre-graph conversational check (§2), never by a graph node.
 
 - **`stop_reason`** — the precise terminal cause: `document_evidence_sufficient`,
   `web_evidence_sufficient`, `insufficient_evidence_after_web`, or
@@ -655,7 +663,8 @@ come from SQL over `query_events`.
 | `avg_time_to_first_token_ms` | mean graph-start-to-first-visible-token time; only completed streams that emitted an answer token contribute |
 | `document_answer_rate` | fraction answered from sufficient document evidence |
 | `web_answer_rate` | fraction answered after the one web-fallback route ran |
-| `abstention_rate` | fraction where no evidence passed assessment |
+| `abstention_rate` | fraction where no evidence passed assessment (excludes conversational turns) |
+| `conversational_rate` | fraction short-circuited as a greeting/meta-question before the graph |
 | `avg_input_tokens` | mean prompt tokens per query, summed across the turn's LLM calls |
 | `avg_output_tokens` | mean completion tokens per query |
 | `avg_cost_per_query` | mean OpenRouter-reported cost, or `null` when cost is unavailable (see below) |

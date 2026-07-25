@@ -28,6 +28,8 @@ POST /api/stream
       │
    Guardrails (input: llm-guard Toxicity + PromptInjection, local)
       │
+   Conversational check (greeting / "what can you do?" → fixed reply; graph never runs)
+      │
    Answer cache (first-turn repeat → replayed instantly; miss → graph runs)
       │
    ┌─── LangGraph evidence workflow ────────────────────┐

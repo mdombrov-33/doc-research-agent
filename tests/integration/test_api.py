@@ -228,7 +228,7 @@ def test_stream_hides_internal_errors(client, monkeypatch):
     app.dependency_overrides[get_agent] = FailingAgent
     app.dependency_overrides[get_metrics_tracker] = lambda: MagicMock()
 
-    resp = client.post("/api/stream", json={"question": "hello"})
+    resp = client.post("/api/stream", json={"question": "What is the rollout status?"})
     payload = json.loads(resp.text.removeprefix("data: "))
 
     assert resp.status_code == 200

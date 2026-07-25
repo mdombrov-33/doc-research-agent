@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS monitoring_stats (
     time_to_first_token_samples INTEGER DEFAULT 0,
     document_answers INTEGER DEFAULT 0,
     web_answers INTEGER DEFAULT 0,
-    abstentions INTEGER DEFAULT 0
+    abstentions INTEGER DEFAULT 0,
+    conversational_answers INTEGER DEFAULT 0
 )
 """
 
@@ -62,7 +63,8 @@ CREATE TABLE IF NOT EXISTS monitoring_stats (
     time_to_first_token_samples BIGINT DEFAULT 0,
     document_answers BIGINT DEFAULT 0,
     web_answers BIGINT DEFAULT 0,
-    abstentions BIGINT DEFAULT 0
+    abstentions BIGINT DEFAULT 0,
+    conversational_answers BIGINT DEFAULT 0
 )
 """
 
@@ -71,8 +73,8 @@ INSERT INTO monitoring_stats (
     id, total_queries, web_search_triggered,
     total_sources_retrieved, total_latency_ms, total_time_to_first_token_ms,
     time_to_first_token_samples,
-    document_answers, web_answers, abstentions
-) VALUES (1, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+    document_answers, web_answers, abstentions, conversational_answers
+) VALUES (1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     total_queries = monitoring_stats.total_queries + excluded.total_queries,
     web_search_triggered = monitoring_stats.web_search_triggered + excluded.web_search_triggered,
@@ -85,7 +87,9 @@ ON CONFLICT(id) DO UPDATE SET
         + excluded.time_to_first_token_samples,
     document_answers = monitoring_stats.document_answers + excluded.document_answers,
     web_answers = monitoring_stats.web_answers + excluded.web_answers,
-    abstentions = monitoring_stats.abstentions + excluded.abstentions
+    abstentions = monitoring_stats.abstentions + excluded.abstentions,
+    conversational_answers = monitoring_stats.conversational_answers
+        + excluded.conversational_answers
 """
 
 _RECORD_POSTGRES = _RECORD_SQLITE.replace("?", "%s")
@@ -146,7 +150,7 @@ FROM query_events WHERE model IS NOT NULL GROUP BY model ORDER BY model
 _SELECT = """
 SELECT total_queries, web_search_triggered, total_sources_retrieved,
        total_latency_ms, total_time_to_first_token_ms, time_to_first_token_samples,
-       document_answers, web_answers, abstentions
+       document_answers, web_answers, abstentions, conversational_answers
 FROM monitoring_stats WHERE id = 1
 """
 
@@ -179,6 +183,7 @@ class SqliteMetricsDB:
                 ("document_answers", "INTEGER"),
                 ("web_answers", "INTEGER"),
                 ("abstentions", "INTEGER"),
+                ("conversational_answers", "INTEGER"),
             ):
                 if column not in columns:
                     conn.execute(
@@ -213,6 +218,7 @@ class SqliteMetricsDB:
                     outcome == "document_answer",
                     outcome == "web_answer",
                     outcome == "abstained",
+                    outcome == "conversational",
                 ),
             )
 
@@ -268,6 +274,7 @@ class PostgresMetricsDB:
                 ("document_answers", "BIGINT"),
                 ("web_answers", "BIGINT"),
                 ("abstentions", "BIGINT"),
+                ("conversational_answers", "BIGINT"),
             ):
                 cursor.execute(
                     "ALTER TABLE monitoring_stats "
@@ -300,6 +307,7 @@ class PostgresMetricsDB:
                     outcome == "document_answer",
                     outcome == "web_answer",
                     outcome == "abstained",
+                    outcome == "conversational",
                 ),
             )
 
@@ -365,7 +373,7 @@ def _event_stats_from_rows(
 
 
 def _row_to_totals(
-    row: tuple[int, int, int, float, float, int, int, int, int] | None,
+    row: tuple[int, int, int, float, float, int, int, int, int, int] | None,
 ) -> dict | None:
     if not row:
         return None
@@ -380,6 +388,7 @@ def _row_to_totals(
         document_answers,
         web_answers,
         abstentions,
+        conversational_answers,
     ) = row
     return {
         "total_queries": total_queries,
@@ -391,4 +400,5 @@ def _row_to_totals(
         "document_answers": document_answers,
         "web_answers": web_answers,
         "abstentions": abstentions,
+        "conversational_answers": conversational_answers,
     }

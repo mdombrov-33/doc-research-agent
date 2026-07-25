@@ -188,7 +188,9 @@ handler reads everything the monitoring tracker needs:
 - `sources_retrieved_total` — total raw artifacts returned by retrieval and web search; it is
   intentionally distinct from `sources_count`
 - `outcome` — `document_answer` when document evidence passed directly, `web_answer` when the
-  one web fallback ran before an answer, or `abstained` when no evidence passed
+  one web fallback ran before an answer, `abstained` when no evidence passed, or
+  `conversational` when a greeting/meta-question was answered with the fixed reply before the
+  graph ran
 - `stop_reason` — the terminal cause: document or web evidence passed, evidence stayed
   insufficient after web fallback, or the query model never requested retrieval
 - `latency_ms` — full request duration

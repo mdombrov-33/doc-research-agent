@@ -43,6 +43,7 @@ class MetricsTracker:
         self.document_answers = 0
         self.web_answers = 0
         self.abstentions = 0
+        self.conversational_answers = 0
         self._events: list[QueryMetrics] = []
         self._lock = Lock()
         self._store = store
@@ -59,6 +60,7 @@ class MetricsTracker:
                 self.document_answers = saved["document_answers"]
                 self.web_answers = saved["web_answers"]
                 self.abstentions = saved["abstentions"]
+                self.conversational_answers = saved["conversational_answers"]
 
     def record(self, evaluation: QueryMetrics) -> None:
         with self._lock:
@@ -96,6 +98,8 @@ class MetricsTracker:
                 self.document_answers += 1
             elif evaluation.outcome == "web_answer":
                 self.web_answers += 1
+            elif evaluation.outcome == "conversational":
+                self.conversational_answers += 1
             else:
                 self.abstentions += 1
             self._events.append(evaluation)
@@ -119,6 +123,7 @@ class MetricsTracker:
                     "document_answers": self.document_answers,
                     "web_answers": self.web_answers,
                     "abstentions": self.abstentions,
+                    "conversational_answers": self.conversational_answers,
                 }
             )
             stats.update(_event_stats_from_metrics(self._events))
@@ -155,6 +160,7 @@ def _stats_from_totals(totals: dict[str, int | float]) -> dict[str, Any]:
         "document_answer_rate": totals["document_answers"] / total_queries,
         "web_answer_rate": totals["web_answers"] / total_queries,
         "abstention_rate": totals["abstentions"] / total_queries,
+        "conversational_rate": totals["conversational_answers"] / total_queries,
     }
 
 
@@ -168,6 +174,7 @@ def _empty_stats() -> dict[str, Any]:
         "document_answer_rate": 0.0,
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
+        "conversational_rate": 0.0,
     }
 
 

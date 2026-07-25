@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
 from src.config import get_settings
-from src.core import answer_cache, guardrails
+from src.core import answer_cache, conversational, guardrails
 from src.core.agent.outcomes import (
     FinalOutcome,
     FinalStopReason,
@@ -148,6 +148,31 @@ async def _token_generator(
     )
     if refusal:
         yield f"data: {json.dumps({'token': refusal, 'done': True})}\n\n"
+        return
+
+    # A greeting or "what can you do?" gets a fixed reply without touching the graph, so it
+    # never lands as a hard abstention. Conservative matching means content questions fall
+    # through. No checkpoint write — losing "hi" from the history is harmless.
+    conversational_reply = conversational.match(request.question)
+    if conversational_reply is not None:
+        conv_start = _now_ms()
+        yield f"data: {json.dumps({'token': conversational_reply})}\n\n"
+        latency_ms = _now_ms() - conv_start
+        tracker.record(
+            QueryMetrics(
+                sources_retrieved=0,
+                web_search_triggered=False,
+                latency_ms=latency_ms,
+                time_to_first_token_ms=latency_ms,
+                outcome="conversational",
+                model=request.model or get_settings().LLM_MODEL,
+                input_tokens=0,
+                output_tokens=0,
+                reported_cost=0.0,
+            )
+        )
+        logger.info("query_completed", outcome="conversational")
+        yield f"data: {json.dumps({'done': True, 'sources_count': 0, 'sources': [], 'session_id': request.session_id, 'outcome': 'conversational', 'stop_reason': 'retrieval_not_requested'})}\n\n"  # noqa: E501
         return
 
     inputs = {"messages": [HumanMessage(content=request.question)]}

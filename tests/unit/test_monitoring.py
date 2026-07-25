@@ -78,6 +78,7 @@ def test_legacy_database_migrates_source_total(tmp_path):
         "document_answer_rate": 0.0,
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
+        "conversational_rate": 0.0,
         "avg_input_tokens": 0.0,
         "avg_output_tokens": 0.0,
         "avg_cost_per_query": None,
@@ -109,6 +110,7 @@ def test_sqlite_metrics_persist_recorded_totals(tmp_path):
         "document_answer_rate": 1.0,
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
+        "conversational_rate": 0.0,
         "avg_input_tokens": 0.0,
         "avg_output_tokens": 0.0,
         "avg_cost_per_query": None,
@@ -143,6 +145,27 @@ def test_outcome_rates():
     assert tracker.get_stats()["document_answer_rate"] == 1 / 3
     assert tracker.get_stats()["web_answer_rate"] == 1 / 3
     assert tracker.get_stats()["abstention_rate"] == 1 / 3
+
+
+def test_conversational_outcome_has_its_own_rate_and_is_not_an_abstention():
+    tracker = MetricsTracker()
+    tracker.record(_make_eval(outcome="document_answer"))
+    tracker.record(_make_eval(outcome="conversational"))
+
+    stats = tracker.get_stats()
+    assert stats["conversational_rate"] == 0.5
+    assert stats["abstention_rate"] == 0.0
+
+
+def test_sqlite_conversational_rate_persists_across_instances(tmp_path):
+    db_path = tmp_path / "metrics.db"
+    tracker = MetricsTracker(SqliteMetricsDB(str(db_path)))
+    tracker.record(_make_eval(outcome="conversational"))
+    tracker.record(_make_eval(outcome="document_answer"))
+
+    stats = MetricsTracker(SqliteMetricsDB(str(db_path))).get_stats()
+    assert stats["conversational_rate"] == 0.5
+    assert stats["abstention_rate"] == 0.0
 
 
 def test_avg_latency():
@@ -183,6 +206,7 @@ def test_postgres_metrics_record_uses_atomic_increment(monkeypatch):
         100.0,
         True,
         True,
+        False,
         False,
         False,
     )

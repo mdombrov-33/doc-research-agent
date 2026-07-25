@@ -1,6 +1,8 @@
 from typing import Literal, TypeAlias
 
-FinalOutcome: TypeAlias = Literal["document_answer", "web_answer", "abstained"]
+FinalOutcome: TypeAlias = Literal[
+    "document_answer", "web_answer", "abstained", "conversational"
+]
 FinalStopReason: TypeAlias = Literal[
     "document_evidence_sufficient",
     "web_evidence_sufficient",
@@ -16,6 +18,8 @@ def normalize_outcome(value: object) -> FinalOutcome:
         return "document_answer"
     if value == "web_answer":
         return "web_answer"
+    if value == "conversational":
+        return "conversational"
     if value == "abstained":
         return "abstained"
     return "abstained"

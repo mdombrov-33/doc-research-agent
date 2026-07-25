@@ -245,6 +245,33 @@ async def test_stream_reports_graph_outcome_and_records_it(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_short_circuits_greetings_without_running_the_graph(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    class Agent:
+        async def astream_events(self, *_args, **_kwargs):
+            raise AssertionError("graph must not run for a conversational turn")
+            yield  # pragma: no cover — makes this an async generator
+
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    tracker = MetricsTracker()
+    events = [
+        json.loads(event.removeprefix("data: ").strip())
+        async for event in _token_generator(
+            QueryRequest(question="hi"), Agent(), tracker, ConnectedRequest()
+        )
+    ]
+
+    assert events[0]["token"].startswith("I'm a document research assistant.")
+    assert events[-1]["outcome"] == "conversational"
+    assert events[-1]["stop_reason"] == "retrieval_not_requested"
+    assert events[-1]["sources"] == []
+    assert tracker.get_stats()["conversational_rate"] == 1.0
+    assert tracker.get_stats()["abstention_rate"] == 0.0
+
+
+@pytest.mark.asyncio
 async def test_stream_records_time_to_first_visible_answer_token(monkeypatch):
     async def no_refusal(_: str) -> None:
         return None
