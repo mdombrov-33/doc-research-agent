@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     LLM_MODEL: str = "anthropic/claude-sonnet-4.6"
-    CLASSIFIER_MODEL: str = "openai/gpt-5.4-mini"
+    CLASSIFIER_MODEL: str = "openai/gpt-5.6-luna"
     LLM_MAX_RETRIES: int = 3
     LLM_TIMEOUT_SECONDS: float = 60
     QUERY_TIMEOUT_SECONDS: float = 1000
