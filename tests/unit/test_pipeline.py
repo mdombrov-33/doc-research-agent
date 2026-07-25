@@ -86,3 +86,4 @@ async def test_process_and_store_returns_metadata_and_stores(
         f"{result['document_id']}:{stored_documents[0].metadata['chunk_index']}"
     )
     assert stored_documents[0].metadata["file_sha256"] == "sha-256-digest"
+    assert stored_documents[0].page_content.startswith("Document: doc.txt\n\n")

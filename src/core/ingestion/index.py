@@ -11,7 +11,10 @@ def index_chunks(
 ) -> None:
     documents = [
         Document(
-            page_content=chunk_data["text"],
+            # A filename header situates the chunk so short passages stay findable once
+            # separated from their document; it flows into the embedding, BM25, and the
+            # evidence the answer model sees. Prepended here, after the chunk-length filter.
+            page_content=f"Document: {filename}\n\n{chunk_data['text']}",
             metadata={
                 "document_id": document_id,
                 "filename": filename,

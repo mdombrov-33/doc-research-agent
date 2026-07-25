@@ -32,6 +32,24 @@ strongest retrieval-quality lever in the audit).
 - Unit test: indexed `page_content` carries the header; chunk filter unaffected.
 - `make test`, `make lint`.
 
+## Eval delta (recorded 2026-07-25)
+
+`make eval-retrieval` before/after re-indexing the golden corpus with headers, identical:
+
+| metric | before | after |
+| --- | --- | --- |
+| recall@5 | 1.000 | 1.000 |
+| precision@5 | 0.232 | 0.232 |
+| mrr | 1.000 | 1.000 |
+| ndcg@5 | 0.997 | 0.997 |
+| map | 0.995 | 0.995 |
+| embedding separation | 1.000 | 1.000 |
+
+The golden set already saturates retrieval, so there is no room to move — the gate is "hold
+or improve", and every metric holds. No regression; the change ships. The real benefit is on
+document sets where short chunks lose their document context, which this golden set does not
+exercise.
+
 ## Definition of done
 
 Code + tests green; eval delta recorded in this file; `docs/architecture.md` ingestion

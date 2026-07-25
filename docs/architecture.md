@@ -137,12 +137,21 @@ enrich each chunk       enrich.py  (enrich_chunks → spaCy NER + keywords)
    │   keywords     = NOUN/PROPN, non-stopword, len>2, deduped (first 15)
    ▼
 store in Qdrant         index.py  (index_chunks → vector_store.add_documents, offloaded via asyncio.to_thread)
+       page_content = "Document: {filename}\n\n{chunk}"  (filename header prepended)
        computes BOTH vectors per chunk:
          • dense  = OpenAI text-embedding-3-small (1536-d)
          • sparse = BM25 (FastEmbed "Qdrant/bm25")
        payload = {document_id, filename, file_sha256, chunk_id, chunk_index, chunk_length,
                   entities, entity_types, keywords, file_extension}
 ```
+
+Why the filename header? A bare chunk like "It costs $200/month" is unfindable once separated
+from its document. Prepending `Document: {filename}` situates it, and because the header is part
+of `page_content` it flows into the dense embedding, the BM25 index, and the evidence the answer
+model sees (the last is intentional — it helps the model attribute evidence). The header is added
+at indexing, *after* the ≥100-char chunk filter, so it never inflates chunk-length decisions.
+Only filename is available (the extractor produces flat text with no section headings), and
+already-indexed documents pick up the header only on re-upload.
 
 Why enrich with entities? So retrieval can add entity-matched chunks to its candidate pool
 (see §5). The same spaCy NER runs at ingestion and at query time, so a query's entities can

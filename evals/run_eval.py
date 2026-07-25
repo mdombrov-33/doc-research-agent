@@ -15,6 +15,7 @@ Run from the repo root:  uv run python -m evals.run_eval [--full]
 """
 
 import argparse
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -100,7 +101,8 @@ async def _ingest_corpus() -> None:
     nlp = get_spacy_model()
     settings = get_settings()
     for path in sorted(CORPUS_DIR.glob("*.txt")):
-        await process_and_store(str(path), path.name, vector_store, nlp, settings)
+        file_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        await process_and_store(str(path), path.name, file_sha256, vector_store, nlp, settings)
 
 
 def _dedup(filenames: list[str]) -> list[str]:

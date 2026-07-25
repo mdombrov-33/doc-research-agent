@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import os
 from unittest.mock import AsyncMock, MagicMock
 
@@ -25,8 +26,9 @@ def test_eval_ingestion_passes_current_settings(tmp_path, monkeypatch):
 
         asyncio.run(run_eval._ingest_corpus())
 
+        expected_sha = hashlib.sha256(b"document").hexdigest()
         process.assert_awaited_once_with(
-            str(corpus / "example.txt"), "example.txt", vector_store, nlp, settings
+            str(corpus / "example.txt"), "example.txt", expected_sha, vector_store, nlp, settings
         )
     finally:
         if previous_collection is None:
