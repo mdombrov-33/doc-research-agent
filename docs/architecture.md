@@ -46,6 +46,9 @@ POST /api/stream  (QueryRequest: question, session_id?, model?, top_k?)
 Guardrails — INPUT check        llm-guard Toxicity scanner, local
       │  (flagged → refusal, the graph never runs)
       ▼
+Answer cache — first-turn lookup   hit → replay cached answer + sources, the graph never runs
+      │  (miss, or a follow-up turn)
+      ▼
 ┌────────────────── LangGraph evidence workflow ───────────────────────┐
 │                                                                        │
 │ query agent ─► document retrieval ─► assess evidence ─► answer        │
@@ -64,7 +67,9 @@ SSE stream closes  ({"done": true, "sources": [...]})
 ```
 
 Input guardrails are a **hard gate** (they run before the graph). There is **no output
-guardrail** — once the agent starts answering, tokens stream straight to the client (§11).
+guardrail** — once the agent starts answering, tokens stream straight to the client (§11). The
+answer cache sits between the guardrail and the graph and only ever *shortcuts* it — a miss (or
+any follow-up turn) runs the full workflow unchanged (§4a).
 
 ---
 
@@ -76,6 +81,8 @@ per-request work cheap and makes everything trivially mockable in tests.
 
 - `src/main.py` — the `lifespan` context manager runs on boot:
   - `ensure_collection_exists()` — create the Qdrant collection + indexes if missing.
+  - `ensure_answer_cache_collection()` — create the `answer_cache` collection, its payload
+    indexes, and the reserved corpus-version point if missing (§4a).
   - `app.state.vector_store` — the hybrid `QdrantVectorStore`.
   - `app.state.nlp` — the loaded spaCy model (`en_core_web_sm`).
   - `app.state.agent` — the compiled LangGraph app, using the configured checkpointer (§12).
@@ -139,6 +146,41 @@ match the stored ones without excluding ordinary hybrid results.
 `index_chunks` calls `langchain_qdrant`'s sync `add_documents`, which blocks on a Qdrant HTTP
 request. It is offloaded to a thread pool via `asyncio.to_thread` so the event loop stays free
 during the upload.
+
+A successful upload then bumps the answer cache's `corpus_version` (§4a): a new document can
+invalidate any previously cached answer, so bumping the version retires the whole cache in one
+integer comparison. The bump is best-effort — it never fails an already-indexed upload.
+
+---
+
+## 4a. Answer cache (`src/core/answer_cache.py`)
+
+A repeated question shouldn't pay the full graph again. Before the graph runs, the stream handler
+consults a two-layer cache backed by a dedicated Qdrant collection (`answer_cache`), where each
+entry is one point: the question-embedding vector plus a payload holding the answer, its sources
+(JSON), and the keys below.
+
+- **Two layers, one entry.** **L1 exact** is a filtered scroll on a SHA-256 `question_hash` of
+  the normalized question — no embedding call. On an L1 miss, **L2 semantic** embeds the question
+  once and vector-searches the same filter, accepting a hit at cosine ≥ 0.95.
+- **Cache key = `question_hash` + `model` + `top_k` + `corpus_version` + `namespace`.** Model and
+  top_k change the answer and its sources, so they must not cross. `namespace` is hardcoded to
+  `"default"` (the app is single-tenant, forward-compatible).
+- **Correctness by version, not heuristics.** A reserved point (nil-UUID id) holds the current
+  `corpus_version`; every upload bumps it (§4) and deletes now-stale entries. Lookups only match
+  the current version, so a new document can never surface a stale answer. A 24 h `created_at`
+  floor is a growth/staleness backstop.
+- **Only first-turn `document_answer`s are cached.** The handler checks the session checkpoint
+  (`aget_state`) and consults/populates the cache only when there are no prior messages — a
+  follow-up like "expand on that" depends on history the cache can't reproduce. Web answers and
+  abstentions always re-run the graph (tomorrow's web can change them).
+- **Serving a hit.** One SSE `token` event with the full answer, then the normal `done` event
+  with the cached sources; the turn is recorded with `cache_hit=true` and cost 0 (§14). The
+  Human+AI messages are written into the checkpoint (`aupdate_state`) so later follow-ups still
+  see the turn in history.
+- **Never fatal.** A lookup, store, state-probe, or checkpoint-write failure degrades to running
+  the graph (or skipping the cache write) — the cache can only speed the request up, never break
+  it. Set `ANSWER_CACHE_ENABLED=false` to bypass it entirely.
 
 ---
 
@@ -577,9 +619,9 @@ After each query the stream handler calls `MetricsTracker.record(QueryMetrics(..
 
 Two tables back this: the aggregate `monitoring_stats` row (running totals) and per-query
 `query_events` rows (one per query: model, token counts, provider cost, latency, first-token
-latency, outcome — no question, answer, or evidence content). The aggregate rates come from
-`monitoring_stats`; the token/cost averages and per-model breakdown come from SQL over
-`query_events`.
+latency, outcome, `cache_hit` — no question, answer, or evidence content). The aggregate rates
+come from `monitoring_stats`; the token/cost averages, cache-hit rate, and per-model breakdown
+come from SQL over `query_events`.
 
 `GET /api/monitoring/stats` returns:
 
@@ -596,6 +638,7 @@ latency, outcome — no question, answer, or evidence content). The aggregate ra
 | `avg_input_tokens` | mean prompt tokens per query, summed across the turn's LLM calls |
 | `avg_output_tokens` | mean completion tokens per query |
 | `avg_cost_per_query` | mean OpenRouter-reported cost, or `null` when cost is unavailable (see below) |
+| `cache_hit_rate` | fraction of queries served from the answer cache (§4a), cost 0 |
 | `models` | per-model breakdown: query count and summed input/output tokens and cost |
 
 These are aggregate counters and per-query numbers only: the tracker does not persist questions,

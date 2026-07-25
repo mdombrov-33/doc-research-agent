@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 
 from src.api.schemas import QueryRequest
 from src.config import get_settings
-from src.core import guardrails
+from src.core import answer_cache, guardrails
 from src.core.agent.outcomes import (
     FinalOutcome,
     FinalStopReason,
@@ -29,6 +29,46 @@ from src.utils.logger import logger
 
 def _now_ms() -> float:
     return time.monotonic() * 1000
+
+
+async def _is_first_turn(agent: Any, config: RunnableConfig) -> bool:
+    """A turn is cacheable only when the session's checkpoint holds no prior messages.
+
+    A failed state probe degrades to "not first turn" so the request still runs the graph.
+    """
+    try:
+        state = await agent.aget_state(config)
+    except Exception as error:
+        logger.warning("answer_cache_state_probe_failed", failure_type=type(error).__name__)
+        return False
+    return not state.values.get("messages")
+
+
+async def _consult_cache(question: str, model: str, top_k: int) -> dict | None:
+    try:
+        return await asyncio.to_thread(answer_cache.lookup, question, model, top_k)
+    except Exception as error:
+        logger.warning("answer_cache_lookup_failed", failure_type=type(error).__name__)
+        return None
+
+
+async def _populate_cache(
+    question: str, answer: str, sources: list[dict], model: str, top_k: int
+) -> None:
+    try:
+        await asyncio.to_thread(answer_cache.store, question, answer, sources, model, top_k)
+    except Exception as error:
+        logger.warning("answer_cache_store_failed", failure_type=type(error).__name__)
+
+
+async def _write_cache_turn(agent: Any, config: RunnableConfig, question: str, answer: str) -> None:
+    """Record a cache-served turn in the checkpoint so follow-ups still see the history."""
+    try:
+        await agent.aupdate_state(
+            config, {"messages": [HumanMessage(content=question), AIMessage(content=answer)]}
+        )
+    except Exception as error:
+        logger.warning("answer_cache_checkpoint_write_failed", failure_type=type(error).__name__)
 
 
 def _message_usage(message: Any) -> tuple[int, int, float | None]:
@@ -120,6 +160,38 @@ async def _token_generator(
             "top_k": request.top_k,
         }
     }
+
+    settings = get_settings()
+    model = request.model or settings.LLM_MODEL
+    # Consult the cache only on a session's first turn; a follow-up ("expand on that") depends on
+    # history the cache has no way to reproduce. first_turn is reused to gate populate below.
+    first_turn = settings.ANSWER_CACHE_ENABLED and await _is_first_turn(agent, config)
+    if first_turn:
+        cache_start = _now_ms()
+        cached = await _consult_cache(request.question, model, request.top_k)
+        if cached is not None:
+            answer = cached["answer"]
+            cached_sources = cached["sources"]
+            yield f"data: {json.dumps({'token': answer})}\n\n"
+            await _write_cache_turn(agent, config, request.question, answer)
+            latency_ms = _now_ms() - cache_start
+            tracker.record(
+                QueryMetrics(
+                    sources_retrieved=0,
+                    web_search_triggered=False,
+                    latency_ms=latency_ms,
+                    time_to_first_token_ms=latency_ms,
+                    outcome="document_answer",
+                    model=model,
+                    input_tokens=0,
+                    output_tokens=0,
+                    reported_cost=0.0,
+                    cache_hit=True,
+                )
+            )
+            logger.info("query_completed", outcome="document_answer", cache_hit=True)
+            yield f"data: {json.dumps({'done': True, 'sources_count': len(cached_sources), 'sources': cached_sources, 'session_id': request.session_id, 'outcome': 'document_answer', 'stop_reason': 'document_evidence_sufficient'})}\n\n"  # noqa: E501
+            return
 
     accumulated: list[str] = []
     citation_redactor = CitationMarkerRedactor()
@@ -221,6 +293,11 @@ async def _token_generator(
             time_to_first_token_ms = latency_ms
             accumulated.append(unstreamed)
             yield f"data: {json.dumps({'token': unstreamed})}\n\n"
+    # Cache only first-turn document answers; web answers and abstentions can change by tomorrow.
+    if first_turn and outcome == "document_answer" and accumulated:
+        await _populate_cache(
+            request.question, "".join(accumulated), sources_meta, model, request.top_k
+        )
     tracker.record(
         QueryMetrics(
             sources_retrieved=sources_retrieved_total,
@@ -228,7 +305,7 @@ async def _token_generator(
             latency_ms=latency_ms,
             time_to_first_token_ms=time_to_first_token_ms,
             outcome=outcome,
-            model=request.model or get_settings().LLM_MODEL,
+            model=model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             reported_cost=reported_cost,

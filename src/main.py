@@ -16,6 +16,7 @@ from src.config import Settings, get_settings
 from src.core import guardrails
 from src.core.agent.checkpointer import open_checkpointer
 from src.core.agent.graph import build_graph
+from src.core.answer_cache import ensure_answer_cache_collection
 from src.core.monitoring.tracker import MetricsTracker
 from src.core.nlp import get_spacy_model
 from src.core.retrieval import rerank
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
     setup_tracing(settings.OTEL_ENDPOINT)
     HTTPXClientInstrumentor().instrument()
     ensure_collection_exists()
+    if settings.ANSWER_CACHE_ENABLED:
+        ensure_answer_cache_collection()
 
     # Build expensive, process-wide resources once and stash them on app.state;
     # request handlers read them back via the providers in api/dependencies.py.

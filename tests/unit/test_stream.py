@@ -16,6 +16,19 @@ class ConnectedRequest:
         return False
 
 
+@pytest.fixture(autouse=True)
+def _no_cache(monkeypatch):
+    """Treat every turn as a follow-up so the cache path stays out of non-cache tests.
+
+    The dedicated cache tests below re-patch _is_first_turn to opt back in.
+    """
+
+    async def not_first_turn(*_args, **_kwargs) -> bool:
+        return False
+
+    monkeypatch.setattr("src.api.handlers.stream._is_first_turn", not_first_turn)
+
+
 def test_turn_sources_preserves_document_and_web_evidence():
     messages = [
         HumanMessage(content="What does the document say?"),
@@ -511,7 +524,11 @@ async def test_stream_stops_at_whole_query_deadline_before_graph(monkeypatch):
     monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", slow_guardrail)
     monkeypatch.setattr(
         "src.api.handlers.stream.get_settings",
-        lambda: SimpleNamespace(QUERY_TIMEOUT_SECONDS=0.01),
+        lambda: SimpleNamespace(
+            QUERY_TIMEOUT_SECONDS=0.01,
+            LLM_MODEL="anthropic/claude-sonnet-4.6",
+            ANSWER_CACHE_ENABLED=False,
+        ),
     )
 
     events = [
@@ -530,6 +547,138 @@ async def test_stream_stops_at_whole_query_deadline_before_graph(monkeypatch):
         "done": True,
     }
     agent.astream_events.assert_not_called()
+
+
+async def _first_turn(*_args, **_kwargs) -> bool:
+    return True
+
+
+class _DocumentAnswerAgent:
+    """Streams a single document_answer turn with one cited source."""
+
+    def __init__(self, answer: str):
+        self._answer = answer
+
+    async def astream_events(self, *_args, **_kwargs):
+        yield {
+            "event": "on_chat_model_stream",
+            "metadata": {"langgraph_node": "answer"},
+            "data": {"chunk": SimpleNamespace(content=self._answer)},
+        }
+        yield {
+            "event": "on_chain_end",
+            "name": "LangGraph",
+            "data": {
+                "output": {
+                    "messages": [
+                        HumanMessage(content="What is the rollout status?"),
+                        ToolMessage(
+                            content="retrieved evidence",
+                            tool_call_id="retrieve-1",
+                            name="retrieve_documents",
+                            artifact=[
+                                {
+                                    "content": "The rollout plan is complete.",
+                                    "document_id": "rollout-plan",
+                                    "chunk_id": "rollout-plan:1",
+                                    "filename": "plan.pdf",
+                                    "source": "document",
+                                }
+                            ],
+                        ),
+                        AIMessage(content=f"{self._answer} [document:rollout-plan:1]"),
+                    ],
+                    "outcome": "document_answer",
+                    "stop_reason": "document_evidence_sufficient",
+                }
+            },
+        }
+
+
+@pytest.mark.asyncio
+async def test_stream_serves_cached_answer_on_first_turn(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    cached = {"answer": "The rollout is complete.", "sources": [{"source_id": "document:x"}]}
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    monkeypatch.setattr("src.api.handlers.stream._is_first_turn", _first_turn)
+    monkeypatch.setattr(
+        "src.api.handlers.stream.answer_cache.lookup", MagicMock(return_value=cached)
+    )
+
+    agent = MagicMock()
+    agent.aupdate_state = AsyncMock()
+    tracker = MetricsTracker()
+    events = [
+        json.loads(event.removeprefix("data: ").strip())
+        async for event in _token_generator(
+            QueryRequest(question="What is the rollout status?"),
+            agent,
+            tracker,
+            ConnectedRequest(),
+        )
+    ]
+
+    assert [e["token"] for e in events if "token" in e] == ["The rollout is complete."]
+    done = events[-1]
+    assert done["outcome"] == "document_answer"
+    assert done["stop_reason"] == "document_evidence_sufficient"
+    assert done["sources"] == [{"source_id": "document:x"}]
+    agent.astream_events.assert_not_called()
+    agent.aupdate_state.assert_awaited_once()
+    assert tracker.get_stats()["cache_hit_rate"] == 1.0
+    assert tracker.get_stats()["document_answer_rate"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_stream_populates_cache_after_first_turn_document_answer(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    store = MagicMock()
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    monkeypatch.setattr("src.api.handlers.stream._is_first_turn", _first_turn)
+    monkeypatch.setattr("src.api.handlers.stream.answer_cache.lookup", MagicMock(return_value=None))
+    monkeypatch.setattr("src.api.handlers.stream.answer_cache.store", store)
+
+    async for _ in _token_generator(
+        QueryRequest(question="What is the rollout status?"),
+        _DocumentAnswerAgent("The rollout is complete."),
+        MetricsTracker(),
+        ConnectedRequest(),
+    ):
+        pass
+
+    store.assert_called_once()
+    question, answer, sources = store.call_args.args[:3]
+    assert question == "What is the rollout status?"
+    assert answer == "The rollout is complete."
+    assert sources[0]["chunk_id"] == "rollout-plan:1"
+
+
+@pytest.mark.asyncio
+async def test_stream_skips_cache_on_follow_up_turn(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    lookup = MagicMock()
+    store = MagicMock()
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    # _is_first_turn stays patched to False by the autouse fixture.
+    monkeypatch.setattr("src.api.handlers.stream.answer_cache.lookup", lookup)
+    monkeypatch.setattr("src.api.handlers.stream.answer_cache.store", store)
+
+    async for _ in _token_generator(
+        QueryRequest(question="What is the rollout status?"),
+        _DocumentAnswerAgent("The rollout is complete."),
+        MetricsTracker(),
+        ConnectedRequest(),
+    ):
+        pass
+
+    lookup.assert_not_called()
+    store.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -554,7 +703,11 @@ async def test_stream_stops_at_whole_query_deadline_during_graph(monkeypatch):
     monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
     monkeypatch.setattr(
         "src.api.handlers.stream.get_settings",
-        lambda: SimpleNamespace(QUERY_TIMEOUT_SECONDS=0.01),
+        lambda: SimpleNamespace(
+            QUERY_TIMEOUT_SECONDS=0.01,
+            LLM_MODEL="anthropic/claude-sonnet-4.6",
+            ANSWER_CACHE_ENABLED=False,
+        ),
     )
 
     events = [

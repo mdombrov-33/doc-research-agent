@@ -1,3 +1,4 @@
+import asyncio
 import os
 import uuid
 from pathlib import Path
@@ -8,6 +9,7 @@ from langchain_qdrant import QdrantVectorStore
 from spacy.language import Language
 
 from src.config import Settings
+from src.core import answer_cache
 from src.core.exceptions import DocumentLimitError, DocumentProcessingError, EmptyDocumentError
 from src.core.ingestion.pipeline import process_and_store
 from src.utils.logger import logger
@@ -60,6 +62,15 @@ async def handle_upload(
                 f.write(content)
 
         result = await process_and_store(str(file_path), file.filename, vector_store, nlp, settings)
+        # A new document can invalidate any cached answer; bump the corpus version so only
+        # answers formed after this upload are served. Never fail an indexed upload over this.
+        if settings.ANSWER_CACHE_ENABLED:
+            try:
+                await asyncio.to_thread(answer_cache.bump_corpus_version)
+            except Exception as error:
+                logger.warning(
+                    "answer_cache_version_bump_failed", failure_type=type(error).__name__
+                )
         logger.info(
             "upload_complete",
             document_id=result["document_id"],

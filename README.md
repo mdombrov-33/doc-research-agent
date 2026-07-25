@@ -28,6 +28,8 @@ POST /api/stream
       │
    Guardrails (input: llm-guard Toxicity + PromptInjection, local)
       │
+   Answer cache (first-turn repeat → replayed instantly; miss → graph runs)
+      │
    ┌─── LangGraph evidence workflow ────────────────────┐
    │ query ─► retrieve ─► assess ─► answer               │
    │                         └──► web ─► assess ─► answer│
@@ -48,6 +50,10 @@ POST /api/stream
   evidence gets one web fallback; still-insufficient evidence produces an honest abstention.
   Retrieved document chunks and web snippets are explicitly treated as untrusted data, never
   instructions for either model.
+- **Answer cache** — a repeated first-turn question whose earlier answer came from documents is
+  replayed from a Qdrant-backed cache in milliseconds, skipping the graph. Every upload bumps a
+  corpus version that retires the whole cache, so a new document can never surface a stale answer;
+  follow-up turns, web answers, and abstentions always re-run the workflow.
 - **Answer** — only after sufficient evidence is found does the answer model write and stream
   the response. Internal source IDs are removed before the answer reaches the user;
   the final event includes only the validated citations those IDs selected, with document
@@ -142,7 +148,8 @@ abstention contracts with corpus artifacts and scripted models—no services, AP
 calls—and is a separate CI step on every PR. `make eval-graph` manually checks live graph
 outcomes and citations against the same corpus. Use `uv run python -m evals.run_graph_eval
 --limit 3` for a short live smoke run. Live telemetry reports aggregate outcome rates plus
-per-query token counts and a per-model breakdown (no question or answer content is stored).
+per-query token counts, cache-hit rate, and a per-model breakdown (no question or answer content
+is stored).
 
 ## Tech stack
 
