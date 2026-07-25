@@ -18,7 +18,11 @@ from src.core.agent.outcomes import (
     normalize_outcome,
     normalize_stop_reason,
 )
-from src.core.citations import CitationMarkerRedactor, citations_referenced_by_answer
+from src.core.citations import (
+    CitationMarkerRedactor,
+    citations_referenced_by_answer,
+    strip_source_ids,
+)
 from src.core.monitoring.tracker import MetricsTracker, QueryMetrics
 from src.utils.logger import logger
 
@@ -27,14 +31,18 @@ def _now_ms() -> float:
     return time.monotonic() * 1000
 
 
-def _turn_sources(messages: list[Any]) -> tuple[list[dict], int, bool]:
+def _turn_messages(messages: list[Any]) -> list[Any]:
     last_human_idx = max(
         (i for i, message in enumerate(messages) if isinstance(message, HumanMessage)),
         default=-1,
     )
+    return messages[last_human_idx + 1 :]
+
+
+def _turn_sources(messages: list[Any]) -> tuple[list[dict], int, bool]:
     artifacts: list[dict] = []
     web_search_triggered = False
-    turn_messages = messages[last_human_idx + 1 :]
+    turn_messages = _turn_messages(messages)
     for message in turn_messages:
         if not isinstance(message, ToolMessage) or not message.artifact:
             continue
@@ -107,6 +115,7 @@ async def _token_generator(
     stop_reason: FinalStopReason = "unknown"
     start_ms = _now_ms()
     time_to_first_token_ms: float | None = None
+    final_answer = ""
 
     event_stream = agent.astream_events(inputs, config=config, version="v2")
     try:
@@ -142,6 +151,7 @@ async def _token_generator(
                 sources_meta, sources_retrieved_total, web_search_triggered = _turn_sources(
                     output.get("messages", [])
                 )
+                final_answer = _final_answer(_turn_messages(output.get("messages", [])))
                 sources_count = len(sources_meta)
                 outcome = normalize_outcome(output.get("outcome"))
                 stop_reason = normalize_stop_reason(output.get("stop_reason"))
@@ -174,6 +184,15 @@ async def _token_generator(
             time_to_first_token_ms = _now_ms() - start_ms
         accumulated.append(visible_tail)
         yield f"data: {json.dumps({'token': visible_tail})}\n\n"
+
+    # Terminal nodes that answer without calling a model (abstain) emit no stream events, so
+    # nothing above ever reaches the client. Send their text instead of an empty response.
+    if not accumulated:
+        unstreamed = strip_source_ids(final_answer).strip()
+        if unstreamed:
+            time_to_first_token_ms = latency_ms
+            accumulated.append(unstreamed)
+            yield f"data: {json.dumps({'token': unstreamed})}\n\n"
     tracker.record(
         QueryMetrics(
             sources_retrieved=sources_retrieved_total,

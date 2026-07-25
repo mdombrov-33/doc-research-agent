@@ -98,7 +98,7 @@ def answer_node(state: AgentState, config: RunnableConfig | None = None) -> dict
             HumanMessage(content=f"Question:\n{_current_question(state)}\n\nEvidence:\n{evidence}"),
         ]
     )
-    outcome = "web_answer" if _used_web_fallback(state) else "document_answer"
+    outcome = "web_answer" if used_web_fallback(state) else "document_answer"
     stop_reason = (
         "web_evidence_sufficient" if outcome == "web_answer" else "document_evidence_sufficient"
     )
@@ -126,9 +126,7 @@ def web_fallback_node(
 def abstain_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """Return the safe final response when no evidence passed assessment."""
     stop_reason = (
-        "insufficient_evidence_after_web"
-        if _used_web_fallback(state)
-        else "retrieval_not_requested"
+        "insufficient_evidence_after_web" if used_web_fallback(state) else "retrieval_not_requested"
     )
     return {
         "messages": [AIMessage(content=NO_EVIDENCE_RESPONSE)],
@@ -196,7 +194,13 @@ def _turn_tool_content(state: AgentState) -> list[str]:
     ]
 
 
-def _used_web_fallback(state: AgentState) -> bool:
+def used_web_fallback(state: AgentState) -> bool:
+    """Whether this turn already spent its one web fallback.
+
+    Scoped to the current turn on purpose: `thread_id` persists earlier turns, so a
+    conversation-wide check would let one past fallback disable web search for the rest of
+    the session. The graph router shares this so routing and stop reasons cannot disagree.
+    """
     return any(
         isinstance(message, ToolMessage) and message.name == "web_search"
         for message in _turn_messages(state)

@@ -247,7 +247,9 @@ Edges (`graph.py`):
 - `agent` → `tools` only when it requested document retrieval; a non-tool response abstains.
 - `tools` → `assess_evidence`.
 - sufficient evidence → `answer`; insufficient document evidence → `web_fallback` →
-  `assess_evidence`; still-insufficient evidence → `abstain`.
+  `assess_evidence`; still-insufficient evidence → `abstain`. The router shares
+  `used_web_fallback` with the nodes, so the one-fallback budget is scoped to the current turn:
+  a persisted thread's earlier web search must not disable the fallback for later questions.
 
 Each custom node is wrapped by `timed(...)` (`src/utils/node_timer.py`), which logs a
 `node_complete` event with `duration_ms`. (`tools` is the prebuilt `ToolNode`, not wrapped.)

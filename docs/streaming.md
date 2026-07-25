@@ -193,7 +193,9 @@ handler reads everything the monitoring tracker needs:
   insufficient after web fallback, or the query model never requested retrieval
 - `latency_ms` — full request duration
 - `time_to_first_token_ms` — graph-start-to-first-visible-answer-token time, present only when
-  the completed stream emitted visible answer text
+  the completed stream emitted visible answer text. Terminal nodes that build their message
+  without calling a model (`abstain`) produce no `on_chat_model_stream` events, so the handler
+  sends their text once the graph ends; for those the value is the full request duration.
 
 This gets recorded into the `MetricsTracker` right before the final SSE event is sent (see
 `docs/architecture.md` §14). The tracker persists aggregate counters only; the accompanying

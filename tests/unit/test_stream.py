@@ -156,6 +156,47 @@ async def test_stream_hides_internal_source_ids_from_answer_tokens(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_sends_answer_text_from_nodes_that_never_call_a_model(monkeypatch):
+    """Abstain builds its message in Python, so no token would otherwise reach the client."""
+
+    async def no_refusal(_: str) -> None:
+        return None
+
+    class Agent:
+        async def astream_events(self, *_args, **_kwargs):
+            yield {
+                "event": "on_chain_end",
+                "name": "LangGraph",
+                "data": {
+                    "output": {
+                        "messages": [
+                            HumanMessage(content="What is the status?"),
+                            AIMessage(content="I couldn't find enough reliable evidence."),
+                        ],
+                        "outcome": "abstained",
+                        "stop_reason": "insufficient_evidence_after_web",
+                    }
+                },
+            }
+
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    events = [
+        json.loads(event.removeprefix("data: ").strip())
+        async for event in _token_generator(
+            QueryRequest(question="What is the status?"),
+            Agent(),
+            MetricsTracker(),
+            ConnectedRequest(),
+        )
+    ]
+
+    assert [event["token"] for event in events if "token" in event] == [
+        "I couldn't find enough reliable evidence."
+    ]
+    assert events[-1]["outcome"] == "abstained"
+
+
+@pytest.mark.asyncio
 async def test_stream_reports_graph_outcome_and_records_it(monkeypatch):
     async def no_refusal(_: str) -> None:
         return None

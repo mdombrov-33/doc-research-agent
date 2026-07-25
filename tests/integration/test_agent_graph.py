@@ -192,6 +192,48 @@ def test_graph_falls_back_to_web_search(graph, monkeypatch):
     assert state["stop_reason"] == "web_evidence_sufficient"
 
 
+def test_graph_web_fallback_survives_an_earlier_turn_that_already_used_it(graph, monkeypatch):
+    """Each turn gets its own fallback: a past web search must not disable it for the session."""
+    web_answer = AIMessage(content="answer [web:https://example.com]")
+    _patch_llms(
+        monkeypatch,
+        [_retrieve_call("c1"), web_answer, _retrieve_call("c2"), web_answer],
+        [
+            EvidenceAssessment(sufficient=False),
+            EvidenceAssessment(sufficient=True, supporting_source_ids=["web:https://example.com"]),
+            EvidenceAssessment(sufficient=False),
+            EvidenceAssessment(sufficient=True, supporting_source_ids=["web:https://example.com"]),
+        ],
+    )
+    monkeypatch.setattr(
+        tools,
+        "hybrid_search",
+        lambda q, k: [_corpus_artifact("photosynthesis.txt", "photosynthesis:0")],
+    )
+    web_search = MagicMock(
+        return_value=(
+            "[Source ID: web:https://example.com]\n[Web: Web result]\nweb result",
+            [
+                {
+                    "content": "web result",
+                    "title": "Web result",
+                    "url": "https://example.com",
+                    "source": "web",
+                }
+            ],
+        )
+    )
+    monkeypatch.setattr(nodes, "search_web", web_search)
+    thread_id = str(uuid.uuid4())
+
+    _run(graph, "first question", thread_id=thread_id)
+    state = _run(graph, "second question", thread_id=thread_id)
+
+    assert web_search.call_count == 2
+    assert state["outcome"] == "web_answer"
+    assert state["stop_reason"] == "web_evidence_sufficient"
+
+
 def test_graph_abstains_when_no_evidence_passes_assessment(graph, monkeypatch):
     _patch_llms(
         monkeypatch,
