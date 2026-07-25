@@ -34,6 +34,20 @@ Streamlit -> FastAPI -> LangGraph -> Qdrant retrieval
 Ingestion: upload -> extract -> chunk -> enrich -> Qdrant
 ```
 
+## Glossary
+
+- **Answer cache** — stored final answers served for repeated context-free questions instead
+  of re-running the agent. Only document-grounded answers are cacheable.
+- **Corpus version** — a counter identifying the state of the document corpus; it advances
+  when a new document is added. Cached answers belong to the version they were produced under.
+- **Conversational outcome** — a query resolved with a fixed capabilities-style reply
+  (greeting, thanks, "what can you do") without consulting documents or the web. Distinct
+  from an abstention.
+- **Rerank floor** — a calibrated relevance threshold below which retrieved chunks are
+  excluded from evidence.
+- **Namespace** — partition key for cached/derived data. The app is single-tenant today, so
+  there is exactly one namespace ("default"); the field exists so tenants can be added later.
+
 ## Commands
 
 - `make test`

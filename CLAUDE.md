@@ -73,3 +73,12 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 When working with Terraform or OpenTofu, follow the workflow in `.terrashark/SKILL.md`.
 Load references from `.terrashark/references/` as needed.
+
+## Active improvement plans
+
+- `docs/improvements/progress.md` — Tier 1 implementation status. Start here after a session
+  reset; implement items in order, one at a time.
+- `docs/improvements/` — one grilled spec per item (`01-…` to `06-…`);
+  `00-decisions.md` holds cross-cutting decisions that bind all items;
+  `backlog.md` holds ungrilled ideas — grill before implementing.
+- Docs (`docs/architecture.md`, `README.md`) must be updated in the same slice as each item.
