@@ -4,7 +4,12 @@ from typing import Any
 
 from src.config import Settings
 from src.core.agent.outcomes import FinalOutcome
-from src.core.monitoring.db import MetricsStore, PostgresMetricsDB, SqliteMetricsDB
+from src.core.monitoring.db import (
+    MetricsStore,
+    PostgresMetricsDB,
+    SqliteMetricsDB,
+    _event_stats_from_rows,
+)
 
 
 @dataclass
@@ -14,6 +19,10 @@ class QueryMetrics:
     latency_ms: float
     time_to_first_token_ms: float | None
     outcome: FinalOutcome
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    reported_cost: float | None = None
 
 
 class MetricsTracker:
@@ -33,6 +42,7 @@ class MetricsTracker:
         self.document_answers = 0
         self.web_answers = 0
         self.abstentions = 0
+        self._events: list[QueryMetrics] = []
         self._lock = Lock()
         self._store = store
 
@@ -59,6 +69,15 @@ class MetricsTracker:
                     evaluation.time_to_first_token_ms,
                     evaluation.outcome,
                 )
+                self._store.record_event(
+                    evaluation.model,
+                    evaluation.input_tokens,
+                    evaluation.output_tokens,
+                    evaluation.reported_cost,
+                    evaluation.latency_ms,
+                    evaluation.time_to_first_token_ms,
+                    evaluation.outcome,
+                )
                 return
 
             self.total_queries += 1
@@ -77,16 +96,17 @@ class MetricsTracker:
                 self.web_answers += 1
             else:
                 self.abstentions += 1
+            self._events.append(evaluation)
 
     def get_stats(self) -> dict[str, Any]:
         with self._lock:
             if self._store:
                 saved = self._store.load()
-                if saved:
-                    return _stats_from_totals(saved)
-                return _empty_stats()
+                stats = _stats_from_totals(saved) if saved else _empty_stats()
+                stats.update(self._store.load_event_stats())
+                return stats
 
-            return _stats_from_totals(
+            stats = _stats_from_totals(
                 {
                     "total_queries": self.total_queries,
                     "web_search_triggered": self.web_search_triggered,
@@ -99,6 +119,8 @@ class MetricsTracker:
                     "abstentions": self.abstentions,
                 }
             )
+            stats.update(_event_stats_from_metrics(self._events))
+            return stats
 
     def close(self) -> None:
         if self._store:
@@ -134,7 +156,7 @@ def _stats_from_totals(totals: dict[str, int | float]) -> dict[str, Any]:
     }
 
 
-def _empty_stats() -> dict[str, float | int]:
+def _empty_stats() -> dict[str, Any]:
     return {
         "total_queries": 0,
         "web_search_rate": 0.0,
@@ -145,3 +167,35 @@ def _empty_stats() -> dict[str, float | int]:
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
     }
+
+
+def _event_stats_from_metrics(events: list[QueryMetrics]) -> dict[str, Any]:
+    """Aggregate the in-memory event list the same way the DB backends aggregate rows."""
+    averages = (
+        _mean(e.input_tokens for e in events),
+        _mean(e.output_tokens for e in events),
+        _mean(e.reported_cost for e in events),
+    )
+    model_rows: list[tuple] = []
+    for model in sorted({e.model for e in events if e.model is not None}):
+        group = [e for e in events if e.model == model]
+        model_rows.append(
+            (
+                model,
+                len(group),
+                _sum(e.input_tokens for e in group),
+                _sum(e.output_tokens for e in group),
+                _sum(e.reported_cost for e in group),
+            )
+        )
+    return _event_stats_from_rows(averages, model_rows)
+
+
+def _mean(values: Any) -> float | None:
+    present = [v for v in values if v is not None]
+    return sum(present) / len(present) if present else None
+
+
+def _sum(values: Any) -> float | int | None:
+    present = [v for v in values if v is not None]
+    return sum(present) if present else None

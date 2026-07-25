@@ -574,6 +574,13 @@ After each query the stream handler calls `MetricsTracker.record(QueryMetrics(..
 `METRICS_BACKEND=sqlite` is the default and writes to `metrics_db_path` under `DATA_DIR`.
 `METRICS_BACKEND=postgres` with `DATABASE_URL` records atomic database increments and
 `/api/monitoring/stats` reads the shared aggregate across instances.
+
+Two tables back this: the aggregate `monitoring_stats` row (running totals) and per-query
+`query_events` rows (one per query: model, token counts, provider cost, latency, first-token
+latency, outcome — no question, answer, or evidence content). The aggregate rates come from
+`monitoring_stats`; the token/cost averages and per-model breakdown come from SQL over
+`query_events`.
+
 `GET /api/monitoring/stats` returns:
 
 | Stat | Meaning |
@@ -586,10 +593,22 @@ After each query the stream handler calls `MetricsTracker.record(QueryMetrics(..
 | `document_answer_rate` | fraction answered from sufficient document evidence |
 | `web_answer_rate` | fraction answered after the one web-fallback route ran |
 | `abstention_rate` | fraction where no evidence passed assessment |
+| `avg_input_tokens` | mean prompt tokens per query, summed across the turn's LLM calls |
+| `avg_output_tokens` | mean completion tokens per query |
+| `avg_cost_per_query` | mean OpenRouter-reported cost, or `null` when cost is unavailable (see below) |
+| `models` | per-model breakdown: query count and summed input/output tokens and cost |
 
-These are aggregate counters only: the tracker does not persist questions, answer text, or
-evidence excerpts. `web_answer` describes the graph route, so its cited answer may still include
-document evidence retained from the first retrieval.
+These are aggregate counters and per-query numbers only: the tracker does not persist questions,
+answer text, or evidence excerpts. `web_answer` describes the graph route, so its cited answer
+may still include document evidence retained from the first retrieval.
+
+**Tokens and cost.** Token counts come from each LLM call's `usage_metadata`, summed over the
+turn (agent tool-call, classifier, answer). Cost is requested from OpenRouter via usage
+accounting (`extra_body={"usage": {"include": true}}` in `src/core/llm.py`), but LangChain drops
+the provider cost field on streamed calls, and the stream handler consumes the graph through
+`astream_events`, which streams every model call. So `reported_cost` is currently always `null`
+and `avg_cost_per_query` is `null` — tokens are captured, cost is not. A static price table was
+deliberately rejected; cost can be derived from token counts externally if needed.
 
 OpenTelemetry spans and structured request logs complement those aggregates for debugging. The
 request middleware binds `x-request-id` for the lifetime of each HTTP request; async graph,

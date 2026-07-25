@@ -37,12 +37,22 @@
 - `src/api/handlers/stream.py` — collect usage/cost from `on_chat_model_end` events.
 - Stats route/schema for the new fields.
 
+## Empirical finding (2026-07-25)
+
+Probed OpenRouter through this exact stack. `usage_metadata` (token counts) survives both
+`ainvoke` and streaming. The provider **cost** field lands in `response_metadata["token_usage"]["cost"]`
+on a plain `ainvoke`, but LangChain drops it whenever the call is streamed — and the stream
+handler runs the graph through `astream_events`, which streams *every* model call (even nodes
+written as `.invoke`). So `reported_cost` is captured-if-present but is currently always NULL.
+Per the decision above, we record tokens and leave cost NULL; no price table. The column and the
+`extra_body` usage-accounting request stay in place so cost populates automatically if a
+non-streamed path (e.g. the item 02 cache) or a LangChain fix ever provides it.
+
 ## Verification
 
 - Unit tests: db `record_event`/stats queries (both backends' SQL), tracker field flow,
   stream handler usage collection (fake events).
-- Empirical check against OpenRouter: confirm the cost field arrives in streaming mode;
-  otherwise apply the NULL-cost fallback above.
+- Empirical check against OpenRouter: done — see finding above (cost does not survive streaming).
 - `make test`, `make lint`.
 
 ## Definition of done

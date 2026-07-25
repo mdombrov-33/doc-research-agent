@@ -16,6 +16,10 @@ def _make_eval(
     latency_ms: float = 1000.0,
     time_to_first_token_ms: float | None = None,
     outcome: FinalOutcome = "document_answer",
+    model: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    reported_cost: float | None = None,
 ) -> QueryMetrics:
     return QueryMetrics(
         sources_retrieved=sources_retrieved,
@@ -23,6 +27,10 @@ def _make_eval(
         latency_ms=latency_ms,
         time_to_first_token_ms=time_to_first_token_ms,
         outcome=outcome,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        reported_cost=reported_cost,
     )
 
 
@@ -68,6 +76,10 @@ def test_legacy_database_migrates_source_total(tmp_path):
         "document_answer_rate": 0.0,
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
+        "avg_input_tokens": 0.0,
+        "avg_output_tokens": 0.0,
+        "avg_cost_per_query": None,
+        "models": {},
     }
 
 
@@ -94,6 +106,10 @@ def test_sqlite_metrics_persist_recorded_totals(tmp_path):
         "document_answer_rate": 1.0,
         "web_answer_rate": 0.0,
         "abstention_rate": 0.0,
+        "avg_input_tokens": 0.0,
+        "avg_output_tokens": 0.0,
+        "avg_cost_per_query": None,
+        "models": {},
     }
 
 
@@ -173,3 +189,82 @@ def test_postgres_metrics_record_uses_atomic_increment(monkeypatch):
 def test_postgres_metrics_configuration_requires_database_url():
     with pytest.raises(ValueError, match="DATABASE_URL"):
         MetricsTracker.from_settings(Settings(METRICS_BACKEND="postgres"))
+
+
+def test_event_stats_average_tokens_and_cost_across_queries():
+    tracker = MetricsTracker()
+    tracker.record(
+        _make_eval(model="a/x", input_tokens=100, output_tokens=20, reported_cost=0.002)
+    )
+    tracker.record(
+        _make_eval(model="a/x", input_tokens=200, output_tokens=40, reported_cost=0.004)
+    )
+
+    stats = tracker.get_stats()
+    assert stats["avg_input_tokens"] == 150.0
+    assert stats["avg_output_tokens"] == 30.0
+    assert stats["avg_cost_per_query"] == 0.003
+
+
+def test_event_stats_per_model_breakdown():
+    tracker = MetricsTracker()
+    tracker.record(_make_eval(model="a/x", input_tokens=100, output_tokens=20))
+    tracker.record(_make_eval(model="b/y", input_tokens=300, output_tokens=60))
+
+    models = tracker.get_stats()["models"]
+    assert models == {
+        "a/x": {"queries": 1, "input_tokens": 100, "output_tokens": 20, "reported_cost": None},
+        "b/y": {"queries": 1, "input_tokens": 300, "output_tokens": 60, "reported_cost": None},
+    }
+
+
+def test_event_stats_cost_is_none_when_provider_never_reports_it():
+    tracker = MetricsTracker()
+    tracker.record(_make_eval(model="a/x", input_tokens=100, output_tokens=20))
+
+    assert tracker.get_stats()["avg_cost_per_query"] is None
+
+
+def test_sqlite_event_stats_persist_across_instances(tmp_path):
+    db_path = tmp_path / "metrics.db"
+    tracker = MetricsTracker(SqliteMetricsDB(str(db_path)))
+    tracker.record(
+        _make_eval(model="a/x", input_tokens=100, output_tokens=20, reported_cost=0.002)
+    )
+
+    stats = MetricsTracker(SqliteMetricsDB(str(db_path))).get_stats()
+
+    assert stats["avg_input_tokens"] == 100.0
+    assert stats["avg_output_tokens"] == 20.0
+    assert stats["avg_cost_per_query"] == 0.002
+    assert stats["models"] == {
+        "a/x": {"queries": 1, "input_tokens": 100, "output_tokens": 20, "reported_cost": 0.002}
+    }
+
+
+def test_postgres_record_event_persists_query_row(monkeypatch):
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    monkeypatch.setattr(db.psycopg, "connect", lambda url, autocommit: connection)
+
+    store = db.PostgresMetricsDB("postgresql://example")
+    store.record_event(
+        model="a/x",
+        input_tokens=100,
+        output_tokens=20,
+        reported_cost=0.002,
+        latency_ms=250.0,
+        time_to_first_token_ms=100.0,
+        outcome="document_answer",
+    )
+
+    assert cursor.execute.call_args_list[-1].args[1] == (
+        "a/x",
+        100,
+        20,
+        0.002,
+        250.0,
+        100.0,
+        "document_answer",
+    )
+    assert "INSERT INTO query_events" in cursor.execute.call_args_list[-1].args[0]

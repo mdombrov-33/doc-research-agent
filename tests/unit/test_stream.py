@@ -261,6 +261,56 @@ async def test_stream_records_time_to_first_visible_answer_token(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_collects_token_usage_from_model_end_events(monkeypatch):
+    async def no_refusal(_: str) -> None:
+        return None
+
+    class Agent:
+        async def astream_events(self, *_args, **_kwargs):
+            yield {
+                "event": "on_chat_model_stream",
+                "metadata": {"langgraph_node": "answer"},
+                "data": {"chunk": SimpleNamespace(content="Answer")},
+            }
+            # Two model calls in the turn (e.g. agent + answer); tokens sum, cost stays
+            # None because streamed calls carry no provider cost.
+            yield {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        usage_metadata={"input_tokens": 100, "output_tokens": 10},
+                        response_metadata={"token_usage": None},
+                    )
+                },
+            }
+            yield {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        usage_metadata={"input_tokens": 40, "output_tokens": 8},
+                        response_metadata={},
+                    )
+                },
+            }
+
+    monkeypatch.setattr("src.api.handlers.stream.guardrails.check_input", no_refusal)
+    tracker = MetricsTracker()
+    async for _ in _token_generator(
+        QueryRequest(question="What is the status?", model="openai/gpt-5.6-luna"),
+        Agent(),
+        tracker,
+        ConnectedRequest(),
+    ):
+        pass
+
+    stats = tracker.get_stats()
+    assert stats["avg_input_tokens"] == 140.0
+    assert stats["avg_output_tokens"] == 18.0
+    assert stats["avg_cost_per_query"] is None
+    assert stats["models"]["openai/gpt-5.6-luna"]["queries"] == 1
+
+
+@pytest.mark.asyncio
 async def test_stream_logs_safe_completion_metadata(monkeypatch):
     async def no_refusal(_: str) -> None:
         return None

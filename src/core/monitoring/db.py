@@ -19,6 +19,19 @@ class MetricsStore(Protocol):
         outcome: FinalOutcome,
     ) -> None: ...
 
+    def record_event(
+        self,
+        model: str | None,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        reported_cost: float | None,
+        latency_ms: float,
+        time_to_first_token_ms: float | None,
+        outcome: FinalOutcome,
+    ) -> None: ...
+
+    def load_event_stats(self) -> dict: ...
+
     def close(self) -> None: ...
 
 
@@ -76,6 +89,55 @@ ON CONFLICT(id) DO UPDATE SET
 
 _RECORD_POSTGRES = _RECORD_SQLITE.replace("?", "%s")
 
+# Per-query event rows. Deliberately no question/answer/evidence content — telemetry
+# stores numbers only. reported_cost stays NULL when the provider cost is unavailable
+# (LangChain drops OpenRouter's cost field on streamed calls).
+_SQLITE_CREATE_EVENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS query_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    model TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    reported_cost REAL,
+    latency_ms REAL NOT NULL,
+    time_to_first_token_ms REAL,
+    outcome TEXT NOT NULL
+)
+"""
+
+_POSTGRES_CREATE_EVENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS query_events (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    model TEXT,
+    input_tokens BIGINT,
+    output_tokens BIGINT,
+    reported_cost DOUBLE PRECISION,
+    latency_ms DOUBLE PRECISION NOT NULL,
+    time_to_first_token_ms DOUBLE PRECISION,
+    outcome TEXT NOT NULL
+)
+"""
+
+_RECORD_EVENT_SQLITE = """
+INSERT INTO query_events (
+    model, input_tokens, output_tokens, reported_cost,
+    latency_ms, time_to_first_token_ms, outcome
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+"""
+
+_RECORD_EVENT_POSTGRES = _RECORD_EVENT_SQLITE.replace("?", "%s")
+
+_EVENT_AVERAGES = """
+SELECT AVG(input_tokens), AVG(output_tokens), AVG(reported_cost) FROM query_events
+"""
+
+_EVENT_MODEL_TOTALS = """
+SELECT model, COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(reported_cost)
+FROM query_events WHERE model IS NOT NULL GROUP BY model ORDER BY model
+"""
+
 _SELECT = """
 SELECT total_queries, web_search_triggered, total_sources_retrieved,
        total_latency_ms, total_time_to_first_token_ms, time_to_first_token_samples,
@@ -90,6 +152,7 @@ class SqliteMetricsDB:
         self._db_path = db_path
         with self._connect() as conn:
             conn.execute(_SQLITE_CREATE_TABLE)
+            conn.execute(_SQLITE_CREATE_EVENTS_TABLE)
             columns = {row[1] for row in conn.execute("PRAGMA table_info(monitoring_stats)")}
             if "total_sources_retrieved" not in columns:
                 conn.execute(
@@ -143,6 +206,36 @@ class SqliteMetricsDB:
                 ),
             )
 
+    def record_event(
+        self,
+        model: str | None,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        reported_cost: float | None,
+        latency_ms: float,
+        time_to_first_token_ms: float | None,
+        outcome: FinalOutcome,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                _RECORD_EVENT_SQLITE,
+                (
+                    model,
+                    input_tokens,
+                    output_tokens,
+                    reported_cost,
+                    latency_ms,
+                    time_to_first_token_ms,
+                    outcome,
+                ),
+            )
+
+    def load_event_stats(self) -> dict:
+        with self._connect() as conn:
+            averages = conn.execute(_EVENT_AVERAGES).fetchone()
+            model_rows = conn.execute(_EVENT_MODEL_TOTALS).fetchall()
+        return _event_stats_from_rows(averages, model_rows)
+
     def close(self) -> None:
         pass
 
@@ -152,6 +245,7 @@ class PostgresMetricsDB:
         self._connection = psycopg.connect(database_url, autocommit=True)
         with self._connection.cursor() as cursor:
             cursor.execute(_POSTGRES_CREATE_TABLE)
+            cursor.execute(_POSTGRES_CREATE_EVENTS_TABLE)
             for column, sql_type in (
                 ("total_time_to_first_token_ms", "DOUBLE PRECISION"),
                 ("time_to_first_token_samples", "BIGINT"),
@@ -193,8 +287,62 @@ class PostgresMetricsDB:
                 ),
             )
 
+    def record_event(
+        self,
+        model: str | None,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        reported_cost: float | None,
+        latency_ms: float,
+        time_to_first_token_ms: float | None,
+        outcome: FinalOutcome,
+    ) -> None:
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                _RECORD_EVENT_POSTGRES,
+                (
+                    model,
+                    input_tokens,
+                    output_tokens,
+                    reported_cost,
+                    latency_ms,
+                    time_to_first_token_ms,
+                    outcome,
+                ),
+            )
+
+    def load_event_stats(self) -> dict:
+        with self._connection.cursor() as cursor:
+            cursor.execute(_EVENT_AVERAGES)
+            averages = cursor.fetchone()
+            cursor.execute(_EVENT_MODEL_TOTALS)
+            model_rows = cursor.fetchall()
+        return _event_stats_from_rows(averages, model_rows)
+
     def close(self) -> None:
         self._connection.close()
+
+
+def _event_stats_from_rows(
+    averages: tuple[float | None, float | None, float | None] | None,
+    model_rows: list[tuple],
+) -> dict:
+    avg_input, avg_output, avg_cost = averages or (None, None, None)
+    return {
+        "avg_input_tokens": avg_input or 0.0,
+        "avg_output_tokens": avg_output or 0.0,
+        # None (not 0.0) when the provider never reported cost: unknown is not free.
+        "avg_cost_per_query": avg_cost,
+        "models": {
+            model: {
+                "queries": queries,
+                "input_tokens": input_tokens or 0,
+                "output_tokens": output_tokens or 0,
+                "reported_cost": reported_cost,
+            }
+            for model, queries, input_tokens, output_tokens, reported_cost in model_rows
+        },
+    }
 
 
 def _row_to_totals(

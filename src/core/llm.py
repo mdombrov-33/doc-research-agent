@@ -19,4 +19,7 @@ def get_llm(model_override: str | None = None, temperature: float = 0) -> ChatOp
         temperature=temperature,
         max_retries=settings.LLM_MAX_RETRIES,
         timeout=settings.LLM_TIMEOUT_SECONDS,
+        stream_usage=True,
+        # OpenRouter usage accounting: adds actual cost to the response usage payload.
+        extra_body={"usage": {"include": True}},
     )

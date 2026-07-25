@@ -31,6 +31,22 @@ def _now_ms() -> float:
     return time.monotonic() * 1000
 
 
+def _message_usage(message: Any) -> tuple[int, int, float | None]:
+    """Tokens and provider cost from one LLM call's end event.
+
+    Cost comes from OpenRouter's usage accounting, but LangChain drops it on streamed
+    calls, and under ``astream_events`` every call is streamed — so cost is None here
+    until that changes. Tokens always survive.
+    """
+    metadata = getattr(message, "usage_metadata", None) or {}
+    token_usage = getattr(message, "response_metadata", {}).get("token_usage") or {}
+    return (
+        metadata.get("input_tokens") or 0,
+        metadata.get("output_tokens") or 0,
+        token_usage.get("cost"),
+    )
+
+
 def _turn_messages(messages: list[Any]) -> list[Any]:
     last_human_idx = max(
         (i for i, message in enumerate(messages) if isinstance(message, HumanMessage)),
@@ -116,6 +132,9 @@ async def _token_generator(
     start_ms = _now_ms()
     time_to_first_token_ms: float | None = None
     final_answer = ""
+    input_tokens = 0
+    output_tokens = 0
+    reported_cost: float | None = None
 
     event_stream = agent.astream_events(inputs, config=config, version="v2")
     try:
@@ -145,6 +164,15 @@ async def _token_generator(
                             time_to_first_token_ms = _now_ms() - start_ms
                         accumulated.append(visible_token)
                         yield f"data: {json.dumps({'token': visible_token})}\n\n"
+
+            elif kind == "on_chat_model_end":
+                turn_input, turn_output, turn_cost = _message_usage(
+                    event.get("data", {}).get("output")
+                )
+                input_tokens += turn_input
+                output_tokens += turn_output
+                if turn_cost is not None:
+                    reported_cost = (reported_cost or 0.0) + turn_cost
 
             elif kind == "on_chain_end" and event.get("name") == "LangGraph":
                 output = event.get("data", {}).get("output", {})
@@ -200,6 +228,10 @@ async def _token_generator(
             latency_ms=latency_ms,
             time_to_first_token_ms=time_to_first_token_ms,
             outcome=outcome,
+            model=request.model or get_settings().LLM_MODEL,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reported_cost=reported_cost,
         )
     )
     logger.info(

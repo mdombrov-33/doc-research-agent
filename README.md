@@ -141,7 +141,8 @@ push to main. `make eval-graph-contract` runs the graph's document-answer, web-f
 abstention contracts with corpus artifacts and scripted models—no services, API keys, or model
 calls—and is a separate CI step on every PR. `make eval-graph` manually checks live graph
 outcomes and citations against the same corpus. Use `uv run python -m evals.run_graph_eval
---limit 3` for a short live smoke run. Live telemetry reports aggregate outcome rates.
+--limit 3` for a short live smoke run. Live telemetry reports aggregate outcome rates plus
+per-query token counts and a per-model breakdown (no question or answer content is stored).
 
 ## Tech stack
 
