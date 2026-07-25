@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     EMBEDDING_TIMEOUT_SECONDS: float = 30
     EMBEDDING_MAX_RETRIES: int = 2
 
+    # Answer cache: a repeated first-turn document_answer is served from Qdrant instead of
+    # re-running the graph. Disable to always run the graph.
+    ANSWER_CACHE_ENABLED: bool = True
+    ANSWER_CACHE_COLLECTION: str = "answer_cache"
+
     # Cross-encoder reranking. Hybrid search pulls a wide candidate pool, then a cross-encoder
     # reorders it and we keep the user's top_k. Pool = top_k * MULTIPLIER, capped at FETCH_CAP.
     # Disable to fall back to raw hybrid ordering (fetch exactly top_k, no rerank).

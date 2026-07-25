@@ -28,6 +28,7 @@ class MetricsStore(Protocol):
         latency_ms: float,
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
+        cache_hit: bool,
     ) -> None: ...
 
     def load_event_stats(self) -> dict: ...
@@ -102,7 +103,8 @@ CREATE TABLE IF NOT EXISTS query_events (
     reported_cost REAL,
     latency_ms REAL NOT NULL,
     time_to_first_token_ms REAL,
-    outcome TEXT NOT NULL
+    outcome TEXT NOT NULL,
+    cache_hit INTEGER NOT NULL DEFAULT 0
 )
 """
 
@@ -116,21 +118,24 @@ CREATE TABLE IF NOT EXISTS query_events (
     reported_cost DOUBLE PRECISION,
     latency_ms DOUBLE PRECISION NOT NULL,
     time_to_first_token_ms DOUBLE PRECISION,
-    outcome TEXT NOT NULL
+    outcome TEXT NOT NULL,
+    cache_hit BOOLEAN NOT NULL DEFAULT FALSE
 )
 """
 
 _RECORD_EVENT_SQLITE = """
 INSERT INTO query_events (
     model, input_tokens, output_tokens, reported_cost,
-    latency_ms, time_to_first_token_ms, outcome
-) VALUES (?, ?, ?, ?, ?, ?, ?)
+    latency_ms, time_to_first_token_ms, outcome, cache_hit
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _RECORD_EVENT_POSTGRES = _RECORD_EVENT_SQLITE.replace("?", "%s")
 
 _EVENT_AVERAGES = """
-SELECT AVG(input_tokens), AVG(output_tokens), AVG(reported_cost) FROM query_events
+SELECT AVG(input_tokens), AVG(output_tokens), AVG(reported_cost),
+       AVG(CASE WHEN cache_hit THEN 1.0 ELSE 0.0 END)
+FROM query_events
 """
 
 _EVENT_MODEL_TOTALS = """
@@ -153,6 +158,11 @@ class SqliteMetricsDB:
         with self._connect() as conn:
             conn.execute(_SQLITE_CREATE_TABLE)
             conn.execute(_SQLITE_CREATE_EVENTS_TABLE)
+            event_columns = {row[1] for row in conn.execute("PRAGMA table_info(query_events)")}
+            if "cache_hit" not in event_columns:
+                conn.execute(
+                    "ALTER TABLE query_events ADD COLUMN cache_hit INTEGER NOT NULL DEFAULT 0"
+                )
             columns = {row[1] for row in conn.execute("PRAGMA table_info(monitoring_stats)")}
             if "total_sources_retrieved" not in columns:
                 conn.execute(
@@ -215,6 +225,7 @@ class SqliteMetricsDB:
         latency_ms: float,
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
+        cache_hit: bool,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -227,6 +238,7 @@ class SqliteMetricsDB:
                     latency_ms,
                     time_to_first_token_ms,
                     outcome,
+                    cache_hit,
                 ),
             )
 
@@ -246,6 +258,10 @@ class PostgresMetricsDB:
         with self._connection.cursor() as cursor:
             cursor.execute(_POSTGRES_CREATE_TABLE)
             cursor.execute(_POSTGRES_CREATE_EVENTS_TABLE)
+            cursor.execute(
+                "ALTER TABLE query_events "
+                "ADD COLUMN IF NOT EXISTS cache_hit BOOLEAN NOT NULL DEFAULT FALSE"
+            )
             for column, sql_type in (
                 ("total_time_to_first_token_ms", "DOUBLE PRECISION"),
                 ("time_to_first_token_samples", "BIGINT"),
@@ -296,6 +312,7 @@ class PostgresMetricsDB:
         latency_ms: float,
         time_to_first_token_ms: float | None,
         outcome: FinalOutcome,
+        cache_hit: bool,
     ) -> None:
         with self._connection.cursor() as cursor:
             cursor.execute(
@@ -308,6 +325,7 @@ class PostgresMetricsDB:
                     latency_ms,
                     time_to_first_token_ms,
                     outcome,
+                    cache_hit,
                 ),
             )
 
@@ -324,15 +342,16 @@ class PostgresMetricsDB:
 
 
 def _event_stats_from_rows(
-    averages: tuple[float | None, float | None, float | None] | None,
+    averages: tuple[float | None, float | None, float | None, float | None] | None,
     model_rows: list[tuple],
 ) -> dict:
-    avg_input, avg_output, avg_cost = averages or (None, None, None)
+    avg_input, avg_output, avg_cost, cache_hit_rate = averages or (None, None, None, None)
     return {
         "avg_input_tokens": avg_input or 0.0,
         "avg_output_tokens": avg_output or 0.0,
         # None (not 0.0) when the provider never reported cost: unknown is not free.
         "avg_cost_per_query": avg_cost,
+        "cache_hit_rate": cache_hit_rate or 0.0,
         "models": {
             model: {
                 "queries": queries,

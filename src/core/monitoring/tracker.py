@@ -23,6 +23,7 @@ class QueryMetrics:
     input_tokens: int | None = None
     output_tokens: int | None = None
     reported_cost: float | None = None
+    cache_hit: bool = False
 
 
 class MetricsTracker:
@@ -77,6 +78,7 @@ class MetricsTracker:
                     evaluation.latency_ms,
                     evaluation.time_to_first_token_ms,
                     evaluation.outcome,
+                    evaluation.cache_hit,
                 )
                 return
 
@@ -175,6 +177,7 @@ def _event_stats_from_metrics(events: list[QueryMetrics]) -> dict[str, Any]:
         _mean(e.input_tokens for e in events),
         _mean(e.output_tokens for e in events),
         _mean(e.reported_cost for e in events),
+        _mean(1.0 if e.cache_hit else 0.0 for e in events),
     )
     model_rows: list[tuple] = []
     for model in sorted({e.model for e in events if e.model is not None}):

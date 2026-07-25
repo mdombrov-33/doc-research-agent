@@ -20,6 +20,7 @@ def _make_eval(
     input_tokens: int | None = None,
     output_tokens: int | None = None,
     reported_cost: float | None = None,
+    cache_hit: bool = False,
 ) -> QueryMetrics:
     return QueryMetrics(
         sources_retrieved=sources_retrieved,
@@ -31,6 +32,7 @@ def _make_eval(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         reported_cost=reported_cost,
+        cache_hit=cache_hit,
     )
 
 
@@ -79,6 +81,7 @@ def test_legacy_database_migrates_source_total(tmp_path):
         "avg_input_tokens": 0.0,
         "avg_output_tokens": 0.0,
         "avg_cost_per_query": None,
+        "cache_hit_rate": 0.0,
         "models": {},
     }
 
@@ -109,6 +112,7 @@ def test_sqlite_metrics_persist_recorded_totals(tmp_path):
         "avg_input_tokens": 0.0,
         "avg_output_tokens": 0.0,
         "avg_cost_per_query": None,
+        "cache_hit_rate": 0.0,
         "models": {},
     }
 
@@ -256,6 +260,7 @@ def test_postgres_record_event_persists_query_row(monkeypatch):
         latency_ms=250.0,
         time_to_first_token_ms=100.0,
         outcome="document_answer",
+        cache_hit=False,
     )
 
     assert cursor.execute.call_args_list[-1].args[1] == (
@@ -266,5 +271,24 @@ def test_postgres_record_event_persists_query_row(monkeypatch):
         250.0,
         100.0,
         "document_answer",
+        False,
     )
     assert "INSERT INTO query_events" in cursor.execute.call_args_list[-1].args[0]
+
+
+def test_cache_hit_rate_counts_served_from_cache():
+    tracker = MetricsTracker()
+    tracker.record(_make_eval(cache_hit=True))
+    tracker.record(_make_eval(cache_hit=False))
+    tracker.record(_make_eval(cache_hit=False))
+
+    assert tracker.get_stats()["cache_hit_rate"] == 1 / 3
+
+
+def test_sqlite_cache_hit_rate_persists_across_instances(tmp_path):
+    db_path = tmp_path / "metrics.db"
+    tracker = MetricsTracker(SqliteMetricsDB(str(db_path)))
+    tracker.record(_make_eval(cache_hit=True))
+    tracker.record(_make_eval(cache_hit=False))
+
+    assert MetricsTracker(SqliteMetricsDB(str(db_path))).get_stats()["cache_hit_rate"] == 0.5
