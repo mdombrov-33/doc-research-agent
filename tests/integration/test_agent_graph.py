@@ -98,7 +98,8 @@ def test_graph_retrieves_then_answers(graph, monkeypatch):
     assert state["stop_reason"] == "document_evidence_sufficient"
     answer_input = agent.invoke.call_args_list[-1].args[0][-1].content
     assert "photosynthesis" in answer_input.lower()
-    assert "UNSELECTED_ARTIFACT_MARKER" not in answer_input
+    # Retrieved but not named by the assessment: the answer still gets it and cites what it uses.
+    assert "UNSELECTED_ARTIFACT_MARKER" in answer_input
 
 
 def test_graph_uses_the_agent_standalone_follow_up_query(graph, monkeypatch):

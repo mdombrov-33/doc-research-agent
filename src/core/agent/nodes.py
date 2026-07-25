@@ -13,7 +13,7 @@ from src.core.agent.prompts import (
 )
 from src.core.agent.state import AgentState
 from src.core.agent.tools import format_docs, retrieve_documents, search_web
-from src.core.citations import citation_from_artifact, citations_from_artifacts
+from src.core.citations import citations_from_artifacts
 from src.core.llm import get_llm
 from src.utils.logger import logger
 
@@ -84,9 +84,14 @@ def evidence_assessment_node(
 
 
 def answer_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
-    """Synthesize a cited answer from evidence already judged sufficient."""
+    """Synthesize a cited answer from the turn's evidence, already judged sufficient.
+
+    The assessment picks source IDs to justify its verdict, not to narrow the answer: passing
+    only those starves the answer of chunks the gate never had to name. Answers see the whole
+    turn's evidence and cite what they use; user-facing sources are the IDs cited in the answer.
+    """
     model = _configurable(config).get("model")
-    evidence = format_docs(_supporting_artifacts(state))
+    evidence = format_docs(_turn_artifacts(state))
     response = get_llm(model).invoke(
         [
             SystemMessage(content=ANSWER_SYSTEM_PROMPT),
@@ -188,16 +193,6 @@ def _turn_tool_content(state: AgentState) -> list[str]:
         message.content
         for message in _turn_messages(state)
         if isinstance(message, ToolMessage) and isinstance(message.content, str)
-    ]
-
-
-def _supporting_artifacts(state: AgentState) -> list[dict]:
-    source_ids = set(state.get("supporting_source_ids", []))
-    return [
-        artifact
-        for artifact in _turn_artifacts(state)
-        if (citation := citation_from_artifact(artifact)) is not None
-        and citation.source_id in source_ids
     ]
 
 

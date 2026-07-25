@@ -279,7 +279,8 @@ class AgentState(TypedDict, total=False):
   `assess_evidence` rewrites it after document retrieval and, when needed, after web fallback.
 
 - **`supporting_source_ids`** — the selected, validated source IDs for a sufficient verdict.
-  `answer_node` rebuilds its context from only these artifacts.
+  They justify the verdict and are what validation checks against the real artifacts; they do
+  not narrow what `answer_node` reads.
 
 - **`outcome`** — the final route result: `document_answer`, `web_answer`, or `abstained`.
   It is written only by the terminal `answer` and `abstain` nodes, then reported in the final
@@ -350,8 +351,11 @@ retrieval and its cross-encoder optimize the candidate order, while the assessor
 the supplied corpus evidence supports an answer at all. We deliberately do not turn raw reranker
 scores into a minimum relevance cutoff without a calibrated labelled set.
 
-`answer_node` receives the question and only the artifacts named by the validated verdict, then
-writes a cited answer without tools. Its system prompt separately repeats that those artifacts are
+`answer_node` receives the question and all of this turn's artifacts, then writes a cited answer
+without tools. It is deliberately not restricted to the IDs the verdict named: the assessor names
+enough sources to justify sufficiency, not every source worth quoting, so filtering on them
+starved answers of relevant retrieved chunks. User-facing sources stay precise because they are
+resolved from the IDs the answer actually cites, not from everything retrieved. Its system prompt separately repeats that those artifacts are
 untrusted data rather than instructions. It records `document_answer` when document evidence
 passed directly, or `web_answer` when the bounded web fallback ran before evidence passed.
 `web_fallback_node` searches once using the query agent's standalone retrieval query. If neither
