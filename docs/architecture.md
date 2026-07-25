@@ -461,7 +461,15 @@ is tuned for precision (sharpen the order).
 - **Model**: `Xenova/ms-marco-MiniLM-L-6-v2` via fastembed's `TextCrossEncoder` (ONNX, CPU,
   no torch in the hot path). Loaded once and cached (`@lru_cache`).
 - **Flow**: `hybrid_search` over-fetches `fetch_k` candidates → `rerank(query, docs, top_k)`
-  scores each `(query, chunk)` pair *together* → sort by score → keep `top_k`.
+  scores each `(query, chunk)` pair *together* → sort by score → apply the floor → keep `top_k`.
+- **Score floor** (`RERANK_SCORE_FLOOR`, raw logit): chunks scoring below it are dropped from the
+  evidence pool *before* assessment or the answer model see them, fixing the root cause of
+  irrelevant chunks riding into the sources. `None` (code default) keeps every chunk; the
+  calibrated value ships in `.env.example`. Calibrated by `make eval-rerank-sweep`, which sweeps
+  the threshold over the golden set and picks the highest floor that drops labelled-irrelevant
+  chunks at ~zero recall cost. If every chunk falls below the floor the pool is empty, so
+  assessment sees no evidence and the graph runs its web fallback or abstains — the intended
+  evidence-controlled behaviour, not an error.
 - **`top_k` is the UI knob** (how many docs come back); **`fetch_k` is internal** (the pool to
   choose from, a multiple of `top_k`). The user always gets exactly `top_k`, just better-chosen.
 - **Logging**: `documents_reranked` reports `candidates`, `returned`, and **`promoted`** — how

@@ -48,7 +48,8 @@ POST /api/stream
   the live web.
 - **Evidence assessment** — a structured classifier is the relevance gate: it must find the
   returned sources sufficient and name the exact supporting source IDs before an answer can run.
-  It does not turn reranker scores into an uncalibrated numeric cutoff. Insufficient document
+  A calibrated rerank-score floor first drops clearly-irrelevant chunks from the pool upstream;
+  the gate itself stays an LLM judgment, not a raw score threshold. Insufficient document
   evidence gets one web fallback; still-insufficient evidence produces an honest abstention.
   Retrieved document chunks and web snippets are explicitly treated as untrusted data, never
   instructions for either model.

@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     RERANK_MODEL: str = "Xenova/ms-marco-MiniLM-L-6-v2"
     RERANK_MULTIPLIER: int = 4
     RERANK_FETCH_CAP: int = 100
+    # Minimum cross-encoder score (raw logit) a chunk must clear to enter the evidence pool.
+    # None keeps every reranked chunk; a calibrated value drops labelled-irrelevant chunks at
+    # ~zero recall cost (swept via `make eval-rerank-sweep`). If all chunks fall below it the
+    # pool is empty, so assessment sees no evidence and the graph falls back or abstains.
+    RERANK_SCORE_FLOOR: float | None = None
 
     DATA_DIR: str = "./data"
     CHECKPOINT_BACKEND: Literal["sqlite", "postgres"] = "sqlite"

@@ -51,6 +51,28 @@ def rerank(query: str, documents: list[dict], top_k: int) -> list[dict]:
             key=lambda triple: triple[1],
             reverse=True,
         )
+
+        # Calibrated relevance floor: drop chunks the cross-encoder scored below the threshold
+        # before they reach the evidence pool. Everything below dies here; if that empties the
+        # pool, assessment sees no evidence and the graph falls back or abstains (intended).
+        floor = settings.RERANK_SCORE_FLOOR
+        if floor is not None:
+            kept = [triple for triple in ranked if triple[1] >= floor]
+            dropped = len(ranked) - len(kept)
+            if not kept:
+                span.set_attribute("rerank.floor_excluded_all", True)
+                logger.info(
+                    "documents_reranked",
+                    model=settings.RERANK_MODEL,
+                    candidates=len(documents),
+                    returned=0,
+                    floor=floor,
+                    floor_dropped=dropped,
+                )
+                return []
+            span.set_attribute("rerank.floor_dropped", dropped)
+            ranked = kept
+
         top = ranked[:top_k]
 
         # "promoted" = docs the reranker moved into the top_k slice from positions top_k..fetch_k,

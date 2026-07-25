@@ -27,6 +27,27 @@ deliberately avoided because it was uncalibrated — so calibrate it on the gold
 - `src/config.py` — `RERANK_SCORE_FLOOR: float | None = None`.
 - `evals/` + `Makefile` — sweep script and target.
 
+## Sweep result (recorded)
+
+`make eval-rerank-sweep` over the 31-question golden set (147 relevant chunks, 1558 irrelevant;
+cross-encoder score range `[-11.517, 8.662]`, baseline recall@5 = 1.000):
+
+| floor | irrelevant dropped | relevant dropped | recall@5 |
+| --- | --- | --- | --- |
+| −11.517 (baseline) | 0 / 1558 | 0 / 147 | 1.000 |
+| −9.902 | 1538 / 1558 | 33 / 147 | 1.000 |
+| **−9.095** | **1542 / 1558** | 39 / 147 | **1.000** |
+| −8.288 | 1545 / 1558 | 46 / 147 | 0.984 ← first regression |
+| −1.831 | 1558 / 1558 | 88 / 147 | 0.887 |
+| 8.662 | 1558 / 1558 | 146 / 147 | 0.032 |
+
+recall@5 is document-level: dropping low-scored *relevant* chunks costs nothing while the
+top-scored chunk per relevant document survives. Recall holds at 1.000 up to −9.095 and first
+regresses at −8.288. **Deployed default: `RERANK_SCORE_FLOOR=-9.0`** (in `.env.example`) — a
+round value just below the −8.288 cliff (~0.7-logit margin) that drops ~99% of labelled-irrelevant
+chunks at zero recall cost on this set. The code default stays `None`. Recalibrate if the reranker
+model changes.
+
 ## Verification
 
 - Run the sweep; record the chosen floor and its tradeoff numbers in this file.

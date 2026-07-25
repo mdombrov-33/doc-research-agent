@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-compose build up down restart logs shell test eval eval-retrieval eval-graph eval-graph-contract lint format clean deploy destroy
+.PHONY: help install dev dev-compose build up down restart logs shell test eval eval-retrieval eval-graph eval-graph-contract eval-rerank-sweep lint format clean deploy destroy
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 APP_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
@@ -56,6 +56,9 @@ eval-graph: ## Manually evaluate live graph outcomes and citations against the e
 
 eval-graph-contract: ## Run deterministic graph workflow contracts (no services or API keys)
 	uv run pytest tests/integration/test_agent_graph.py
+
+eval-rerank-sweep: ## Calibrate RERANK_SCORE_FLOOR on the golden set (needs Qdrant + OpenAI key)
+	uv run python -m evals.rerank_sweep
 
 lint: ## Run linter
 	uv run ruff check .
