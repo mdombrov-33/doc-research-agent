@@ -82,6 +82,40 @@ def test_collect_candidates_maps_results_and_skips_blank(monkeypatch):
     assert store.similarity_search_with_score.call_args.kwargs == {"k": 40}
 
 
+def test_collect_candidates_logs_each_non_blank_qdrant_result(monkeypatch):
+    store = MagicMock()
+    store.similarity_search_with_score.return_value = [
+        (
+            _Doc(
+                "retained slice passage",
+                {
+                    "document_id": "doc-a",
+                    "chunk_id": "doc-a:26",
+                    "filename": "book.pdf",
+                    "chunk_index": 26,
+                },
+            ),
+            0.91,
+        ),
+        (_Doc("   ", {"chunk_id": "doc-a:blank"}), 0.2),
+    ]
+    log_info = MagicMock()
+    monkeypatch.setattr(search, "get_retrieval_vector_store", lambda: store)
+    monkeypatch.setattr(search, "extract_entities", lambda _query: [])
+    monkeypatch.setattr(search.logger, "info", log_info)
+
+    search._collect_candidates("slice memory leak", candidate_budget=40, entity_budget=8)
+
+    candidate_logs = [
+        call for call in log_info.call_args_list if call.args[0] == "retrieval_branch_candidate"
+    ]
+    assert len(candidate_logs) == 1
+    assert candidate_logs[0].kwargs["candidate_rank"] == 1
+    assert candidate_logs[0].kwargs["retrieval_score"] == 0.91
+    assert candidate_logs[0].kwargs["retrieval_channels"] == ["hybrid"]
+    assert candidate_logs[0].kwargs["chunk_id"] == "doc-a:26"
+
+
 @pytest.mark.parametrize(
     "transient_error",
     [
@@ -144,6 +178,30 @@ def test_merge_candidate_branches_is_rank_aware_deterministic_and_deduplicated()
     ]
     assert first == second
     assert len({doc["chunk_id"] for doc in first}) == 4
+    assert first[0]["_retrieval_branch_ranks"] == {"1": 1, "2": 2}
+    assert first[1]["_retrieval_branch_ranks"] == {"2": 1}
+
+
+def test_merge_candidate_branches_logs_selected_rank_and_branch_provenance(monkeypatch):
+    log_info = MagicMock()
+    monkeypatch.setattr(search.logger, "info", log_info)
+
+    search._merge_candidate_branches(
+        [
+            [_item("doc:shared"), _item("doc:a")],
+            [_item("doc:b"), _item("doc:shared")],
+        ],
+        budget=3,
+    )
+
+    selected_logs = [
+        call for call in log_info.call_args_list if call.args[0] == "retrieval_candidate_selected"
+    ]
+    assert len(selected_logs) == 3
+    assert selected_logs[0].kwargs["chunk_id"] == "doc:shared"
+    assert selected_logs[0].kwargs["candidate_rank"] == 1
+    assert selected_logs[0].kwargs["branch_ranks"] == {"1": 1, "2": 2}
+    assert isinstance(selected_logs[0].kwargs["rrf_score"], float)
 
 
 def test_two_query_branches_execute_concurrently(monkeypatch):
@@ -155,7 +213,11 @@ def test_two_query_branches_execute_concurrently(monkeypatch):
 
     monkeypatch.setattr(search, "_collect_candidates", collect)
     monkeypatch.setattr(search, "get_settings", lambda: _settings())
-    monkeypatch.setattr(search, "rerank", lambda _question, docs, limit: docs[:limit])
+    monkeypatch.setattr(
+        search,
+        "rerank",
+        lambda _question, docs, limit, *, branch_count: docs[:limit],
+    )
 
     result = search.retrieve_evidence(["first", "second"], "original question")
 
@@ -175,7 +237,9 @@ def test_retrieve_evidence_applies_global_candidate_budget_and_one_rerank(monkey
         lambda query, _candidate_budget, _entity_budget: branches[query],
     )
     monkeypatch.setattr(search, "get_settings", lambda: _settings())
-    rerank = MagicMock(side_effect=lambda _question, docs, limit: docs[:limit])
+    rerank = MagicMock(
+        side_effect=lambda _question, docs, limit, *, branch_count: docs[:limit]
+    )
     monkeypatch.setattr(search, "rerank", rerank)
 
     result = search.retrieve_evidence(["first", "second"], "original question")
@@ -184,6 +248,7 @@ def test_retrieve_evidence_applies_global_candidate_budget_and_one_rerank(monkey
     assert rerank.call_args.args[0] == "original question"
     assert len(rerank.call_args.args[1]) == 40
     assert rerank.call_args.args[2] == 8
+    assert rerank.call_args.kwargs["branch_count"] == 2
     assert result.metrics.candidates == 40
     assert result.metrics.evidence == 8
     assert result.metrics.reranker_calls == 1
@@ -216,7 +281,11 @@ def test_duplicate_planned_queries_collapse_to_one_branch(monkeypatch):
     collect = MagicMock(return_value=[_item("doc:0")])
     monkeypatch.setattr(search, "_collect_candidates", collect)
     monkeypatch.setattr(search, "get_settings", lambda: _settings())
-    monkeypatch.setattr(search, "rerank", lambda _question, docs, limit: docs[:limit])
+    monkeypatch.setattr(
+        search,
+        "rerank",
+        lambda _question, docs, limit, *, branch_count: docs[:limit],
+    )
 
     result = search.retrieve_evidence(["same query", "same query"], "question")
 

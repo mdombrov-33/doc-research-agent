@@ -256,9 +256,13 @@ scales robust. `RetrievalMode.HYBRID` turns this on; it's a single Qdrant query.
    timeout, network error, Qdrant rate limit, or retriable HTTP status gets one short jittered
    retry; permanent errors are not retried.
 4. Map results to document dicts and fuse branch ranks deterministically with RRF. Deduplicate by
-   stable chunk identity and retain at most `RETRIEVAL_CANDIDATE_BUDGET` unique chunks (40).
-5. **Rerank once** against the current user question, apply the calibrated score floor, and keep
-   at most `RETRIEVAL_EVIDENCE_BUDGET` chunks (8). There is no raw-order serving mode.
+   stable chunk identity, retain internal branch-rank provenance, and keep at most
+   `RETRIEVAL_CANDIDATE_BUDGET` unique chunks (40).
+5. **Rerank once** against the current user question and apply the calibrated score floor.
+6. For a two-query plan, reserve three floor-passing candidates per branch under the default
+   eight-chunk budget, then fill two flex slots by global cross-encoder rank. A shared candidate
+   can cover both branches without duplication. Single-query plans use global rerank order only.
+   There is no raw-order or below-floor serving mode.
 
 > Bi-encoder vs cross-encoder: hybrid search is still **bi-encoder** — query and chunk are
 > embedded separately and compared. That is fast but approximate. The reranker (§9) is a
@@ -403,18 +407,20 @@ is an abstention, not an unsupported answer. If a provider emits duplicate retri
 node deterministically collapses them into one plan capped at two queries. The projection keeps
 the most recent `CONVERSATION_HISTORY_TURNS` user turns (three by default, including the current
 question) and completed assistant answers; it excludes prior tool calls, tool results, and
-evidence artifacts. Planning is capped by `PLANNER_MAX_TOKENS`.
+evidence artifacts. The structured planner call is not completion-capped, so a provider cannot
+truncate valid retrieval-tool arguments.
 
 The request's selected model is not used here. It remains the answer model only; the Streamlit
 selector reads `SUPPORTED_MODELS`, and the API rejects all other request model IDs with a 422.
 
 ### Evidence assessment, answer, and fallback — `nodes.py`
 `evidence_assessment_node` sends the current question plus this turn's tool evidence to the
-small `ASSESSOR_MODEL` as `EvidenceAssessment(sufficient, supporting_source_ids)`, bounded by
-`ASSESSOR_MAX_TOKENS`. A verdict
-is accepted only when it is sufficient, names at least one source ID, and every ID exists in the
-actual artifacts. The evidence is explicitly labelled untrusted source data before the model sees
-it; malformed evaluator output and evaluator failures fail closed. This is the relevance gate:
+small `ASSESSOR_MODEL` as `EvidenceAssessment(sufficient, supporting_source_ids)`. Like the
+planner, this structured control call is not completion-capped: truncating its JSON or long
+source IDs would turn an answerable request into a fail-closed abstention. A verdict is accepted
+only when it is sufficient, names at least one source ID, and every ID exists in the actual
+artifacts. The evidence is explicitly labelled untrusted source data before the model sees it;
+malformed evaluator output and evaluator failures fail closed. This is the relevance gate:
 retrieval and its cross-encoder optimize the candidate order, while the assessor decides whether
 the supplied corpus evidence supports an answer at all. We deliberately do not turn raw reranker
 scores into a minimum relevance cutoff without a calibrated labelled set.
@@ -426,8 +432,10 @@ starved answers of relevant retrieved chunks. User-facing sources stay precise b
 resolved from the IDs the answer actually cites, not from everything retrieved. Its system prompt separately repeats that those artifacts are
 untrusted data rather than instructions. It records `document_answer` when document evidence
 passed directly, or `web_answer` when the bounded web fallback ran before evidence passed.
-Ordinary synthesis is capped by `ANSWER_MAX_TOKENS` (1,000 by default) and prompted to answer
-more briefly when the question is narrow.
+Planner, assessor, and answer calls have no hard completion-token cap: truncating structured
+tool arguments, a verdict, or a multipart answer is a correctness failure. The answer prompt
+still targets roughly 1,000 tokens and asks for proportionally shorter narrow answers. Per-call
+and whole-query timeouts remain the runtime bounds.
 `web_fallback_node` searches once using the query agent's standalone retrieval query. If neither
 evidence set passes, `abstain_node` emits a fixed honest response and records `abstained`.
 
@@ -460,7 +468,14 @@ is tuned for precision (sharpen the order).
   no torch in the hot path). Loaded once and cached (`@lru_cache`).
 - **Flow**: one/two hybrid branches → deterministic RRF merge and stable dedupe (≤40) →
   `rerank(current_question, candidates, limit=8)` scores each pair together → sort → apply the
-  floor → keep at most eight.
+  floor → enforce bounded branch coverage for multipart plans → fill remaining slots by global
+  score → keep at most eight. The encoder still runs exactly once.
+- **Multipart coverage**: branch-local ranks survive the RRF merge as internal metadata. With
+  two queries and the default evidence budget, the selector reserves three floor-passing chunks
+  from each branch and leaves two globally ranked flex slots. This prevents a whole-question
+  score from retaining each branch's introduction while discarding its necessary continuation
+  passages. The metadata is not included in model evidence or citations, and single-query
+  selection is unchanged.
 - **Score floor** (`RERANK_SCORE_FLOOR`, raw logit): chunks scoring below it are dropped from the
   evidence pool *before* assessment or the answer model see them, fixing the root cause of
   irrelevant chunks riding into the sources. `None` (code default) keeps every chunk; the
@@ -469,9 +484,10 @@ is tuned for precision (sharpen the order).
   chunks at ~zero recall cost. If every chunk falls below the floor the pool is empty, so
   assessment sees no evidence and the graph runs its web fallback or abstains — the intended
   evidence-controlled behaviour, not an error.
-- **Logging**: `documents_reranked` reports `candidates`, `returned`, and **`promoted`** — how
-  many returned docs ranked below the final evidence cutoff in the merged order, i.e. hits reranking
-  rescued. `promoted > 0` proves it changed the outcome.
+- **Logging**: `documents_reranked` reports `candidates`, `returned`, **`promoted`**, branch
+  count, and the number of coverage-selected chunks. Per-candidate development logs include
+  `selection_reasons` (`global_rerank` or `branch_coverage:<n>`), so an abstention can be traced
+  from branch retrieval through final evidence without guessing.
 - **Warmup**: `rerank.warmup()` runs at startup (§3) so the first query doesn't pay the model
   load. Reranking is mandatory on document-serving paths.
 - **Deployment**: the model is **baked into the Docker image** at build time
@@ -696,11 +712,15 @@ deliberately rejected; cost can be derived from token counts externally if neede
 
 OpenTelemetry spans and structured request logs complement those aggregates for debugging. The
 request middleware binds `x-request-id` for the lifetime of each HTTP request; async graph,
-retrieval, and provider logs inherit it. They record operational metadata only: route/outcome,
-counts, booleans, configured limits, and exception class. Raw questions, rewritten retrieval
+retrieval, and provider logs inherit it. Production logs record operational metadata only:
+route/outcome, counts, booleans, configured limits, stable source/chunk identifiers, ranks,
+scores, text lengths and hashes, and exception class. Raw questions, rewritten retrieval
 queries, extracted entities, answers, document chunks, web snippets, and exception messages are
-not attached to normal telemetry. Upload events similarly use a document's extension and
-size bucket instead of its filename. A completed stream emits one `query_completed` event with
+not attached to production telemetry. In `development`, retrieval and assessment events also
+carry whitespace-normalized previews capped at 1,500 characters so one request can be traced from
+Qdrant branch candidates through merge, reranking, and the assessor input. Upload events
+similarly use a document's extension and size bucket instead of its filename. A completed stream
+emits one `query_completed` event with
 the outcome/path, role models, query shape, candidate/evidence/reranker counts, stage durations,
 source counts, web-search flag, full latency, and optional first-token latency; its inherited
 request ID correlates it with the request log without adding content.

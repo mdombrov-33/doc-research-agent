@@ -46,8 +46,9 @@ POST /api/stream
   call the web.
 - **Tools** — `retrieve_documents` runs hybrid dense + BM25 search in Qdrant (fused with RRF),
   concurrently merges planned branches into at most 40 unique candidates, then performs one
-  mandatory cross-encoder rerank down to at most eight evidence chunks; `web_search` hits the
-  live web.
+  mandatory cross-encoder pass. Multipart plans preserve bounded floor-passing coverage from
+  each branch before globally ranked flex slots fill the eight-chunk evidence budget;
+  single-query plans use ordinary global rerank order. `web_search` hits the live web.
 - **Evidence assessment** — a structured classifier is the relevance gate: it must find the
   returned sources sufficient and name the exact supporting source IDs before an answer can run.
   A calibrated rerank-score floor first drops clearly-irrelevant chunks from the pool upstream;

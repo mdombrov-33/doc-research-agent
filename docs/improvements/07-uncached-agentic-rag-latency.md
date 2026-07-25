@@ -96,6 +96,13 @@ Per-query telemetry records the selected answer model, planner model, assessor m
 shape (single or multipart), candidate count, evidence count, and cache/path outcome. This is
 stage attribution, not a new observability platform.
 
+Retrieval diagnostics retain enough provenance to distinguish failures between stages:
+each Qdrant branch logs ranked chunk metadata and similarity score; the global merge logs RRF
+rank plus contributing branch ranks; the reranker logs every candidate's score and whether it
+entered the final evidence budget; and each assessor call logs the exact source set it received
+plus its raw and validated verdict. Production records stable IDs, lengths, and content hashes.
+Local `development` records additionally include bounded query and chunk previews.
+
 ### 2. Preserve the agent, separate its model role
 
 Today `agent_node` uses the user-selected answer model. That makes a small, structured planning
@@ -109,9 +116,10 @@ Split the roles:
 - **answer model** — the model selected in the UI, used only for final synthesis.
 
 Planner and assessor are separately configurable even if both initially point to the existing
-Luna model. This keeps their prompts, token limits, and future model choices independent without
-changing the UI answer-model contract. Haiku or Flash can later be selected through
-configuration; choosing a new default model is not part of this improvement.
+Luna model. This keeps their prompts and future model choices independent without changing the
+UI answer-model contract. None of the three roles has a hard completion-token cap: truncating a
+tool call, verdict, or multipart answer is a correctness failure. Haiku or Flash can later be
+selected through configuration; choosing a new default model is not part of this improvement.
 
 The existing conservative pre-graph conversational matcher remains. Every other substantive
 question enters the LangGraph planner. The planner does not answer the user.
@@ -149,7 +157,8 @@ The batched retrieval operation:
 5. applies one global candidate budget;
 6. reranks the merged pool exactly once against the current user question;
 7. applies the existing calibrated rerank-score floor;
-8. returns one bounded evidence set.
+8. for multipart plans, preserves bounded coverage from each focused query branch;
+9. fills the remaining slots by global cross-encoder order and returns one bounded evidence set.
 
 The internal budgets are:
 
@@ -160,6 +169,20 @@ For two queries, 40 is the global merged maximum, not 40 per branch. The merge m
 rank-aware and deterministic rather than concatenating one branch ahead of the other. Empty
 post-floor evidence keeps today's safe behavior: the assessor sees no support and the graph
 falls back to web or abstains.
+
+The merge retains each candidate's branch-local rank as internal provenance. This metadata is
+not rendered into model evidence or citations. For a two-query plan and the default eight-chunk
+evidence budget, final selection reserves the top three floor-passing candidates from each
+branch, then fills the remaining two slots in global cross-encoder order. A chunk present in
+both branch shortlists can satisfy both coverage constraints without being duplicated. Returned
+chunks remain ordered by global cross-encoder score. Single-query plans keep ordinary
+cross-encoder top-K behavior.
+
+This is a constrained final selection, not a reranker bypass. The same mandatory cross-encoder
+still scores all merged candidates exactly once, and no below-floor chunk can enter through the
+coverage reservation. The constraint exists because a cross-encoder scoring every passage
+against an entire multipart question can rank branch introductions highly while pushing
+necessary continuation chunks below the global cutoff.
 
 The reranker is warmed at startup as today. Its serving failure must be visible and must not
 silently degrade to raw vector ordering. CPU/thread configuration and batch behavior may be
@@ -210,7 +233,8 @@ proportional to the question and target roughly 800–1,000 output tokens at mos
 for expansion in a follow-up.
 
 This is not permission to truncate mid-citation or omit required parts of a multipart answer.
-Prompt guidance and the model's output limit must leave room for a complete, cited response.
+The target is therefore a prompt policy, not a provider completion cap. Per-call and whole-query
+timeouts remain the hard runtime bounds.
 
 ### 8. Optimize safeguards in place
 
@@ -265,7 +289,7 @@ The design attacks each measured source of pre-answer delay:
 | two contending cross-encoder passes | one merged 40-candidate rerank |
 | 20 chunks sent into assessment and generation | at most 8 final evidence chunks |
 | 8.15 s open-ended assessment | bounded structured assessor role and smaller context |
-| 1,625-token ordinary answer | concise, bounded answer policy |
+| 1,625-token ordinary answer | concise prompt policy without silent truncation |
 | TTFT excludes guard/cache preflight | request-boundary clock |
 
 This spec does not promise that OpenRouter or a particular selectable answer model will always
@@ -317,7 +341,7 @@ Implement in reviewable slices so measurement proves each structural change:
 3. **Batched retrieval boundary** — one/two planned queries, concurrent candidate searches,
    merge/deduplicate, one rerank, eight evidence chunks.
 4. **Remove `top_k`** — API, UI, config propagation, cache, docs, and tests.
-5. **Bound LLM payloads** — focused auxiliary completions and concise answer policy.
+5. **Bound LLM inputs** — focused auxiliary context and a concise answer policy.
 6. **Regression and latency proof** — run the same uncached queries repeatedly and record the
    before/after stage breakdown.
 
@@ -400,15 +424,19 @@ the shipped behavior.
 
 Implemented:
 
-- independent planner, assessor, and selectable answer-model roles with bounded completions;
+- independent planner, assessor, and selectable answer-model roles with no hard completion-token
+  caps that can silently truncate structured control output or a multipart answer;
 - one runtime-bounded planner tool call containing one or two queries;
 - concurrent hybrid/entity candidate branches, deterministic RRF merge, stable deduplication,
-  global 40-candidate cap, and one mandatory cross-encoder pass to at most eight chunks;
+  global 40-candidate cap, retained branch provenance, and one mandatory cross-encoder pass to
+  at most eight chunks;
+- multipart evidence selection that reserves three floor-passing candidates per query branch
+  under the default budget and uses the remaining two slots for global cross-encoder leaders;
 - removal of the public retrieval-width knob from request/UI/config/cache/evals/docs, with a
   one-time reset of legacy cache entries;
 - API-handler-boundary TTFT/completion clocks plus safe role/path/query-shape/candidate/evidence/
   reranker telemetry;
-- concise synthesis cap and live graph cases for out-of-corpus, partial, multipart, and
+- concise synthesis prompt and live graph cases for out-of-corpus, partial, multipart, and
   history-aware follow-up behavior.
 
 The input guardrail path was audited during implementation. It already constructs and warms one
@@ -417,12 +445,63 @@ there is no duplicate scan or per-request model setup to remove. Its optional ON
 available in the current dependency set, so no unmeasured runtime/dependency change was made to
 this fail-closed gate.
 
-Local deterministic verification passes:
+Local deterministic verification before the live multipart diagnosis passed:
 
 - `uv run pytest -q` — 183 tests;
 - `uv run ruff check .`;
 - `uv run mypy src`.
 
-The paid live model calls needed for uncached p50/p95 and the full retrieval/graph eval were not
-run during implementation. Do not mark this item fully done until a warm app with an empty answer
-cache has produced the before/after stage table and confirmed or rejected the headline SLO.
+### Live multipart failure diagnosis and correction — 2026-07-25
+
+The first warm-book test improved the mechanics but still abstained. Development evidence logs
+showed that retrieval had found both complete answer regions:
+
+- slice retention and fixes in chunks 210–213;
+- range-loop goroutine behavior and fixes in chunks 481–483.
+
+The 40-candidate merged pool contained those chunks. The one global cross-encoder pass selected
+the introductions (212 and 481) plus a high-scoring summary (558), but pushed the continuation
+chunks 210, 211, 482, and 483 below the eight-chunk cutoff. The assessor therefore received
+incomplete support and correctly returned `sufficient=false`; web fallback added irrelevant
+results and the graph abstained. Qdrant, the assessor, and the selected Luna model were not the
+root cause.
+
+The correction is the coverage-constrained multipart selection described in §4. A deterministic
+regression reproduces the failure with low-scoring continuation chunks and proves that all three
+passages from each branch survive while the cross-encoder is invoked once. A second regression
+proves that the calibrated floor still wins over branch coverage.
+
+The first same-query retest after that correction reached the assessor with the complete evidence
+set, but still abstained after the provider raised `LengthFinishReasonError`: the 256-token
+structured-output cap had truncated the verdict. Planner and assessor completion caps were
+removed, preserving the existing fail-closed handling for genuinely malformed verdicts.
+
+Two subsequent uncached runs confirmed the corrected document path end to end:
+
+| Run | Answer model | Assessor | TTFT | Completion | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| automated HTTP retest | Claude Sonnet 4.6 | 60.75 s | 73.11 s | 88.60 s | document answer, 4 citations, no web |
+| Streamlit retest | GPT-5.6 Terra | 1.66 s | 17.96 s | 24.27 s | document answer, 7 citations, no web |
+
+Both runs used the same warm 856-chunk book corpus, two-query multipart plan, 40 merged
+candidates, one reranker call, and eight evidence chunks. The assessor validated the slice and
+goroutine source regions in both. This confirms the retrieval/evidence correctness fix. It also
+shows that the earlier 60-second wait was a real provider/model outlier inside the assessor call,
+not Qdrant, reranking, the client, or measurement overhead.
+
+The same live exercise exposed a separate correctness hazard: a provider completion cap can end
+ordinary synthesis mid-answer while the graph still records `document_answer`. The answer cap
+was therefore removed as well. The roughly 1,000-token target remains in the prompt; provider-call
+and whole-query timeouts remain the hard bounds.
+
+Current local deterministic verification after the correction:
+
+- `uv run pytest -q` — 192 tests;
+- `uv run ruff check .`;
+- `uv run mypy src`;
+- `git diff --check`.
+
+These two paid live calls are correctness confirmations, not a latency distribution. The
+uncached p50/p95 sample and full retrieval/graph eval were not run. Do not mark this item fully
+done until repeated warm-cache-miss runs have produced the before/after stage table and confirmed
+or rejected the headline SLO.

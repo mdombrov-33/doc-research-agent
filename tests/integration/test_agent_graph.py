@@ -40,9 +40,6 @@ def _patch_llms(monkeypatch, agent_script, assessments):
         lambda: SimpleNamespace(
             PLANNER_MODEL="planner",
             ASSESSOR_MODEL="assessor",
-            PLANNER_MAX_TOKENS=128,
-            ASSESSOR_MAX_TOKENS=128,
-            ANSWER_MAX_TOKENS=1000,
             CONVERSATION_HISTORY_TURNS=3,
         ),
     )

@@ -14,6 +14,7 @@ from qdrant_client.common.client_exceptions import ResourceExhaustedResponse
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from src.config import get_settings
+from src.core.evidence_observability import evidence_log_fields, text_log_fields
 from src.core.nlp import extract_entities
 from src.core.retrieval.rerank import rerank
 from src.core.vectorstore import get_retrieval_vector_store
@@ -23,6 +24,7 @@ _tracer = trace.get_tracer(__name__)
 _TRANSIENT_QDRANT_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 _MAX_SEARCH_QUERIES = 2
 _RRF_RANK_CONSTANT = 60
+_BRANCH_RANKS_KEY = "_retrieval_branch_ranks"
 
 
 @dataclass(frozen=True)
@@ -77,18 +79,21 @@ def _merge_results(
     merged = []
     seen = set()
     for doc, score in [*primary, *supplemental]:
-        metadata = doc.metadata if hasattr(doc, "metadata") else {}
-        chunk_id = metadata.get("chunk_id")
-        if chunk_id is not None:
-            key = f"chunk:{chunk_id}"
-        else:
-            content = doc.page_content if hasattr(doc, "page_content") else str(doc)
-            key = f"content:{sha256(content.encode('utf-8')).hexdigest()}"
+        key = _raw_document_identity(doc)
         if key in seen:
             continue
         seen.add(key)
         merged.append((doc, score))
     return merged
+
+
+def _raw_document_identity(doc: Any) -> str:
+    metadata = doc.metadata if hasattr(doc, "metadata") else {}
+    chunk_id = metadata.get("chunk_id")
+    if chunk_id is not None:
+        return f"chunk:{chunk_id}"
+    content = doc.page_content if hasattr(doc, "page_content") else str(doc)
+    return f"content:{sha256(content.encode('utf-8')).hexdigest()}"
 
 
 def _is_transient_qdrant_error(error: Exception) -> bool:
@@ -151,6 +156,7 @@ def _collect_candidates(question: str, candidate_budget: int, entity_budget: int
         candidate_budget=candidate_budget,
         query_entity_count=len(query_entities),
         entity_supplement_active=bool(entity_filter),
+        **text_log_fields(question, field="query"),
     )
 
     with _tracer.start_as_current_span("retrieval.candidate_branch") as span:
@@ -168,13 +174,34 @@ def _collect_candidates(question: str, candidate_budget: int, entity_budget: int
                 )
 
         results = _merge_results(primary_results, entity_results)
-        doc_items = [item for doc, _score in results if (item := _document_item(doc)) is not None]
+        primary_identities = {_raw_document_identity(doc) for doc, _score in primary_results}
+        entity_identities = {_raw_document_identity(doc) for doc, _score in entity_results}
+        query_sha256 = text_log_fields(question, field="query")["query_sha256"]
+        doc_items = []
+        scores = []
+        for candidate_rank, (doc, score) in enumerate(results, start=1):
+            item = _document_item(doc)
+            if item is None:
+                continue
+            identity = _raw_document_identity(doc)
+            channels = []
+            if identity in primary_identities:
+                channels.append("hybrid")
+            if identity in entity_identities:
+                channels.append("entity")
+            numeric_score = float(score)
+            doc_items.append(item)
+            scores.append(numeric_score)
+            logger.info(
+                "retrieval_branch_candidate",
+                query_sha256=query_sha256,
+                candidate_rank=candidate_rank,
+                retrieval_score=round(numeric_score, 4),
+                retrieval_channels=channels,
+                **evidence_log_fields(item),
+            )
+
         blank_results = len(results) - len(doc_items)
-        scores = [
-            float(score)
-            for doc, score in results
-            if (doc.page_content if hasattr(doc, "page_content") else str(doc)).strip()
-        ]
         score_stats = {}
         if scores:
             score_stats = {
@@ -198,12 +225,13 @@ def _collect_candidates(question: str, candidate_budget: int, entity_budget: int
 
 
 def _merge_candidate_branches(branches: Sequence[Sequence[dict]], budget: int) -> list[dict]:
-    """Fuse branch ranks deterministically with RRF and keep one global unique pool."""
+    """Fuse branch ranks with RRF while retaining provenance for final evidence coverage."""
     by_identity: dict[str, dict] = {}
     rank_scores: dict[str, float] = {}
     best_ranks: dict[str, int] = {}
+    branch_ranks: dict[str, dict[str, int]] = {}
 
-    for branch in branches:
+    for branch_index, branch in enumerate(branches, start=1):
         branch_seen: set[str] = set()
         for rank, doc in enumerate(branch, start=1):
             identity = _chunk_identity(doc)
@@ -213,16 +241,32 @@ def _merge_candidate_branches(branches: Sequence[Sequence[dict]], budget: int) -
             by_identity.setdefault(identity, doc)
             rank_scores[identity] = rank_scores.get(identity, 0.0) + 1 / (_RRF_RANK_CONSTANT + rank)
             best_ranks[identity] = min(best_ranks.get(identity, rank), rank)
+            branch_ranks.setdefault(identity, {})[str(branch_index)] = rank
 
     ranked_identities = sorted(
         by_identity,
         key=lambda identity: (-rank_scores[identity], best_ranks[identity], identity),
     )
-    return [by_identity[identity] for identity in ranked_identities[:budget]]
+    selected_identities = ranked_identities[:budget]
+    for candidate_rank, identity in enumerate(selected_identities, start=1):
+        logger.info(
+            "retrieval_candidate_selected",
+            candidate_rank=candidate_rank,
+            rrf_score=round(rank_scores[identity], 6),
+            branch_ranks=branch_ranks[identity],
+            **evidence_log_fields(by_identity[identity], include_preview=False),
+        )
+    return [
+        {
+            **by_identity[identity],
+            _BRANCH_RANKS_KEY: branch_ranks[identity],
+        }
+        for identity in selected_identities
+    ]
 
 
 def retrieve_evidence(search_queries: Sequence[str], rerank_query: str) -> RetrievalResult:
-    """Execute one bounded retrieval plan and return one globally reranked evidence set."""
+    """Execute one bounded retrieval plan and return one coverage-aware evidence set."""
     queries = list(dict.fromkeys(query.strip() for query in search_queries if query.strip()))
     if not 1 <= len(queries) <= _MAX_SEARCH_QUERIES:
         raise ValueError("retrieval requires one or two non-empty search queries")
@@ -261,7 +305,16 @@ def retrieve_evidence(search_queries: Sequence[str], rerank_query: str) -> Retri
             duration_ms=round((time.monotonic() - started_at) * 1000, 1),
         )
 
-        documents = rerank(rerank_query, candidates, evidence_budget) if candidates else []
+        documents = (
+            rerank(
+                rerank_query,
+                candidates,
+                evidence_budget,
+                branch_count=len(queries),
+            )
+            if candidates
+            else []
+        )
         metrics = RetrievalMetrics(
             query_count=len(queries),
             query_shape="multipart" if len(queries) == 2 else "single",

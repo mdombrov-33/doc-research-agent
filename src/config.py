@@ -37,9 +37,6 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "anthropic/claude-sonnet-4.6"
     PLANNER_MODEL: str = "openai/gpt-5.6-luna"
     ASSESSOR_MODEL: str = "openai/gpt-5.6-luna"
-    PLANNER_MAX_TOKENS: int = Field(default=256, ge=1)
-    ASSESSOR_MAX_TOKENS: int = Field(default=256, ge=1)
-    ANSWER_MAX_TOKENS: int = Field(default=1000, ge=1)
     LLM_MAX_RETRIES: int = 3
     LLM_TIMEOUT_SECONDS: float = 60
     QUERY_TIMEOUT_SECONDS: float = 1000

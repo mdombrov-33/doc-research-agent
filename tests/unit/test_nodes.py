@@ -12,9 +12,6 @@ def _settings(**overrides):
     values = {
         "PLANNER_MODEL": "planner",
         "ASSESSOR_MODEL": "assessor",
-        "PLANNER_MAX_TOKENS": 128,
-        "ASSESSOR_MAX_TOKENS": 128,
-        "ANSWER_MAX_TOKENS": 1000,
         "CONVERSATION_HISTORY_TURNS": 3,
     }
     values.update(overrides)
@@ -109,7 +106,8 @@ def test_answer_node_sees_retrieved_evidence_the_assessment_did_not_name(monkeyp
     }
     answer_model = MagicMock()
     answer_model.invoke.return_value = AIMessage(content="answer [document:doc-1:7]")
-    monkeypatch.setattr(nodes, "get_llm", lambda *a, **k: answer_model)
+    get_llm = MagicMock(return_value=answer_model)
+    monkeypatch.setattr(nodes, "get_llm", get_llm)
     monkeypatch.setattr(nodes, "get_settings", _settings)
     state = {
         "messages": [
@@ -129,6 +127,7 @@ def test_answer_node_sees_retrieved_evidence_the_assessment_did_not_name(monkeyp
     evidence = answer_model.invoke.call_args.args[0][1].content
     assert named["content"] in evidence
     assert unnamed["content"] in evidence
+    get_llm.assert_called_once_with(None)
 
 
 def test_evidence_models_treat_hostile_source_text_as_untrusted_data(monkeypatch):
@@ -184,6 +183,64 @@ def test_evidence_models_treat_hostile_source_text_as_untrusted_data(monkeypatch
         assert hostile_text in sent[1].content
 
 
+def test_evidence_assessment_logs_inputs_and_validated_verdict(monkeypatch):
+    artifact = {
+        "content": "A retained slice keeps the full backing array alive.",
+        "document_id": "doc-1",
+        "chunk_id": "doc-1:26",
+        "filename": "book.pdf",
+        "source": "document",
+    }
+    assessment_model = MagicMock()
+    assessment_model.invoke.return_value = EvidenceAssessment(
+        sufficient=True,
+        supporting_source_ids=["document:doc-1:26"],
+    )
+    classifier = MagicMock()
+    classifier.with_structured_output.return_value = assessment_model
+    get_llm = MagicMock(return_value=classifier)
+    log_info = MagicMock()
+    monkeypatch.setattr(nodes, "get_llm", get_llm)
+    monkeypatch.setattr(nodes, "get_settings", _settings)
+    monkeypatch.setattr(nodes.logger, "info", log_info)
+    state = {
+        "messages": [
+            HumanMessage(content="Why does the slice retain memory?"),
+            ToolMessage(
+                content=nodes.format_docs([artifact]),
+                tool_call_id="retrieval",
+                name="retrieve_documents",
+                artifact={"documents": [artifact], "retrieval": {}},
+            ),
+        ],
+    }
+
+    result = nodes.evidence_assessment_node(state)
+
+    source_log = next(
+        call
+        for call in log_info.call_args_list
+        if call.args[0] == "evidence_assessment_source"
+    )
+    verdict_log = next(
+        call
+        for call in log_info.call_args_list
+        if call.args[0] == "evidence_assessment_complete"
+    )
+    assert source_log.kwargs["evidence_rank"] == 1
+    assert source_log.kwargs["chunk_id"] == "doc-1:26"
+    assert verdict_log.kwargs == {
+        "available_sources": 1,
+        "model_sufficient": True,
+        "validated_sufficient": True,
+        "reported_supporting_source_ids": ["document:doc-1:26"],
+        "invalid_supporting_source_ids": [],
+        "web_search_used": False,
+    }
+    assert result["evidence_sufficient"] is True
+    get_llm.assert_called_once_with("assessor")
+
+
 def test_agent_node_uses_planner_model_not_selected_answer_model(monkeypatch):
     bound = MagicMock()
     bound.invoke.return_value = AIMessage(
@@ -207,7 +264,7 @@ def test_agent_node_uses_planner_model_not_selected_answer_model(monkeypatch):
         {"configurable": {"model": "selected-answer-model"}},
     )
 
-    get_llm.assert_called_once_with("planner", max_tokens=128)
+    get_llm.assert_called_once_with("planner")
 
 
 def test_agent_node_collapses_duplicate_tool_calls_to_one_bounded_plan(monkeypatch):

@@ -14,6 +14,7 @@ from src.core.agent.prompts import (
 from src.core.agent.state import AgentState
 from src.core.agent.tools import artifact_documents, format_docs, retrieve_documents, search_web
 from src.core.citations import citations_from_artifacts
+from src.core.evidence_observability import evidence_log_fields, text_log_fields
 from src.core.llm import get_llm
 from src.utils.logger import logger
 
@@ -37,7 +38,7 @@ def agent_node(state: AgentState, config: RunnableConfig | None = None) -> dict[
     """Form a history-aware standalone query and call document retrieval."""
     settings = get_settings()
     model = settings.PLANNER_MODEL
-    llm = get_llm(model, max_tokens=settings.PLANNER_MAX_TOKENS).bind_tools([retrieve_documents])
+    llm = get_llm(model).bind_tools([retrieve_documents])
     history = _conversation_messages(state["messages"], settings.CONVERSATION_HISTORY_TURNS)
     messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT), *history]
     with _tracer.start_as_current_span("agent.llm_call") as span:
@@ -55,15 +56,33 @@ def evidence_assessment_node(
     question = _current_question(state)
     artifacts = _turn_artifacts(state)
     source_ids = {citation.source_id for citation in citations_from_artifacts(artifacts)}
+    web_search_used = used_web_fallback(state)
+    logger.info(
+        "evidence_assessment_start",
+        available_sources=len(source_ids),
+        artifact_count=len(artifacts),
+        web_search_used=web_search_used,
+        **text_log_fields(question, field="question"),
+    )
+    for evidence_rank, artifact in enumerate(artifacts, start=1):
+        logger.info(
+            "evidence_assessment_source",
+            evidence_rank=evidence_rank,
+            web_search_used=web_search_used,
+            **evidence_log_fields(artifact),
+        )
     if not question or not source_ids:
+        logger.info(
+            "evidence_assessment_skipped",
+            reason="missing_question" if not question else "missing_citable_sources",
+            web_search_used=web_search_used,
+        )
         return {"evidence_sufficient": False, "supporting_source_ids": []}
 
     evidence = "\n\n".join(_turn_tool_content(state))
     try:
         settings = get_settings()
-        structured = get_llm(
-            settings.ASSESSOR_MODEL, max_tokens=settings.ASSESSOR_MAX_TOKENS
-        ).with_structured_output(EvidenceAssessment)
+        structured = get_llm(settings.ASSESSOR_MODEL).with_structured_output(EvidenceAssessment)
         assessment = EvidenceAssessment.model_validate(
             structured.invoke(
                 [
@@ -78,8 +97,18 @@ def evidence_assessment_node(
 
     supported = set(assessment.supporting_source_ids)
     sufficient = assessment.sufficient and bool(supported) and supported <= source_ids
+    invalid_source_ids = sorted(supported - source_ids)
     if assessment.sufficient and not sufficient:
         logger.warning("evidence_assessment_invalid_source_ids")
+    logger.info(
+        "evidence_assessment_complete",
+        available_sources=len(source_ids),
+        model_sufficient=assessment.sufficient,
+        validated_sufficient=sufficient,
+        reported_supporting_source_ids=assessment.supporting_source_ids,
+        invalid_supporting_source_ids=invalid_source_ids,
+        web_search_used=web_search_used,
+    )
     return {
         "evidence_sufficient": sufficient,
         "supporting_source_ids": assessment.supporting_source_ids if sufficient else [],
@@ -93,10 +122,9 @@ def answer_node(state: AgentState, config: RunnableConfig | None = None) -> dict
     only those starves the answer of chunks the gate never had to name. Answers see the whole
     turn's evidence and cite what they use; user-facing sources are the IDs cited in the answer.
     """
-    settings = get_settings()
     model = _configurable(config).get("model")
     evidence = format_docs(_turn_artifacts(state))
-    response = get_llm(model, max_tokens=settings.ANSWER_MAX_TOKENS).invoke(
+    response = get_llm(model).invoke(
         [
             SystemMessage(content=ANSWER_SYSTEM_PROMPT),
             HumanMessage(content=f"Question:\n{_current_question(state)}\n\nEvidence:\n{evidence}"),
