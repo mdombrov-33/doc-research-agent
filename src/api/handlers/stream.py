@@ -356,9 +356,7 @@ async def _token_generator(
                             first_visible_at_ms = _now_ms()
                             time_to_first_token_ms = first_visible_at_ms - start_ms
                             if answer_started_at_ms is not None:
-                                answer_provider_ttft_ms = (
-                                    first_visible_at_ms - answer_started_at_ms
-                                )
+                                answer_provider_ttft_ms = first_visible_at_ms - answer_started_at_ms
                         accumulated.append(visible_token)
                         yield f"data: {json.dumps({'token': visible_token})}\n\n"
 

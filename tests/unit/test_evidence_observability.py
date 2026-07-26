@@ -61,18 +61,14 @@ def test_text_log_fields_only_expose_text_in_development(monkeypatch):
         "get_settings",
         lambda: SimpleNamespace(APP_ENV="development"),
     )
-    development = evidence_observability.text_log_fields(
-        "first\n  focused query", field="query"
-    )
+    development = evidence_observability.text_log_fields("first\n  focused query", field="query")
 
     monkeypatch.setattr(
         evidence_observability,
         "get_settings",
         lambda: SimpleNamespace(APP_ENV="production"),
     )
-    production = evidence_observability.text_log_fields(
-        "first\n  focused query", field="query"
-    )
+    production = evidence_observability.text_log_fields("first\n  focused query", field="query")
 
     assert development["query_preview"] == "first focused query"
     assert production == {

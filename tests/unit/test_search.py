@@ -237,9 +237,7 @@ def test_retrieve_evidence_applies_global_candidate_budget_and_one_rerank(monkey
         lambda query, _candidate_budget, _entity_budget: branches[query],
     )
     monkeypatch.setattr(search, "get_settings", lambda: _settings())
-    rerank = MagicMock(
-        side_effect=lambda _question, docs, limit, *, branch_count: docs[:limit]
-    )
+    rerank = MagicMock(side_effect=lambda _question, docs, limit, *, branch_count: docs[:limit])
     monkeypatch.setattr(search, "rerank", rerank)
 
     result = search.retrieve_evidence(["first", "second"], "original question")

@@ -218,14 +218,10 @@ def test_evidence_assessment_logs_inputs_and_validated_verdict(monkeypatch):
     result = nodes.evidence_assessment_node(state)
 
     source_log = next(
-        call
-        for call in log_info.call_args_list
-        if call.args[0] == "evidence_assessment_source"
+        call for call in log_info.call_args_list if call.args[0] == "evidence_assessment_source"
     )
     verdict_log = next(
-        call
-        for call in log_info.call_args_list
-        if call.args[0] == "evidence_assessment_complete"
+        call for call in log_info.call_args_list if call.args[0] == "evidence_assessment_complete"
     )
     assert source_log.kwargs["evidence_rank"] == 1
     assert source_log.kwargs["chunk_id"] == "doc-1:26"

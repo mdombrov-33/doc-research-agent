@@ -1,8 +1,6 @@
 from typing import Literal, TypeAlias
 
-FinalOutcome: TypeAlias = Literal[
-    "document_answer", "web_answer", "abstained", "conversational"
-]
+FinalOutcome: TypeAlias = Literal["document_answer", "web_answer", "abstained", "conversational"]
 FinalStopReason: TypeAlias = Literal[
     "document_evidence_sufficient",
     "web_evidence_sufficient",

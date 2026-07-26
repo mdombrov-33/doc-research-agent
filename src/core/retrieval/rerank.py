@@ -43,11 +43,7 @@ def _select_evidence(
     for branch_index in range(1, branch_count + 1):
         branch_key = str(branch_index)
         branch_shortlists[branch_key] = sorted(
-            (
-                triple
-                for triple in ranked
-                if branch_key in triple[0].get(_BRANCH_RANKS_KEY, {})
-            ),
+            (triple for triple in ranked if branch_key in triple[0].get(_BRANCH_RANKS_KEY, {})),
             key=lambda triple: triple[0][_BRANCH_RANKS_KEY][branch_key],
         )[:coverage_per_branch]
 
@@ -61,9 +57,7 @@ def _select_evidence(
             if original_rank not in selected_ranks and len(selected_ranks) >= limit:
                 continue
             selected_ranks.add(original_rank)
-            selection_reasons.setdefault(original_rank, []).append(
-                f"branch_coverage:{branch_key}"
-            )
+            selection_reasons.setdefault(original_rank, []).append(f"branch_coverage:{branch_key}")
 
     for _, _, original_rank in ranked:
         if len(selected_ranks) >= limit:
